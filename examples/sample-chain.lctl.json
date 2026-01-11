@@ -1,0 +1,171 @@
+{
+  "lctl": "4.0",
+  "chain": {
+    "id": "security-review-demo"
+  },
+  "events": [
+    {
+      "seq": 1,
+      "type": "step_start",
+      "timestamp": "2024-01-15T10:30:00Z",
+      "agent": "code-analyzer",
+      "data": {
+        "intent": "analyze",
+        "input_summary": "UserController.py - 200 lines"
+      }
+    },
+    {
+      "seq": 2,
+      "type": "fact_added",
+      "timestamp": "2024-01-15T10:30:15Z",
+      "agent": "code-analyzer",
+      "data": {
+        "id": "F1",
+        "text": "SQL query constructed from user input at line 45",
+        "confidence": 0.85,
+        "source": "static-analysis"
+      }
+    },
+    {
+      "seq": 3,
+      "type": "tool_call",
+      "timestamp": "2024-01-15T10:30:16Z",
+      "agent": "code-analyzer",
+      "data": {
+        "tool": "grep",
+        "input": {"pattern": "execute.*user", "file": "UserController.py"},
+        "output": {"matches": 3, "lines": [45, 67, 89]},
+        "duration_ms": 50
+      }
+    },
+    {
+      "seq": 4,
+      "type": "fact_added",
+      "timestamp": "2024-01-15T10:30:20Z",
+      "agent": "code-analyzer",
+      "data": {
+        "id": "F2",
+        "text": "No input validation detected on user_id parameter",
+        "confidence": 0.90,
+        "source": "static-analysis"
+      }
+    },
+    {
+      "seq": 5,
+      "type": "step_end",
+      "timestamp": "2024-01-15T10:30:30Z",
+      "agent": "code-analyzer",
+      "data": {
+        "outcome": "success",
+        "output_summary": "Found 2 potential security issues",
+        "duration_ms": 30000,
+        "tokens": {"input": 500, "output": 200}
+      }
+    },
+    {
+      "seq": 6,
+      "type": "checkpoint",
+      "timestamp": "2024-01-15T10:30:31Z",
+      "agent": "system",
+      "data": {
+        "state_hash": "abc123",
+        "facts_snapshot": {
+          "F1": {"text": "SQL query constructed from user input at line 45", "confidence": 0.85},
+          "F2": {"text": "No input validation detected on user_id parameter", "confidence": 0.90}
+        }
+      }
+    },
+    {
+      "seq": 7,
+      "type": "step_start",
+      "timestamp": "2024-01-15T10:30:32Z",
+      "agent": "security-reviewer",
+      "data": {
+        "intent": "assess",
+        "input_summary": "Review F1 and F2 for exploitability"
+      }
+    },
+    {
+      "seq": 8,
+      "type": "fact_modified",
+      "timestamp": "2024-01-15T10:30:45Z",
+      "agent": "security-reviewer",
+      "data": {
+        "id": "F1",
+        "text": "CONFIRMED: SQL injection vulnerability at line 45",
+        "confidence": 0.95,
+        "reason": "verified_by_manual_review"
+      }
+    },
+    {
+      "seq": 9,
+      "type": "fact_added",
+      "timestamp": "2024-01-15T10:30:50Z",
+      "agent": "security-reviewer",
+      "data": {
+        "id": "F3",
+        "text": "CVSS Score: 9.8 (Critical) - unauthenticated remote exploitation possible",
+        "confidence": 0.88,
+        "source": "security-reviewer"
+      }
+    },
+    {
+      "seq": 10,
+      "type": "step_end",
+      "timestamp": "2024-01-15T10:31:00Z",
+      "agent": "security-reviewer",
+      "data": {
+        "outcome": "success",
+        "output_summary": "Confirmed critical SQL injection vulnerability",
+        "duration_ms": 28000,
+        "tokens": {"input": 300, "output": 150}
+      }
+    },
+    {
+      "seq": 11,
+      "type": "step_start",
+      "timestamp": "2024-01-15T10:31:02Z",
+      "agent": "fix-implementer",
+      "data": {
+        "intent": "fix",
+        "input_summary": "Implement parameterized query fix for F1"
+      }
+    },
+    {
+      "seq": 12,
+      "type": "tool_call",
+      "timestamp": "2024-01-15T10:31:10Z",
+      "agent": "fix-implementer",
+      "data": {
+        "tool": "code_editor",
+        "input": {"file": "UserController.py", "action": "edit", "lines": [45, 52]},
+        "output": {"status": "success", "lines_changed": 8},
+        "duration_ms": 200
+      }
+    },
+    {
+      "seq": 13,
+      "type": "fact_added",
+      "timestamp": "2024-01-15T10:31:15Z",
+      "agent": "fix-implementer",
+      "data": {
+        "id": "F4",
+        "text": "Applied parameterized query fix using SQLAlchemy",
+        "confidence": 0.92,
+        "source": "fix-implementer"
+      }
+    },
+    {
+      "seq": 14,
+      "type": "step_end",
+      "timestamp": "2024-01-15T10:31:20Z",
+      "agent": "fix-implementer",
+      "data": {
+        "outcome": "success",
+        "output_summary": "SQL injection fix applied",
+        "duration_ms": 18000,
+        "tokens": {"input": 400, "output": 300}
+      }
+    }
+  ]
+}
