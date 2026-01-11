@@ -24,6 +24,8 @@
   - [CrewAI Integration](#crewai-integration)
   - [AutoGen Integration](#autogen-integration)
   - [OpenAI Agents Integration](#openai-agents-integration)
+  - [DSPy Integration](#dspy-integration)
+  - [LlamaIndex Integration](#llamaindex-integration)
 - [Dashboard (lctl.dashboard)](#dashboard-lctldashboard)
   - [create_app](#create_app)
   - [run_dashboard](#run_dashboard)
@@ -1507,6 +1509,121 @@ with tracer.trace_agent_run("my_agent", "Process data") as ctx:
     result = agent.process(data)
     ctx.set_output(str(result))
     ctx.set_usage(tokens_in=100, tokens_out=200)
+```
+
+---
+
+### DSPy Integration
+
+```python
+from lctl.integrations.dspy import (
+    LCTLDSPyCallback,
+    TracedDSPyModule,
+    LCTLDSPyTeleprompter,
+    trace_module,
+    is_available
+)
+```
+
+#### `is_available() -> bool`
+
+Check if DSPy is installed.
+
+#### `LCTLDSPyCallback`
+
+Callback handler for DSPy operations.
+
+##### Constructor
+
+```python
+LCTLDSPyCallback(
+    chain_id: Optional[str] = None,
+    session: Optional[LCTLSession] = None,
+    verbose: bool = False
+)
+```
+
+##### Traced Events
+- Module execution (inputs/outputs)
+- LLM calls (prompts/responses/tokens)
+- Optimization/Compile steps (iterations/scores)
+
+#### `trace_module`
+
+Decorator/wrapper to trace a DSPy module.
+
+```python
+@trace_module(callback)
+class MyModule(dspy.Module):
+    ...
+
+# Or wrap instance
+traced_module = trace_module(module_instance, callback)
+```
+
+#### `LCTLDSPyTeleprompter`
+
+Wrapper for teleprompters to trace optimization.
+
+```python
+tracer = LCTLDSPyTeleprompter(teleprompter, callback)
+optimized_program = tracer.compile(program, trainset=trainset)
+```
+
+---
+
+### LlamaIndex Integration
+
+```python
+from lctl.integrations.llamaindex import (
+    LCTLLlamaIndexCallback,
+    trace_query_engine,
+    trace_chat_engine,
+    is_available
+)
+```
+
+#### `is_available() -> bool`
+
+Check if LlamaIndex is installed.
+
+#### `LCTLLlamaIndexCallback`
+
+Callback handler for LlamaIndex.
+
+##### Constructor
+
+```python
+callback = LCTLLlamaIndexCallback(
+    chain_id: Optional[str] = None,
+    session: Optional[LCTLSession] = None
+)
+```
+
+##### Usage
+
+```python
+from llama_index.core import Settings
+
+Settings.callback_manager = callback.get_callback_manager()
+```
+
+#### `trace_query_engine`
+
+Wrap a query engine for simplified tracing.
+
+```python
+traced_engine = trace_query_engine(query_engine, chain_id="my-query")
+response = traced_engine.query("What is LCTL?")
+```
+
+#### `trace_chat_engine`
+
+Wrap a chat engine for simplified tracing.
+
+```python
+traced_chat = trace_chat_engine(chat_engine, chain_id="my-chat")
+response = traced_chat.chat("Hello there")
 ```
 
 ---
