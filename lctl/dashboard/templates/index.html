@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LCTL Dashboard - Time-Travel Debugging</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <h1 class="logo">LCTL</h1>
+                <span class="tagline">Time-Travel Debugging for Multi-Agent Workflows</span>
+            </div>
+            <div class="header-right">
+                <select id="chain-selector" class="chain-selector">
+                    <option value="">Select a chain...</option>
+                </select>
+                <button id="refresh-btn" class="btn btn-secondary" title="Refresh chains">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 4v6h-6M1 20v-6h6"/>
+                        <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- No chain selected state -->
+            <div id="empty-state" class="empty-state">
+                <div class="empty-icon">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
+                        <path d="M13 2v7h7"/>
+                    </svg>
+                </div>
+                <h2>No Chain Selected</h2>
+                <p>Select a .lctl.json file from the dropdown above to visualize the agent workflow.</p>
+                <p class="working-dir">Working directory: <code id="working-dir-path">-</code></p>
+            </div>
+
+            <!-- Dashboard content (hidden until chain is loaded) -->
+            <div id="dashboard" class="dashboard hidden">
+                <!-- Time-travel slider -->
+                <div class="time-travel-panel">
+                    <div class="time-travel-header">
+                        <h3>Time-Travel Debugger</h3>
+                        <div class="time-travel-controls">
+                            <button id="play-btn" class="btn btn-icon" title="Play/Pause">
+                                <svg id="play-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <polygon points="5,3 19,12 5,21"/>
+                                </svg>
+                                <svg id="pause-icon" class="hidden" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <rect x="6" y="4" width="4" height="16"/>
+                                    <rect x="14" y="4" width="4" height="16"/>
+                                </svg>
+                            </button>
+                            <button id="step-back-btn" class="btn btn-icon" title="Step Back">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polygon points="11,19 2,12 11,5"/>
+                                    <line x1="22" y1="12" x2="11" y2="12"/>
+                                </svg>
+                            </button>
+                            <button id="step-forward-btn" class="btn btn-icon" title="Step Forward">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polygon points="13,19 22,12 13,5"/>
+                                    <line x1="2" y1="12" x2="13" y2="12"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="slider-container">
+                        <input type="range" id="time-slider" class="time-slider" min="1" max="100" value="100">
+                        <div class="slider-labels">
+                            <span id="current-seq">Seq: 1</span>
+                            <span id="max-seq">Max: 100</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stats bar -->
+                <div class="stats-bar">
+                    <div class="stat">
+                        <span class="stat-label">Events</span>
+                        <span id="stat-events" class="stat-value">0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Agents</span>
+                        <span id="stat-agents" class="stat-value">0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Facts</span>
+                        <span id="stat-facts" class="stat-value">0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Duration</span>
+                        <span id="stat-duration" class="stat-value">0s</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Tokens</span>
+                        <span id="stat-tokens" class="stat-value">0</span>
+                    </div>
+                    <div class="stat stat-error">
+                        <span class="stat-label">Errors</span>
+                        <span id="stat-errors" class="stat-value">0</span>
+                    </div>
+                </div>
+
+                <!-- Main panels -->
+                <div class="panels">
+                    <!-- Left panel: Timeline -->
+                    <div class="panel panel-timeline">
+                        <div class="panel-header">
+                            <h3>Event Timeline</h3>
+                            <div class="filter-controls">
+                                <select id="event-filter" class="filter-select">
+                                    <option value="all">All Events</option>
+                                    <option value="step_start">Step Start</option>
+                                    <option value="step_end">Step End</option>
+                                    <option value="fact_added">Fact Added</option>
+                                    <option value="fact_modified">Fact Modified</option>
+                                    <option value="tool_call">Tool Calls</option>
+                                    <option value="error">Errors</option>
+                                    <option value="checkpoint">Checkpoints</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="timeline" class="timeline"></div>
+                    </div>
+
+                    <!-- Center panel: Swim lanes -->
+                    <div class="panel panel-swimlanes">
+                        <div class="panel-header">
+                            <h3>Agent Swim Lanes</h3>
+                        </div>
+                        <div id="swimlanes" class="swimlanes"></div>
+                    </div>
+
+                    <!-- Right panel: Fact registry -->
+                    <div class="panel panel-facts">
+                        <div class="panel-header">
+                            <h3>Fact Registry</h3>
+                        </div>
+                        <div id="fact-registry" class="fact-registry"></div>
+                    </div>
+                </div>
+
+                <!-- Bottom panel: Details -->
+                <div class="panel panel-details">
+                    <div class="panel-header">
+                        <h3>Event Details</h3>
+                        <span id="selected-event-label" class="selected-label">Select an event to view details</span>
+                    </div>
+                    <div id="event-details" class="event-details">
+                        <div class="no-selection">Click on any event in the timeline or swim lanes to view details</div>
+                    </div>
+                </div>
+
+                <!-- Bottleneck panel -->
+                <div class="panel panel-bottlenecks">
+                    <div class="panel-header">
+                        <h3>Performance Bottlenecks</h3>
+                    </div>
+                    <div id="bottlenecks" class="bottlenecks"></div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Toast notifications -->
+        <div id="toast-container" class="toast-container"></div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

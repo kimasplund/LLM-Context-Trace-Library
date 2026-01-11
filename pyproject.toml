@@ -43,6 +43,11 @@ dev = [
     "pytest-cov>=4.0",
     "black>=23.0",
     "ruff>=0.1",
+    "httpx>=0.24",
+]
+dashboard = [
+    "fastapi>=0.100",
+    "uvicorn[standard]>=0.20",
 ]
 langchain = [
     "langchain>=0.1",
@@ -52,6 +57,9 @@ crewai = [
 ]
 autogen = [
     "pyautogen>=0.2",
+]
+all = [
+    "lctl[dashboard,langchain,crewai,autogen]",
 ]
 
 [project.scripts]

@@ -308,7 +308,7 @@ def trace(chain_file: str):
 @click.argument("chain_file", type=click.Path())
 @click.option("--port", "-p", default=8080, help="Port for web UI")
 def debug(chain_file: str, port: int):
-    """Launch visual debugger (web UI).
+    """Launch visual debugger (web UI) for a specific chain.
 
     Examples:
         lctl debug chain.lctl.json
@@ -324,10 +324,65 @@ def debug(chain_file: str, port: int):
     click.echo()
     click.echo(f"Open http://localhost:{port} in your browser")
     click.echo()
-    click.echo(click.style("Note: Web UI not yet implemented. Use CLI commands for now:", fg="yellow"))
-    click.echo("  lctl replay - Time-travel to any point")
-    click.echo("  lctl trace  - View execution flow")
-    click.echo("  lctl stats  - Performance metrics")
+
+    # Start the dashboard
+    try:
+        from ..dashboard import run_dashboard
+        run_dashboard(port=port, working_dir=Path(chain_file).parent.absolute())
+    except ImportError as e:
+        click.echo(click.style(f"Error: Dashboard dependencies not installed: {e}", fg="red"))
+        click.echo("Install with: pip install 'lctl[dashboard]'")
+        sys.exit(1)
+
+
+@cli.command()
+@click.option("--port", "-p", default=8080, help="Port to run dashboard on")
+@click.option("--host", "-h", default="0.0.0.0", help="Host to bind to")
+@click.option("--dir", "-d", "working_dir", type=click.Path(exists=True), help="Directory containing .lctl.json files")
+def dashboard(port: int, host: str, working_dir: Optional[str]):
+    """Launch the web dashboard for visualizing LCTL chains.
+
+    The dashboard provides:
+    - Timeline view of events
+    - Agent swim lanes
+    - Fact registry with confidence indicators
+    - Time-travel slider to replay
+    - Bottleneck highlighting
+    - Error indicators
+
+    Examples:
+        lctl dashboard
+        lctl dashboard --port 3000
+        lctl dashboard --dir ./traces
+    """
+    click.echo(click.style("LCTL Dashboard", fg="cyan", bold=True))
+    click.echo()
+
+    work_path = Path(working_dir) if working_dir else Path.cwd()
+
+    # Count available chains
+    chain_count = len(list(work_path.glob("*.lctl.json"))) + len(list(work_path.glob("*.lctl.yaml")))
+
+    click.echo(f"  Working directory: {work_path}")
+    click.echo(f"  Available chains: {chain_count}")
+    click.echo()
+    click.echo(f"  Dashboard URL: " + click.style(f"http://{host}:{port}", fg="green", bold=True))
+    click.echo()
+    click.echo("Press Ctrl+C to stop the server")
+    click.echo()
+
+    try:
+        from ..dashboard import run_dashboard
+        run_dashboard(host=host, port=port, working_dir=work_path)
+    except ImportError as e:
+        click.echo(click.style(f"Error: Dashboard dependencies not installed: {e}", fg="red"))
+        click.echo()
+        click.echo("Install dashboard dependencies with:")
+        click.echo("  pip install 'lctl[dashboard]'")
+        click.echo()
+        click.echo("Or install manually:")
+        click.echo("  pip install fastapi uvicorn")
+        sys.exit(1)
 
 
 def _print_event(event: Event) -> None:
