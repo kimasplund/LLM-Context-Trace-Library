@@ -1,101 +1,128 @@
-# LLM Context Transfer Language (LCTL) v3.0
+# LLM Context Transfer Language (LCTL) v4.0
 
-An observability and tracing protocol for multi-agent LLM workflows.
+**Time-travel debugging for multi-agent LLM workflows.**
 
-## What This Is
+> "Don't pitch the protocol. Pitch the tool."
 
-LCTL is a **metadata layer** (not a compression format) that enables:
-- Debugging multi-agent chains ("why did agent 3 fail?")
-- Tracking confidence degradation across hops
-- Auditing what context each agent received
-- Visualizing agent workflow execution
+## The Killer Feature
 
-## Key Insight
+```bash
+$ lctl replay --to-seq 10 chain.lctl.json
+Replaying to event 10...
+State at seq 10: 2 facts, agent=code-analyzer
 
-LCTL v1-v2 tried to compress context to save tokens. After analysis, we found:
-- Modern LLMs have 200K+ context windows (rarely exhausted)
-- Sub-agents get fresh contexts anyway (no accumulation problem)
-- Compression overhead often exceeds token savings
-
-**v3.0 pivots to solving the real problem: observability and debugging.**
-
-## Files
-
-- `LLM-CONTEXT-TRANSFER.md` - Full specification with format and examples
-
-## Quick Example
-
-```yaml
-lctl: "3.0"
-purpose: observability
-
-chain:
-  id: review-2024-001
-  step: 2
-  source: security-reviewer
-  target: fix-implementer
-
-trace:
-  - step: 1
-    agent: code-analyzer
-    action: "Found SQL injection pattern"
-    confidence: 0.85
-    facts_added: [F1, F2]
-  - step: 2
-    agent: security-reviewer
-    action: "Confirmed Critical severity"
-    confidence: 0.92
-    facts_modified: [F1]
-
-facts:
-  F1:
-    text: "CONFIRMED: SQL injection in UserController.py:45"
-    confidence: 0.95
-    source: security-reviewer
-
-handoff:
-  critical_facts: [F1]
-  warnings: ["Production system"]
-
-instruction: |
-  Implement parameterized query fix for the SQL injection.
+$ lctl diff chain-v1.lctl.json chain-v2.lctl.json
+Events diverged at seq 8:
+  v1: fact_added F3 (confidence: 0.70)
+  v2: fact_added F3 (confidence: 0.85) [DIFFERENT]
 ```
 
-## What LCTL Enables
+Step back through agent execution. See exactly where things diverged. Understand "what if?"
 
-| Capability | How LCTL Helps |
-|------------|----------------|
-| **Debugging** | Full trace of what each agent saw and did |
-| **Auditing** | Numbered facts with sources and timestamps |
-| **Confidence** | Track certainty degradation through chain |
-| **Conflicts** | Identify contradictions in parallel workflows |
-| **Post-mortems** | Structured failure analysis with root cause |
+## Evolution Journey
 
-## When to Use
+| Version | Focus | Outcome |
+|---------|-------|---------|
+| v1.0 | Compression | Abandoned - didn't solve real problems |
+| v2.0 | Compression + artifacts | Abandoned - still wrong focus |
+| v3.0 | Observability | Better - but protocol-first thinking |
+| **v4.0** | **Tool-first** | **Event sourcing enables time-travel** |
 
-**Use LCTL:**
-- Multi-agent chains (3+ agents)
-- Parallel agents that merge results
-- Workflows requiring audit trails
-- Debugging complex agent failures
+## Core Protocol (One Page)
 
-**Don't use LCTL:**
-- Single agent interactions
-- Simple request/response
-- When token cost is primary concern (LCTL adds overhead)
+```yaml
+lctl: "4.0"
+chain:
+  id: "security-review-001"
+
+events:
+  - seq: 1
+    type: step_start
+    timestamp: "2024-01-15T10:30:00Z"
+    agent: "code-analyzer"
+    data: {intent: "analyze", input_summary: "UserController.py"}
+
+  - seq: 2
+    type: fact_added
+    agent: "code-analyzer"
+    data: {id: "F1", text: "SQL injection at line 45", confidence: 0.85}
+
+  - seq: 3
+    type: step_end
+    agent: "code-analyzer"
+    data: {outcome: "success", duration_ms: 30000, tokens: {in: 500, out: 200}}
+```
+
+That's it. Chain ID + event stream. Everything else derives from this.
+
+## What A/B Testing Revealed
+
+We ran 6 parallel cognitive agents to evolve LCTL:
+
+| Component | A/B Winner | Why |
+|-----------|------------|-----|
+| **Architecture** | Event Sourcing | Enables time-travel replay |
+| **Handoffs** | Query-Based + Contracts | Pull model, type safety |
+| **Confidence** | Decay + Consensus | Automatic degradation tracking |
+| **Chain Tracking** | DAG projection on events | Handles parallel workflows |
+| **Adoption Driver** | CLI tooling | Protocol is implementation detail |
+
+## CLI Tools
+
+```bash
+# Time-travel replay
+$ lctl replay chain.lctl.json
+
+# Visual debugger (web UI)
+$ lctl debug chain.lctl.json
+
+# Performance analytics
+$ lctl stats chain.lctl.json
+Duration: 45.2s | Tokens: 2,340 | Cost: $0.047
+
+# Bottleneck analysis
+$ lctl bottleneck chain.lctl.json
+security-reviewer: 50% of time (consider parallelization)
+
+# Contract validation
+$ lctl validate chain.lctl.json --contracts ./contracts/
+```
 
 ## Integration
 
-Works with any multi-agent framework:
-- Claude Code Task tool
-- LangChain/LangGraph
-- CrewAI
-- Qwen-Agent
-- Custom orchestrators
+```python
+# Zero-config auto-instrumentation
+import lctl
+lctl.auto_instrument()
 
-## Origin
+# Or framework-specific
+from lctl.langchain import LCTLCallbackHandler
+from lctl.crewai import LCTLCrew
+from lctl.autogen import enable_lctl
+```
 
-Evolved through three iterations:
-- v1.0: Compression format (abandoned - didn't solve real problems)
-- v2.0: Added artifacts/confidence (still compression-focused)
-- v3.0: Pivoted to observability (current - solves validated pain points)
+## Key Innovations
+
+1. **Event Sourcing**: Immutable event log enables replay to any point
+2. **Query-Based Handoffs**: Agents pull facts they need, not push everything
+3. **Decay + Consensus Confidence**: Automatic degradation, consensus for critical facts
+4. **Contract Validation**: Type safety for agent inputs/outputs
+5. **Tool-First Design**: CLI tools drive adoption, protocol is invisible
+
+## Files
+
+- `LLM-CONTEXT-TRANSFER.md` - Full specification (10 parts)
+
+## Research Basis
+
+Developed through integrated reasoning methodology:
+- Breadth-of-thought: 10 evolution directions explored
+- Self-reflecting chain: Validated real pain points
+- A/B testing: 5 approaches tested per component
+- Framework analysis: Claude Code, LangChain, CrewAI, AutoGen, custom
+
+## Philosophy
+
+The protocol succeeds when developers never think about it. They use `lctl debug` because it's 10x better than print statements. The fact that it uses LCTL format is irrelevant to them.
+
+**Build the tool. The protocol follows.**
