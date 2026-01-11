@@ -9,6 +9,7 @@ from click.testing import CliRunner
 
 from lctl.cli.main import cli, _estimate_cost
 from lctl.core.events import Chain, Event, EventType
+from lctl.evaluation.metrics import ChainMetrics
 
 
 @pytest.fixture
@@ -542,3 +543,430 @@ class TestCliIntegration:
         full_result = runner.invoke(cli, ["replay", str(cli_chain_file)])
         assert full_result.exit_code == 0
         assert "seq 7" in full_result.output
+
+
+class TestEvaluateCommand:
+    """Tests for evaluate command."""
+
+    def test_evaluate_basic(self, runner: CliRunner, cli_chain_file: Path):
+        """Test basic evaluate command."""
+        result = runner.invoke(cli, ["evaluate", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Chain Evaluation Report" in result.output
+        assert "Overview" in result.output
+        assert "Performance" in result.output
+        assert "Quality" in result.output
+
+    def test_evaluate_shows_chain_id(self, runner: CliRunner, cli_chain_file: Path):
+        """Test evaluate shows chain ID."""
+        result = runner.invoke(cli, ["evaluate", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "cli-test-chain" in result.output
+
+    def test_evaluate_shows_metrics(self, runner: CliRunner, cli_chain_file: Path):
+        """Test evaluate shows comprehensive metrics."""
+        result = runner.invoke(cli, ["evaluate", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Total Events:" in result.output
+        assert "Steps:" in result.output
+        assert "Agents:" in result.output
+        assert "Total Duration:" in result.output
+        assert "Token Efficiency:" in result.output
+
+    def test_evaluate_shows_token_usage(self, runner: CliRunner, cli_chain_file: Path):
+        """Test evaluate shows token usage."""
+        result = runner.invoke(cli, ["evaluate", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Input Tokens:" in result.output
+        assert "Output Tokens:" in result.output
+        assert "Total Tokens:" in result.output
+        assert "Est. Cost:" in result.output
+
+    def test_evaluate_shows_quality_metrics(self, runner: CliRunner, cli_chain_file: Path):
+        """Test evaluate shows quality metrics."""
+        result = runner.invoke(cli, ["evaluate", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Facts Generated:" in result.output
+        assert "Avg Fact Confidence:" in result.output
+        assert "Error Rate:" in result.output
+
+    def test_evaluate_shows_bottlenecks(self, runner: CliRunner, cli_chain_file: Path):
+        """Test evaluate shows bottleneck analysis."""
+        result = runner.invoke(cli, ["evaluate", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Bottleneck" in result.output
+
+    def test_evaluate_json_output(self, runner: CliRunner, cli_chain_file: Path):
+        """Test evaluate with JSON output."""
+        result = runner.invoke(cli, ["evaluate", "--json", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["chain_id"] == "cli-test-chain"
+        assert "total_events" in data
+        assert "total_duration_ms" in data
+        assert "total_tokens" in data
+        assert "error_rate" in data
+        assert "bottlenecks" in data
+        assert "confidence_timeline" in data
+
+    def test_evaluate_nonexistent_file(self, runner: CliRunner, tmp_path: Path):
+        """Test evaluate with nonexistent file."""
+        result = runner.invoke(cli, ["evaluate", str(tmp_path / "nonexistent.json")])
+
+        assert result.exit_code != 0
+
+    def test_evaluate_empty_chain(self, runner: CliRunner, empty_cli_chain_file: Path):
+        """Test evaluate on empty chain."""
+        result = runner.invoke(cli, ["evaluate", str(empty_cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Total Events: 0" in result.output
+
+
+class TestCompareCommand:
+    """Tests for compare command."""
+
+    def test_compare_basic(self, runner: CliRunner, cli_chain_file: Path):
+        """Test basic compare command."""
+        result = runner.invoke(cli, ["compare", str(cli_chain_file), str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Chain Comparison Report" in result.output
+        assert "Chains" in result.output
+        assert "Metric Comparisons" in result.output
+
+    def test_compare_shows_both_chains(self, runner: CliRunner, cli_chain_file: Path):
+        """Test compare shows both chain IDs."""
+        result = runner.invoke(cli, ["compare", str(cli_chain_file), str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "cli-test-chain" in result.output
+
+    def test_compare_shows_metrics_table(self, runner: CliRunner, cli_chain_file: Path):
+        """Test compare shows metrics comparison table."""
+        result = runner.invoke(cli, ["compare", str(cli_chain_file), str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Latency" in result.output
+        assert "Token Efficiency" in result.output
+        assert "Error Rate" in result.output
+        assert "Fact Confidence" in result.output
+
+    def test_compare_shows_status_indicators(self, runner: CliRunner, cli_chain_file: Path):
+        """Test compare shows status indicators."""
+        result = runner.invoke(cli, ["compare", str(cli_chain_file), str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "SAME" in result.output or "BETTER" in result.output or "WORSE" in result.output
+
+    def test_compare_shows_summary(self, runner: CliRunner, cli_chain_file: Path):
+        """Test compare shows summary."""
+        result = runner.invoke(cli, ["compare", str(cli_chain_file), str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Summary" in result.output
+        assert "Improvements:" in result.output
+        assert "Regressions:" in result.output
+
+    def test_compare_different_chains(
+        self, runner: CliRunner, cli_chain_file: Path, error_chain_file: Path
+    ):
+        """Test compare with different chains."""
+        result = runner.invoke(cli, ["compare", str(cli_chain_file), str(error_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Chain Comparison Report" in result.output
+
+    def test_compare_json_output(self, runner: CliRunner, cli_chain_file: Path):
+        """Test compare with JSON output."""
+        result = runner.invoke(cli, ["compare", "--json", str(cli_chain_file), str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "chain_a" in data
+        assert "chain_b" in data
+        assert "comparisons" in data
+        assert "summary" in data
+        assert "improvements" in data["summary"]
+        assert "regressions" in data["summary"]
+
+    def test_compare_nonexistent_first_file(self, runner: CliRunner, cli_chain_file: Path, tmp_path: Path):
+        """Test compare with nonexistent first file."""
+        result = runner.invoke(cli, ["compare", str(tmp_path / "nonexistent.json"), str(cli_chain_file)])
+
+        assert result.exit_code != 0
+
+    def test_compare_nonexistent_second_file(self, runner: CliRunner, cli_chain_file: Path, tmp_path: Path):
+        """Test compare with nonexistent second file."""
+        result = runner.invoke(cli, ["compare", str(cli_chain_file), str(tmp_path / "nonexistent.json")])
+
+        assert result.exit_code != 0
+
+
+class TestBenchmarkCommand:
+    """Tests for benchmark command."""
+
+    def test_benchmark_basic(self, runner: CliRunner, cli_chain_file: Path):
+        """Test basic benchmark command."""
+        result = runner.invoke(cli, ["benchmark", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Benchmark Results" in result.output
+
+    def test_benchmark_shows_chain_info(self, runner: CliRunner, cli_chain_file: Path):
+        """Test benchmark shows chain info."""
+        result = runner.invoke(cli, ["benchmark", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Chain ID:" in result.output
+        assert "Events:" in result.output
+        assert "Iterations:" in result.output
+
+    def test_benchmark_shows_timing(self, runner: CliRunner, cli_chain_file: Path):
+        """Test benchmark shows timing stats."""
+        result = runner.invoke(cli, ["benchmark", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Replay Timing" in result.output
+        assert "Average:" in result.output
+        assert "Median:" in result.output
+        assert "Min:" in result.output
+        assert "Max:" in result.output
+
+    def test_benchmark_shows_throughput(self, runner: CliRunner, cli_chain_file: Path):
+        """Test benchmark shows throughput."""
+        result = runner.invoke(cli, ["benchmark", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Throughput" in result.output
+        assert "Events/second:" in result.output
+
+    def test_benchmark_shows_rating(self, runner: CliRunner, cli_chain_file: Path):
+        """Test benchmark shows performance rating."""
+        result = runner.invoke(cli, ["benchmark", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Performance Rating:" in result.output
+
+    def test_benchmark_custom_iterations(self, runner: CliRunner, cli_chain_file: Path):
+        """Test benchmark with custom iteration count."""
+        result = runner.invoke(cli, ["benchmark", "--iterations", "5", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Iterations: 5" in result.output
+
+    def test_benchmark_json_output(self, runner: CliRunner, cli_chain_file: Path):
+        """Test benchmark with JSON output."""
+        result = runner.invoke(cli, ["benchmark", "--json", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["chain_id"] == "cli-test-chain"
+        assert "timing" in data
+        assert "avg_ms" in data["timing"]
+        assert "min_ms" in data["timing"]
+        assert "max_ms" in data["timing"]
+        assert "throughput" in data
+        assert "events_per_second" in data["throughput"]
+
+    def test_benchmark_single_iteration(self, runner: CliRunner, cli_chain_file: Path):
+        """Test benchmark with single iteration."""
+        result = runner.invoke(cli, ["benchmark", "-n", "1", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "Iterations: 1" in result.output
+
+    def test_benchmark_invalid_iterations(self, runner: CliRunner, cli_chain_file: Path):
+        """Test benchmark with invalid iteration count."""
+        result = runner.invoke(cli, ["benchmark", "--iterations", "0", str(cli_chain_file)])
+
+        assert result.exit_code != 0
+
+    def test_benchmark_nonexistent_file(self, runner: CliRunner, tmp_path: Path):
+        """Test benchmark with nonexistent file."""
+        result = runner.invoke(cli, ["benchmark", str(tmp_path / "nonexistent.json")])
+
+        assert result.exit_code != 0
+
+
+class TestMetricsCommand:
+    """Tests for metrics command."""
+
+    def test_metrics_basic(self, runner: CliRunner, cli_chain_file: Path):
+        """Test basic metrics command (JSON by default)."""
+        result = runner.invoke(cli, ["metrics", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "chain_id" in data
+        assert "total_events" in data
+
+    def test_metrics_json_format(self, runner: CliRunner, cli_chain_file: Path):
+        """Test metrics with explicit JSON format."""
+        result = runner.invoke(cli, ["metrics", "--format", "json", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["chain_id"] == "cli-test-chain"
+        assert data["total_events"] == 7
+        assert "total_duration_ms" in data
+        assert "total_tokens_in" in data
+        assert "total_tokens_out" in data
+        assert "cost_estimate_usd" in data
+
+    def test_metrics_json_flag(self, runner: CliRunner, cli_chain_file: Path):
+        """Test metrics with --json flag."""
+        result = runner.invoke(cli, ["metrics", "--json", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "chain_id" in data
+
+    def test_metrics_prometheus_format(self, runner: CliRunner, cli_chain_file: Path):
+        """Test metrics with Prometheus format."""
+        result = runner.invoke(cli, ["metrics", "--format", "prometheus", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "# HELP lctl_chain_events_total" in result.output
+        assert "# TYPE lctl_chain_events_total gauge" in result.output
+        assert "lctl_chain_events_total" in result.output
+
+    def test_metrics_prometheus_all_metrics(self, runner: CliRunner, cli_chain_file: Path):
+        """Test Prometheus format includes all metrics."""
+        result = runner.invoke(cli, ["metrics", "--format", "prometheus", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert "lctl_chain_duration_ms" in result.output
+        assert "lctl_chain_tokens_total" in result.output
+        assert "lctl_chain_errors_total" in result.output
+        assert "lctl_chain_facts_total" in result.output
+        assert "lctl_chain_steps_total" in result.output
+        assert "lctl_chain_agents_total" in result.output
+        assert "lctl_chain_avg_step_duration_ms" in result.output
+        assert "lctl_chain_avg_fact_confidence" in result.output
+        assert "lctl_chain_token_efficiency" in result.output
+        assert "lctl_chain_error_rate" in result.output
+
+    def test_metrics_prometheus_labels(self, runner: CliRunner, cli_chain_file: Path):
+        """Test Prometheus format uses proper labels."""
+        result = runner.invoke(cli, ["metrics", "--format", "prometheus", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert 'chain_id="cli_test_chain"' in result.output
+
+    def test_metrics_prometheus_token_types(self, runner: CliRunner, cli_chain_file: Path):
+        """Test Prometheus format distinguishes token types."""
+        result = runner.invoke(cli, ["metrics", "--format", "prometheus", str(cli_chain_file)])
+
+        assert result.exit_code == 0
+        assert 'type="input"' in result.output
+        assert 'type="output"' in result.output
+
+    def test_metrics_nonexistent_file(self, runner: CliRunner, tmp_path: Path):
+        """Test metrics with nonexistent file."""
+        result = runner.invoke(cli, ["metrics", str(tmp_path / "nonexistent.json")])
+
+        assert result.exit_code != 0
+
+    def test_metrics_with_errors(self, runner: CliRunner, error_chain_file: Path):
+        """Test metrics shows error count correctly."""
+        result = runner.invoke(cli, ["metrics", str(error_chain_file)])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["error_count"] == 1
+
+
+class TestEvaluationCommandsHelp:
+    """Tests for evaluation commands help output."""
+
+    def test_evaluate_help(self, runner: CliRunner):
+        """Test evaluate command help."""
+        result = runner.invoke(cli, ["evaluate", "--help"])
+
+        assert result.exit_code == 0
+        assert "comprehensive evaluation metrics" in result.output.lower()
+        assert "--json" in result.output
+
+    def test_compare_help(self, runner: CliRunner):
+        """Test compare command help."""
+        result = runner.invoke(cli, ["compare", "--help"])
+
+        assert result.exit_code == 0
+        assert "compare" in result.output.lower()
+        assert "statistical" in result.output.lower()
+        assert "--json" in result.output
+
+    def test_benchmark_help(self, runner: CliRunner):
+        """Test benchmark command help."""
+        result = runner.invoke(cli, ["benchmark", "--help"])
+
+        assert result.exit_code == 0
+        assert "benchmark" in result.output.lower()
+        assert "--iterations" in result.output
+        assert "--json" in result.output
+
+    def test_metrics_help(self, runner: CliRunner):
+        """Test metrics command help."""
+        result = runner.invoke(cli, ["metrics", "--help"])
+
+        assert result.exit_code == 0
+        assert "export metrics" in result.output.lower()
+        assert "--format" in result.output
+        assert "prometheus" in result.output
+
+
+class TestEvaluationCommandsIntegration:
+    """Integration tests for evaluation commands."""
+
+    def test_full_evaluation_workflow(self, runner: CliRunner, cli_chain_file: Path):
+        """Test complete evaluation workflow."""
+        evaluate_result = runner.invoke(cli, ["evaluate", str(cli_chain_file)])
+        assert evaluate_result.exit_code == 0
+        assert "Chain Evaluation Report" in evaluate_result.output
+
+        benchmark_result = runner.invoke(cli, ["benchmark", "-n", "3", str(cli_chain_file)])
+        assert benchmark_result.exit_code == 0
+        assert "Benchmark Results" in benchmark_result.output
+
+        metrics_result = runner.invoke(cli, ["metrics", str(cli_chain_file)])
+        assert metrics_result.exit_code == 0
+        metrics_data = json.loads(metrics_result.output)
+        assert metrics_data["chain_id"] == "cli-test-chain"
+
+    def test_compare_workflow(
+        self, runner: CliRunner, cli_chain_file: Path, error_chain_file: Path
+    ):
+        """Test comparison workflow with different chains."""
+        compare_result = runner.invoke(
+            cli, ["compare", str(cli_chain_file), str(error_chain_file)]
+        )
+        assert compare_result.exit_code == 0
+        assert "Chain Comparison Report" in compare_result.output
+
+        compare_json = runner.invoke(
+            cli, ["compare", "--json", str(cli_chain_file), str(error_chain_file)]
+        )
+        assert compare_json.exit_code == 0
+        data = json.loads(compare_json.output)
+        assert data["chain_a"]["id"] == "cli-test-chain"
+        assert data["chain_b"]["id"] == "error-chain"
+
+    def test_metrics_export_workflow(self, runner: CliRunner, cli_chain_file: Path):
+        """Test metrics export in both formats."""
+        json_result = runner.invoke(cli, ["metrics", "--format", "json", str(cli_chain_file)])
+        assert json_result.exit_code == 0
+        json_data = json.loads(json_result.output)
+        assert "total_events" in json_data
+
+        prom_result = runner.invoke(cli, ["metrics", "--format", "prometheus", str(cli_chain_file)])
+        assert prom_result.exit_code == 0
+        assert "# HELP" in prom_result.output
+        assert "# TYPE" in prom_result.output

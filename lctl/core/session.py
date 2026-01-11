@@ -3,10 +3,13 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 from uuid import uuid4
 
 from .events import Chain, Event, EventType
+
+if TYPE_CHECKING:
+    from ..streaming.emitter import EventEmitter
 
 
 class LCTLSession:
@@ -18,14 +21,41 @@ class LCTLSession:
             session.add_fact("F1", "Analysis complete", confidence=0.9)
 
         session.export("trace.lctl.json")
+
+    With real-time streaming:
+        from lctl.streaming import EventEmitter
+
+        emitter = EventEmitter()
+        session = LCTLSession(emitter=emitter)
+
+        @emitter.on("event")
+        def handle_event(event):
+            print(f"New event: {event.type}")
     """
 
-    def __init__(self, chain_id: Optional[str] = None):
+    def __init__(
+        self,
+        chain_id: Optional[str] = None,
+        emitter: Optional["EventEmitter"] = None
+    ):
+        """Initialize the session.
+
+        Args:
+            chain_id: Optional chain ID. Generated if not provided.
+            emitter: Optional EventEmitter for real-time streaming.
+        """
         self.chain = Chain(id=chain_id or str(uuid4())[:8])
         self._seq = 0
         self._current_agent: Optional[str] = None
+        self._emitter: Optional["EventEmitter"] = emitter
+        self._event_listeners: list[Callable[[Event], None]] = []
+
+        if self._emitter is not None:
+            self._emitter.chain_id = self.chain.id
 
     def __enter__(self) -> "LCTLSession":
+        if self._emitter is not None:
+            self._emitter.start_chain(self.chain.id)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -38,9 +68,10 @@ class LCTLSession:
                     recoverable=False
                 )
             except Exception:
-                # Don't suppress the original exception if error recording fails
                 pass
-        return False  # Never suppress exceptions
+        if self._emitter is not None:
+            self._emitter.end_chain()
+        return False
 
     def _next_seq(self) -> int:
         self._seq += 1
@@ -58,7 +89,51 @@ class LCTLSession:
             data=data
         )
         self.chain.add_event(event)
+
+        if self._emitter is not None:
+            self._emitter.emit_lctl_event(event)
+
+        for listener in self._event_listeners:
+            try:
+                listener(event)
+            except Exception:
+                pass
+
         return event
+
+    @property
+    def emitter(self) -> Optional["EventEmitter"]:
+        """Get the associated EventEmitter."""
+        return self._emitter
+
+    @emitter.setter
+    def emitter(self, value: Optional["EventEmitter"]) -> None:
+        """Set the EventEmitter for real-time streaming."""
+        self._emitter = value
+        if self._emitter is not None:
+            self._emitter.chain_id = self.chain.id
+
+    def add_event_listener(self, listener: Callable[[Event], None]) -> None:
+        """Add a listener for events.
+
+        Args:
+            listener: Function to call when an event is recorded.
+        """
+        self._event_listeners.append(listener)
+
+    def remove_event_listener(self, listener: Callable[[Event], None]) -> bool:
+        """Remove an event listener.
+
+        Args:
+            listener: The listener to remove.
+
+        Returns:
+            True if the listener was found and removed.
+        """
+        if listener in self._event_listeners:
+            self._event_listeners.remove(listener)
+            return True
+        return False
 
     def step_start(self, agent: str, intent: str, input_summary: str = "") -> int:
         """Record start of an agent step. Returns sequence number."""

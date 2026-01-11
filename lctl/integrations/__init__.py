@@ -24,6 +24,24 @@ from .autogen import (
     is_available as autogen_available,
 )
 
+from .llamaindex import (
+    LCTLLlamaIndexCallback,
+    LCTLQueryEngine,
+    LCTLChatEngine,
+    trace_query_engine,
+    trace_chat_engine,
+    is_available as llamaindex_available,
+)
+
+from .dspy import (
+    LCTLDSPyCallback,
+    TracedDSPyModule,
+    LCTLDSPyTeleprompter,
+    DSPyModuleContext,
+    trace_module,
+    is_available as dspy_available,
+)
+
 __all__ = [
     # LangChain integration
     "LCTLCallbackHandler",
@@ -43,4 +61,18 @@ __all__ = [
     "trace_autogen_agent",
     "trace_group_chat",
     "autogen_available",
+    # LlamaIndex integration
+    "LCTLLlamaIndexCallback",
+    "LCTLQueryEngine",
+    "LCTLChatEngine",
+    "trace_query_engine",
+    "trace_chat_engine",
+    "llamaindex_available",
+    # DSPy integration
+    "LCTLDSPyCallback",
+    "TracedDSPyModule",
+    "LCTLDSPyTeleprompter",
+    "DSPyModuleContext",
+    "trace_module",
+    "dspy_available",
 ]

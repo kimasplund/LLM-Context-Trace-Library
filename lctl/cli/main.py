@@ -1,13 +1,16 @@
 """LCTL CLI - Time-travel debugging for multi-agent LLM workflows."""
 
 import json
+import statistics
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
 import click
 
 from ..core.events import Chain, Event, ReplayEngine, State
+from ..evaluation import ChainMetrics, MetricComparison, compute_all_metrics
 
 
 def _load_chain_safely(chain_file: str) -> Optional[Chain]:
@@ -333,6 +336,371 @@ def debug(chain_file: str, port: int):
         click.echo(click.style(f"Error: Dashboard dependencies not installed: {e}", fg="red"))
         click.echo("Install with: pip install 'lctl[dashboard]'")
         sys.exit(1)
+
+
+@cli.command()
+@click.argument("chain_file", type=click.Path())
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+def evaluate(chain_file: str, as_json: bool):
+    """Show comprehensive evaluation metrics for a chain.
+
+    Provides detailed analysis including:
+    - Performance metrics (duration, tokens, efficiency)
+    - Quality metrics (fact confidence, error rates)
+    - Agent-level breakdown
+    - Bottleneck analysis
+
+    Examples:
+        lctl evaluate chain.lctl.json
+        lctl evaluate --json chain.lctl.json
+    """
+    chain = _load_chain_safely(chain_file)
+    if chain is None:
+        sys.exit(1)
+
+    metrics = ChainMetrics.from_chain(chain)
+    engine = ReplayEngine(chain)
+    bottlenecks = engine.find_bottlenecks()
+
+    if as_json:
+        output = metrics.to_dict()
+        output["bottlenecks"] = bottlenecks[:5]
+        output["confidence_timeline"] = engine.get_confidence_timeline()
+        click.echo(json.dumps(output, indent=2, default=str))
+    else:
+        click.echo(click.style("Chain Evaluation Report", fg="cyan", bold=True))
+        click.echo(click.style("=" * 50, fg="cyan"))
+        click.echo()
+
+        click.echo(click.style("Overview", fg="white", bold=True))
+        click.echo(f"  Chain ID: {metrics.chain_id}")
+        click.echo(f"  Total Events: {metrics.total_events}")
+        click.echo(f"  Steps: {metrics.step_count}")
+        click.echo(f"  Agents: {metrics.agent_count} ({', '.join(sorted(metrics.agents))})")
+        click.echo()
+
+        click.echo(click.style("Performance", fg="white", bold=True))
+        duration_s = metrics.total_duration_ms / 1000
+        click.echo(f"  Total Duration: {duration_s:.2f}s")
+        click.echo(f"  Avg Step Duration: {metrics.avg_step_duration_ms:.0f}ms")
+        click.echo(f"  Token Efficiency: {metrics.token_efficiency:.1f} tokens/sec")
+        click.echo()
+
+        click.echo(click.style("Token Usage", fg="white", bold=True))
+        click.echo(f"  Input Tokens: {metrics.total_tokens_in:,}")
+        click.echo(f"  Output Tokens: {metrics.total_tokens_out:,}")
+        click.echo(f"  Total Tokens: {metrics.total_tokens:,}")
+        cost = _estimate_cost(metrics.total_tokens_in, metrics.total_tokens_out)
+        click.echo(f"  Est. Cost: ${cost:.4f}")
+        click.echo()
+
+        click.echo(click.style("Quality", fg="white", bold=True))
+        click.echo(f"  Facts Generated: {metrics.fact_count}")
+        click.echo(f"  Avg Fact Confidence: {metrics.avg_fact_confidence:.2f}")
+        error_color = "red" if metrics.error_count > 0 else "green"
+        click.echo(f"  Errors: " + click.style(str(metrics.error_count), fg=error_color))
+        click.echo(f"  Error Rate: {metrics.error_rate:.2%}")
+        click.echo()
+
+        if bottlenecks:
+            click.echo(click.style("Top Bottlenecks", fg="white", bold=True))
+            for i, b in enumerate(bottlenecks[:3], 1):
+                pct = b["percentage"]
+                color = "red" if pct > 50 else ("yellow" if pct > 30 else "white")
+                click.echo(
+                    f"  {i}. {b['agent']} (seq {b['seq']}): "
+                    + click.style(f"{b['duration_ms']/1000:.1f}s ({pct:.0f}%)", fg=color)
+                )
+
+
+@cli.command()
+@click.argument("chain1", type=click.Path())
+@click.argument("chain2", type=click.Path())
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+def compare(chain1: str, chain2: str, as_json: bool):
+    """Compare two chains with statistical analysis.
+
+    Compares performance, quality, and efficiency metrics between
+    two chain executions. Shows improvement/regression indicators.
+
+    Examples:
+        lctl compare baseline.lctl.json optimized.lctl.json
+        lctl compare --json v1.lctl.json v2.lctl.json
+    """
+    c1 = _load_chain_safely(chain1)
+    if c1 is None:
+        sys.exit(1)
+
+    c2 = _load_chain_safely(chain2)
+    if c2 is None:
+        sys.exit(1)
+
+    metrics_a = ChainMetrics.from_chain(c1)
+    metrics_b = ChainMetrics.from_chain(c2)
+    comparisons = compute_all_metrics(metrics_a, metrics_b)
+
+    if as_json:
+        output = {
+            "chain_a": {"id": metrics_a.chain_id, "metrics": metrics_a.to_dict()},
+            "chain_b": {"id": metrics_b.chain_id, "metrics": metrics_b.to_dict()},
+            "comparisons": {k: v.to_dict() for k, v in comparisons.items()},
+            "summary": {
+                "improvements": sum(1 for c in comparisons.values() if c.improvement is True),
+                "regressions": sum(1 for c in comparisons.values() if c.improvement is False),
+                "unchanged": sum(1 for c in comparisons.values() if c.improvement is None),
+            }
+        }
+        click.echo(json.dumps(output, indent=2, default=str))
+    else:
+        click.echo(click.style("Chain Comparison Report", fg="cyan", bold=True))
+        click.echo(click.style("=" * 60, fg="cyan"))
+        click.echo()
+
+        click.echo(click.style("Chains", fg="white", bold=True))
+        click.echo(f"  A: {metrics_a.chain_id} ({metrics_a.total_events} events)")
+        click.echo(f"  B: {metrics_b.chain_id} ({metrics_b.total_events} events)")
+        click.echo()
+
+        click.echo(click.style("Metric Comparisons", fg="white", bold=True))
+        click.echo(f"  {'Metric':<25} {'Chain A':>12} {'Chain B':>12} {'Change':>12} {'Status':>10}")
+        click.echo(f"  {'-'*25} {'-'*12} {'-'*12} {'-'*12} {'-'*10}")
+
+        metric_display = [
+            ("Latency (ms)", metrics_a.total_duration_ms, metrics_b.total_duration_ms, comparisons["latency_diff"]),
+            ("Token Efficiency", metrics_a.token_efficiency, metrics_b.token_efficiency, comparisons["token_efficiency"]),
+            ("Error Rate", metrics_a.error_rate, metrics_b.error_rate, comparisons["error_rate"]),
+            ("Fact Confidence", metrics_a.avg_fact_confidence, metrics_b.avg_fact_confidence, comparisons["fact_confidence_avg"]),
+        ]
+
+        for name, val_a, val_b, comp in metric_display:
+            if comp.improvement is True:
+                status = click.style("BETTER", fg="green")
+            elif comp.improvement is False:
+                status = click.style("WORSE", fg="red")
+            else:
+                status = click.style("SAME", fg="yellow")
+
+            pct_str = f"{comp.percent_change:+.1f}%" if abs(comp.percent_change) < float("inf") else "N/A"
+            click.echo(f"  {name:<25} {val_a:>12.2f} {val_b:>12.2f} {pct_str:>12} {status:>10}")
+
+        click.echo()
+
+        improvements = sum(1 for c in comparisons.values() if c.improvement is True)
+        regressions = sum(1 for c in comparisons.values() if c.improvement is False)
+
+        click.echo(click.style("Summary", fg="white", bold=True))
+        click.echo(f"  Improvements: " + click.style(str(improvements), fg="green"))
+        click.echo(f"  Regressions: " + click.style(str(regressions), fg="red"))
+
+        if improvements > regressions:
+            click.echo()
+            click.echo(click.style("  Overall: Chain B is better", fg="green", bold=True))
+        elif regressions > improvements:
+            click.echo()
+            click.echo(click.style("  Overall: Chain A is better", fg="red", bold=True))
+        else:
+            click.echo()
+            click.echo(click.style("  Overall: Chains are comparable", fg="yellow", bold=True))
+
+
+@cli.command()
+@click.argument("chain_file", type=click.Path())
+@click.option("--iterations", "-n", default=10, help="Number of benchmark iterations")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+def benchmark(chain_file: str, iterations: int, as_json: bool):
+    """Run performance benchmarks on a chain.
+
+    Measures replay performance across multiple iterations to
+    provide statistical analysis of execution characteristics.
+
+    Examples:
+        lctl benchmark chain.lctl.json
+        lctl benchmark --iterations 50 chain.lctl.json
+        lctl benchmark --json chain.lctl.json
+    """
+    chain = _load_chain_safely(chain_file)
+    if chain is None:
+        sys.exit(1)
+
+    if iterations < 1:
+        click.echo(click.style("Error: iterations must be at least 1", fg="red"), err=True)
+        sys.exit(1)
+
+    replay_times: list[float] = []
+    state_sizes: list[int] = []
+
+    if not as_json:
+        click.echo(f"Running {iterations} benchmark iterations...")
+
+    for i in range(iterations):
+        engine = ReplayEngine(chain)
+
+        start_time = time.perf_counter()
+        state = engine.replay_all()
+        end_time = time.perf_counter()
+
+        elapsed_ms = (end_time - start_time) * 1000
+        replay_times.append(elapsed_ms)
+        state_sizes.append(len(state.facts))
+
+        if not as_json and iterations > 1:
+            progress = (i + 1) / iterations * 100
+            if (i + 1) % max(1, iterations // 10) == 0:
+                click.echo(f"  Progress: {progress:.0f}%")
+
+    avg_time = statistics.mean(replay_times)
+    min_time = min(replay_times)
+    max_time = max(replay_times)
+    std_dev = statistics.stdev(replay_times) if len(replay_times) > 1 else 0.0
+    median_time = statistics.median(replay_times)
+
+    events_per_ms = len(chain.events) / avg_time if avg_time > 0 else 0
+    throughput = events_per_ms * 1000
+
+    results = {
+        "chain_id": chain.id,
+        "events": len(chain.events),
+        "iterations": iterations,
+        "timing": {
+            "avg_ms": round(avg_time, 3),
+            "min_ms": round(min_time, 3),
+            "max_ms": round(max_time, 3),
+            "std_dev_ms": round(std_dev, 3),
+            "median_ms": round(median_time, 3),
+        },
+        "throughput": {
+            "events_per_second": round(throughput, 1),
+        },
+        "memory": {
+            "avg_facts": round(statistics.mean(state_sizes), 1),
+        }
+    }
+
+    if as_json:
+        click.echo(json.dumps(results, indent=2))
+    else:
+        click.echo()
+        click.echo(click.style("Benchmark Results", fg="cyan", bold=True))
+        click.echo(click.style("=" * 40, fg="cyan"))
+        click.echo()
+
+        click.echo(click.style("Chain Info", fg="white", bold=True))
+        click.echo(f"  Chain ID: {chain.id}")
+        click.echo(f"  Events: {len(chain.events)}")
+        click.echo(f"  Iterations: {iterations}")
+        click.echo()
+
+        click.echo(click.style("Replay Timing", fg="white", bold=True))
+        click.echo(f"  Average: {avg_time:.3f}ms")
+        click.echo(f"  Median: {median_time:.3f}ms")
+        click.echo(f"  Min: {min_time:.3f}ms")
+        click.echo(f"  Max: {max_time:.3f}ms")
+        click.echo(f"  Std Dev: {std_dev:.3f}ms")
+        click.echo()
+
+        click.echo(click.style("Throughput", fg="white", bold=True))
+        click.echo(f"  Events/second: {throughput:,.1f}")
+        click.echo()
+
+        if throughput > 10000:
+            perf_color = "green"
+            perf_label = "Excellent"
+        elif throughput > 1000:
+            perf_color = "green"
+            perf_label = "Good"
+        elif throughput > 100:
+            perf_color = "yellow"
+            perf_label = "Moderate"
+        else:
+            perf_color = "red"
+            perf_label = "Needs Optimization"
+
+        click.echo(click.style(f"Performance Rating: {perf_label}", fg=perf_color, bold=True))
+
+
+@cli.command()
+@click.argument("chain_file", type=click.Path())
+@click.option("--format", "output_format", type=click.Choice(["json", "prometheus"]), default="json", help="Output format")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON (same as --format json)")
+def metrics(chain_file: str, output_format: str, as_json: bool):
+    """Export metrics in various formats.
+
+    Supports JSON and Prometheus formats for integration with
+    monitoring and observability systems.
+
+    Examples:
+        lctl metrics chain.lctl.json
+        lctl metrics --format prometheus chain.lctl.json
+        lctl metrics --json chain.lctl.json
+    """
+    chain = _load_chain_safely(chain_file)
+    if chain is None:
+        sys.exit(1)
+
+    chain_metrics = ChainMetrics.from_chain(chain)
+
+    if as_json:
+        output_format = "json"
+
+    if output_format == "json":
+        output = chain_metrics.to_dict()
+        output["cost_estimate_usd"] = _estimate_cost(
+            chain_metrics.total_tokens_in,
+            chain_metrics.total_tokens_out
+        )
+        click.echo(json.dumps(output, indent=2, default=str))
+
+    elif output_format == "prometheus":
+        chain_id = chain_metrics.chain_id.replace("-", "_").replace(".", "_")
+
+        prometheus_lines = [
+            f'# HELP lctl_chain_events_total Total number of events in chain',
+            f'# TYPE lctl_chain_events_total gauge',
+            f'lctl_chain_events_total{{chain_id="{chain_id}"}} {chain_metrics.total_events}',
+            f'',
+            f'# HELP lctl_chain_duration_ms Total duration in milliseconds',
+            f'# TYPE lctl_chain_duration_ms gauge',
+            f'lctl_chain_duration_ms{{chain_id="{chain_id}"}} {chain_metrics.total_duration_ms}',
+            f'',
+            f'# HELP lctl_chain_tokens_total Total tokens used',
+            f'# TYPE lctl_chain_tokens_total gauge',
+            f'lctl_chain_tokens_total{{chain_id="{chain_id}",type="input"}} {chain_metrics.total_tokens_in}',
+            f'lctl_chain_tokens_total{{chain_id="{chain_id}",type="output"}} {chain_metrics.total_tokens_out}',
+            f'',
+            f'# HELP lctl_chain_errors_total Total number of errors',
+            f'# TYPE lctl_chain_errors_total gauge',
+            f'lctl_chain_errors_total{{chain_id="{chain_id}"}} {chain_metrics.error_count}',
+            f'',
+            f'# HELP lctl_chain_facts_total Total number of facts',
+            f'# TYPE lctl_chain_facts_total gauge',
+            f'lctl_chain_facts_total{{chain_id="{chain_id}"}} {chain_metrics.fact_count}',
+            f'',
+            f'# HELP lctl_chain_steps_total Total number of steps',
+            f'# TYPE lctl_chain_steps_total gauge',
+            f'lctl_chain_steps_total{{chain_id="{chain_id}"}} {chain_metrics.step_count}',
+            f'',
+            f'# HELP lctl_chain_agents_total Total number of agents',
+            f'# TYPE lctl_chain_agents_total gauge',
+            f'lctl_chain_agents_total{{chain_id="{chain_id}"}} {chain_metrics.agent_count}',
+            f'',
+            f'# HELP lctl_chain_avg_step_duration_ms Average step duration in milliseconds',
+            f'# TYPE lctl_chain_avg_step_duration_ms gauge',
+            f'lctl_chain_avg_step_duration_ms{{chain_id="{chain_id}"}} {chain_metrics.avg_step_duration_ms:.2f}',
+            f'',
+            f'# HELP lctl_chain_avg_fact_confidence Average fact confidence',
+            f'# TYPE lctl_chain_avg_fact_confidence gauge',
+            f'lctl_chain_avg_fact_confidence{{chain_id="{chain_id}"}} {chain_metrics.avg_fact_confidence:.4f}',
+            f'',
+            f'# HELP lctl_chain_token_efficiency Tokens per second',
+            f'# TYPE lctl_chain_token_efficiency gauge',
+            f'lctl_chain_token_efficiency{{chain_id="{chain_id}"}} {chain_metrics.token_efficiency:.2f}',
+            f'',
+            f'# HELP lctl_chain_error_rate Error rate (errors/events)',
+            f'# TYPE lctl_chain_error_rate gauge',
+            f'lctl_chain_error_rate{{chain_id="{chain_id}"}} {chain_metrics.error_rate:.6f}',
+        ]
+
+        click.echo('\n'.join(prometheus_lines))
 
 
 @cli.command()

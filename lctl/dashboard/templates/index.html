@@ -24,6 +24,13 @@
                         <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
                     </svg>
                 </button>
+                <div class="header-divider"></div>
+                <button id="compare-btn" class="btn btn-secondary" title="Compare chains" disabled>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M16 3h5v5M8 3H3v5M8 21H3v-5M16 21h5v-5M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/>
+                    </svg>
+                    Compare
+                </button>
             </div>
         </header>
 
@@ -44,6 +51,32 @@
 
             <!-- Dashboard content (hidden until chain is loaded) -->
             <div id="dashboard" class="dashboard hidden">
+                <!-- Tab navigation -->
+                <div class="tabs">
+                    <button class="tab active" data-tab="timeline-tab">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12,6 12,12 16,14"/>
+                        </svg>
+                        Timeline
+                    </button>
+                    <button class="tab" data-tab="metrics-tab">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 20V10M12 20V4M6 20v-6"/>
+                        </svg>
+                        Metrics
+                    </button>
+                    <button class="tab" data-tab="evaluation-tab">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
+                            <polyline points="22,4 12,14.01 9,11.01"/>
+                        </svg>
+                        Evaluation
+                    </button>
+                </div>
+
+                <!-- Timeline Tab Content -->
+                <div id="timeline-tab" class="tab-content active">
                 <!-- Time-travel slider -->
                 <div class="time-travel-panel">
                     <div class="time-travel-header">
@@ -166,8 +199,165 @@
                     </div>
                     <div id="bottlenecks" class="bottlenecks"></div>
                 </div>
+                </div><!-- End Timeline Tab -->
+
+                <!-- Metrics Tab Content -->
+                <div id="metrics-tab" class="tab-content">
+                    <div class="metrics-dashboard">
+                        <!-- Latency Chart -->
+                        <div class="panel panel-chart">
+                            <div class="panel-header">
+                                <h3>Agent Latency Distribution</h3>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="latency-chart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Token Usage Chart -->
+                        <div class="panel panel-chart">
+                            <div class="panel-header">
+                                <h3>Token Usage</h3>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="token-chart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Agent Metrics Table -->
+                        <div class="panel panel-wide">
+                            <div class="panel-header">
+                                <h3>Agent Metrics Breakdown</h3>
+                            </div>
+                            <div id="agent-metrics-table" class="metrics-table-container"></div>
+                        </div>
+
+                        <!-- Error Timeline -->
+                        <div class="panel panel-wide">
+                            <div class="panel-header">
+                                <h3>Error Timeline</h3>
+                            </div>
+                            <div id="error-timeline" class="error-timeline-container"></div>
+                        </div>
+                    </div>
+                </div><!-- End Metrics Tab -->
+
+                <!-- Evaluation Tab Content -->
+                <div id="evaluation-tab" class="tab-content">
+                    <div class="evaluation-dashboard">
+                        <!-- Score Cards -->
+                        <div class="score-cards">
+                            <div class="score-card overall">
+                                <div class="score-label">Overall Score</div>
+                                <div id="overall-score" class="score-value">--</div>
+                                <div class="score-ring">
+                                    <svg viewBox="0 0 36 36">
+                                        <path class="score-ring-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                                        <path id="overall-ring" class="score-ring-fill" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="score-card performance">
+                                <div class="score-label">Performance</div>
+                                <div id="perf-score" class="score-value">--</div>
+                                <div class="score-bar">
+                                    <div id="perf-bar" class="score-bar-fill"></div>
+                                </div>
+                            </div>
+                            <div class="score-card reliability">
+                                <div class="score-label">Reliability</div>
+                                <div id="reliability-score" class="score-value">--</div>
+                                <div class="score-bar">
+                                    <div id="reliability-bar" class="score-bar-fill"></div>
+                                </div>
+                            </div>
+                            <div class="score-card quality">
+                                <div class="score-label">Quality</div>
+                                <div id="quality-score" class="score-value">--</div>
+                                <div class="score-bar">
+                                    <div id="quality-bar" class="score-bar-fill"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Issues and Warnings -->
+                        <div class="panel panel-issues">
+                            <div class="panel-header">
+                                <h3>Issues & Warnings</h3>
+                            </div>
+                            <div id="issues-list" class="issues-container"></div>
+                        </div>
+
+                        <!-- Fact Confidence Heatmap -->
+                        <div class="panel panel-heatmap">
+                            <div class="panel-header">
+                                <h3>Fact Confidence Heatmap</h3>
+                            </div>
+                            <div id="confidence-heatmap" class="heatmap-container"></div>
+                        </div>
+
+                        <!-- Evaluation Metrics Summary -->
+                        <div class="panel panel-eval-summary">
+                            <div class="panel-header">
+                                <h3>Evaluation Summary</h3>
+                            </div>
+                            <div id="eval-summary" class="eval-summary-container"></div>
+                        </div>
+                    </div>
+                </div><!-- End Evaluation Tab -->
             </div>
         </main>
+
+        <!-- Comparison Modal -->
+        <div id="compare-modal" class="modal hidden">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Compare Chains</h2>
+                    <button id="close-modal" class="btn btn-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"/>
+                            <line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="compare-selectors">
+                        <div class="compare-select">
+                            <label>Chain 1</label>
+                            <select id="compare-chain1" class="chain-selector">
+                                <option value="">Select first chain...</option>
+                            </select>
+                        </div>
+                        <div class="compare-vs">VS</div>
+                        <div class="compare-select">
+                            <label>Chain 2</label>
+                            <select id="compare-chain2" class="chain-selector">
+                                <option value="">Select second chain...</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button id="run-compare" class="btn btn-primary" disabled>Compare Chains</button>
+
+                    <!-- Comparison Results -->
+                    <div id="compare-results" class="compare-results hidden">
+                        <div class="compare-summary">
+                            <div class="compare-chain-summary" id="chain1-summary"></div>
+                            <div class="compare-chain-summary" id="chain2-summary"></div>
+                        </div>
+                        <div class="compare-diffs">
+                            <h4>Divergence Analysis</h4>
+                            <div id="divergence-info" class="divergence-info"></div>
+                            <div id="diff-list" class="diff-list"></div>
+                        </div>
+                        <div class="compare-facts">
+                            <h4>Fact Comparison</h4>
+                            <div id="fact-diff" class="fact-diff"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Toast notifications -->
         <div id="toast-container" class="toast-container"></div>

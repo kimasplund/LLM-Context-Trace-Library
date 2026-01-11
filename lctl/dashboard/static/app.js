@@ -11,7 +11,12 @@ const state = {
     selectedEvent: null,
     isPlaying: false,
     playInterval: null,
-    eventFilter: 'all'
+    eventFilter: 'all',
+    websocket: null,
+    wsConnected: false,
+    wsClientId: null,
+    liveMode: false,
+    liveEvents: []
 };
 
 // Agent colors for consistent coloring
@@ -616,3 +621,1105 @@ function showToast(message, type = 'info') {
         setTimeout(() => toast.remove(), 300);
     }, 3000);
 }
+
+// ============================================================================
+// EVALUATION FEATURES
+// ============================================================================
+
+// Additional elements for evaluation features
+const evalElements = {
+    tabs: null,
+    compareBtn: document.getElementById('compare-btn'),
+    compareModal: document.getElementById('compare-modal'),
+    closeModal: document.getElementById('close-modal'),
+    compareChain1: document.getElementById('compare-chain1'),
+    compareChain2: document.getElementById('compare-chain2'),
+    runCompare: document.getElementById('run-compare'),
+    compareResults: document.getElementById('compare-results'),
+    chain1Summary: document.getElementById('chain1-summary'),
+    chain2Summary: document.getElementById('chain2-summary'),
+    divergenceInfo: document.getElementById('divergence-info'),
+    diffList: document.getElementById('diff-list'),
+    factDiff: document.getElementById('fact-diff'),
+    latencyChart: document.getElementById('latency-chart'),
+    tokenChart: document.getElementById('token-chart'),
+    agentMetricsTable: document.getElementById('agent-metrics-table'),
+    errorTimeline: document.getElementById('error-timeline'),
+    overallScore: document.getElementById('overall-score'),
+    perfScore: document.getElementById('perf-score'),
+    reliabilityScore: document.getElementById('reliability-score'),
+    qualityScore: document.getElementById('quality-score'),
+    overallRing: document.getElementById('overall-ring'),
+    perfBar: document.getElementById('perf-bar'),
+    reliabilityBar: document.getElementById('reliability-bar'),
+    qualityBar: document.getElementById('quality-bar'),
+    issuesList: document.getElementById('issues-list'),
+    confidenceHeatmap: document.getElementById('confidence-heatmap'),
+    evalSummary: document.getElementById('eval-summary')
+};
+
+// Evaluation state
+const evalState = {
+    metricsData: null,
+    evaluationData: null,
+    latencyChartInstance: null,
+    tokenChartInstance: null
+};
+
+// Initialize evaluation features after DOM is ready
+function initEvalFeatures() {
+    evalElements.tabs = document.querySelectorAll('.tab');
+
+    setupTabNavigation();
+    setupCompareModal();
+
+    if (evalElements.compareBtn) {
+        evalElements.compareBtn.addEventListener('click', openCompareModal);
+    }
+}
+
+// Call init after main init
+const originalInit = init;
+init = async function() {
+    await originalInit();
+    initEvalFeatures();
+};
+
+// Tab Navigation
+function setupTabNavigation() {
+    if (!evalElements.tabs) return;
+
+    evalElements.tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetId = tab.dataset.tab;
+
+            evalElements.tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+
+            const targetContent = document.getElementById(targetId);
+            if (targetContent) {
+                targetContent.classList.add('active');
+            }
+
+            if (targetId === 'metrics-tab' && state.currentChain) {
+                loadMetrics();
+            } else if (targetId === 'evaluation-tab' && state.currentChain) {
+                loadEvaluation();
+            }
+        });
+    });
+}
+
+// Comparison Modal
+function setupCompareModal() {
+    if (evalElements.closeModal) {
+        evalElements.closeModal.addEventListener('click', closeCompareModal);
+    }
+
+    if (evalElements.compareModal) {
+        const backdrop = evalElements.compareModal.querySelector('.modal-backdrop');
+        if (backdrop) {
+            backdrop.addEventListener('click', closeCompareModal);
+        }
+    }
+
+    if (evalElements.compareChain1) {
+        evalElements.compareChain1.addEventListener('change', updateCompareButton);
+    }
+    if (evalElements.compareChain2) {
+        evalElements.compareChain2.addEventListener('change', updateCompareButton);
+    }
+    if (evalElements.runCompare) {
+        evalElements.runCompare.addEventListener('click', runComparison);
+    }
+}
+
+function openCompareModal() {
+    if (!evalElements.compareModal) return;
+
+    populateCompareSelectors();
+    evalElements.compareModal.classList.remove('hidden');
+    evalElements.compareResults.classList.add('hidden');
+}
+
+function closeCompareModal() {
+    if (evalElements.compareModal) {
+        evalElements.compareModal.classList.add('hidden');
+    }
+}
+
+function populateCompareSelectors() {
+    const chains = state.chains.filter(c => !c.error);
+
+    [evalElements.compareChain1, evalElements.compareChain2].forEach(select => {
+        if (!select) return;
+        select.innerHTML = '<option value="">Select a chain...</option>';
+        chains.forEach(chain => {
+            const option = document.createElement('option');
+            option.value = chain.filename;
+            option.textContent = `${chain.id} (${chain.event_count} events)`;
+            select.appendChild(option);
+        });
+    });
+}
+
+function updateCompareButton() {
+    if (!evalElements.runCompare) return;
+
+    const chain1 = evalElements.compareChain1?.value;
+    const chain2 = evalElements.compareChain2?.value;
+
+    evalElements.runCompare.disabled = !chain1 || !chain2 || chain1 === chain2;
+}
+
+async function runComparison() {
+    const filename1 = evalElements.compareChain1?.value;
+    const filename2 = evalElements.compareChain2?.value;
+
+    if (!filename1 || !filename2) return;
+
+    try {
+        evalElements.runCompare.disabled = true;
+        evalElements.runCompare.textContent = 'Comparing...';
+
+        const response = await fetch('/api/compare', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename1, filename2 })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}`);
+        }
+
+        const data = await response.json();
+        renderComparisonResults(data);
+
+        evalElements.compareResults.classList.remove('hidden');
+        showToast('Comparison complete', 'success');
+
+    } catch (error) {
+        console.error('Comparison failed:', error);
+        showToast('Comparison failed', 'error');
+    } finally {
+        evalElements.runCompare.disabled = false;
+        evalElements.runCompare.textContent = 'Compare Chains';
+        updateCompareButton();
+    }
+}
+
+function renderComparisonResults(data) {
+    renderChainSummary(evalElements.chain1Summary, data.chain1, 'Chain 1');
+    renderChainSummary(evalElements.chain2Summary, data.chain2, 'Chain 2');
+
+    if (evalElements.divergenceInfo) {
+        if (data.divergence_point) {
+            evalElements.divergenceInfo.innerHTML = `
+                <div class="divergence-alert">
+                    <span class="divergence-icon">!</span>
+                    Chains diverge at sequence <strong>#${data.divergence_point}</strong>
+                    <span class="diff-count">${data.diff_count} difference(s) found</span>
+                </div>
+            `;
+        } else {
+            evalElements.divergenceInfo.innerHTML = `
+                <div class="divergence-success">
+                    <span class="success-icon">&#10003;</span>
+                    Chains are identical
+                </div>
+            `;
+        }
+    }
+
+    if (evalElements.diffList) {
+        if (data.event_diffs.length > 0) {
+            evalElements.diffList.innerHTML = data.event_diffs.slice(0, 10).map(diff => `
+                <div class="diff-item diff-${diff.type}">
+                    <span class="diff-seq">#${diff.seq}</span>
+                    <span class="diff-type">${formatDiffType(diff.type)}</span>
+                    ${diff.type === 'diverged' ? `
+                        <div class="diff-details">
+                            <div class="diff-first">Chain 1: ${diff.first?.type || 'N/A'} - ${diff.first?.agent || 'N/A'}</div>
+                            <div class="diff-second">Chain 2: ${diff.second?.type || 'N/A'} - ${diff.second?.agent || 'N/A'}</div>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+
+            if (data.event_diffs.length > 10) {
+                evalElements.diffList.innerHTML += `
+                    <div class="diff-more">... and ${data.event_diffs.length - 10} more differences</div>
+                `;
+            }
+        } else {
+            evalElements.diffList.innerHTML = '<div class="no-diffs">No event differences</div>';
+        }
+    }
+
+    if (evalElements.factDiff) {
+        const fc = data.fact_comparison;
+        evalElements.factDiff.innerHTML = `
+            <div class="fact-diff-summary">
+                <div class="fact-diff-stat">
+                    <span class="stat-num">${fc.same.length}</span>
+                    <span class="stat-label">Same</span>
+                </div>
+                <div class="fact-diff-stat different">
+                    <span class="stat-num">${fc.different.length}</span>
+                    <span class="stat-label">Different</span>
+                </div>
+                <div class="fact-diff-stat only-first">
+                    <span class="stat-num">${fc.only_in_first.length}</span>
+                    <span class="stat-label">Only in Chain 1</span>
+                </div>
+                <div class="fact-diff-stat only-second">
+                    <span class="stat-num">${fc.only_in_second.length}</span>
+                    <span class="stat-label">Only in Chain 2</span>
+                </div>
+            </div>
+            ${fc.different.length > 0 ? `
+                <div class="fact-diff-details">
+                    <h5>Different Facts:</h5>
+                    ${fc.different.slice(0, 5).map(f => `
+                        <div class="fact-diff-item">
+                            <span class="fact-id">${f.id}</span>
+                            <div class="fact-comparison">
+                                <div class="fact-v1">C1: ${escapeHtml((f.first?.text || '').substring(0, 50))}... (${((f.first?.confidence || 0) * 100).toFixed(0)}%)</div>
+                                <div class="fact-v2">C2: ${escapeHtml((f.second?.text || '').substring(0, 50))}... (${((f.second?.confidence || 0) * 100).toFixed(0)}%)</div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            ` : ''}
+        `;
+    }
+}
+
+function renderChainSummary(container, chain, label) {
+    if (!container) return;
+
+    container.innerHTML = `
+        <h4>${label}: ${chain.id}</h4>
+        <div class="chain-stats">
+            <div class="chain-stat">
+                <span class="stat-value">${chain.event_count}</span>
+                <span class="stat-label">Events</span>
+            </div>
+            <div class="chain-stat">
+                <span class="stat-value">${chain.agent_count}</span>
+                <span class="stat-label">Agents</span>
+            </div>
+            <div class="chain-stat">
+                <span class="stat-value">${chain.fact_count}</span>
+                <span class="stat-label">Facts</span>
+            </div>
+            <div class="chain-stat ${chain.error_count > 0 ? 'has-errors' : ''}">
+                <span class="stat-value">${chain.error_count}</span>
+                <span class="stat-label">Errors</span>
+            </div>
+            <div class="chain-stat">
+                <span class="stat-value">${formatDuration(chain.total_duration_ms)}</span>
+                <span class="stat-label">Duration</span>
+            </div>
+            <div class="chain-stat">
+                <span class="stat-value">${formatNumber(chain.total_tokens)}</span>
+                <span class="stat-label">Tokens</span>
+            </div>
+        </div>
+    `;
+}
+
+function formatDiffType(type) {
+    const typeMap = {
+        'diverged': 'Diverged',
+        'missing_in_first': 'Missing in Chain 1',
+        'missing_in_second': 'Missing in Chain 2'
+    };
+    return typeMap[type] || type;
+}
+
+// Metrics Loading and Rendering
+async function loadMetrics() {
+    if (!state.currentChain) return;
+
+    try {
+        const response = await fetch(`/api/metrics/${encodeURIComponent(state.currentChain.chain.filename)}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}`);
+        }
+
+        evalState.metricsData = await response.json();
+        renderMetricsDashboard();
+
+    } catch (error) {
+        console.error('Failed to load metrics:', error);
+        showToast('Failed to load metrics', 'error');
+    }
+}
+
+function renderMetricsDashboard() {
+    const data = evalState.metricsData;
+    if (!data) return;
+
+    renderLatencyChart(data);
+    renderTokenChart(data);
+    renderAgentMetricsTable(data);
+    renderErrorTimeline(data);
+}
+
+function renderLatencyChart(data) {
+    const canvas = evalElements.latencyChart;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const agents = Object.keys(data.agent_metrics);
+    const durations = agents.map(a => data.agent_metrics[a].duration_ms);
+
+    if (evalState.latencyChartInstance) {
+        evalState.latencyChartInstance = null;
+    }
+
+    const maxDuration = Math.max(...durations, 1);
+    const barHeight = 30;
+    const padding = 40;
+    const labelWidth = 120;
+
+    canvas.width = canvas.parentElement.clientWidth - 40;
+    canvas.height = Math.max(agents.length * (barHeight + 10) + padding * 2, 200);
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Agent Latency (ms)', canvas.width / 2, 20);
+
+    agents.forEach((agent, i) => {
+        const y = padding + i * (barHeight + 10);
+        const duration = data.agent_metrics[agent].duration_ms;
+        const barWidth = (duration / maxDuration) * (canvas.width - labelWidth - padding * 2);
+
+        ctx.fillStyle = '#8b949e';
+        ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(agent.substring(0, 15), labelWidth - 10, y + barHeight / 2 + 4);
+
+        const gradient = ctx.createLinearGradient(labelWidth, y, labelWidth + barWidth, y);
+        gradient.addColorStop(0, getAgentColor(agent));
+        gradient.addColorStop(1, adjustColor(getAgentColor(agent), -20));
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.roundRect(labelWidth, y, Math.max(barWidth, 2), barHeight, 4);
+        ctx.fill();
+
+        ctx.fillStyle = '#e6edf3';
+        ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(`${formatDuration(duration)}`, labelWidth + barWidth + 8, y + barHeight / 2 + 4);
+    });
+}
+
+function renderTokenChart(data) {
+    const canvas = evalElements.tokenChart;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const tokensIn = data.token_distribution.input;
+    const tokensOut = data.token_distribution.output;
+    const total = tokensIn + tokensOut;
+
+    canvas.width = canvas.parentElement.clientWidth - 40;
+    canvas.height = 250;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2 + 10;
+    const radius = Math.min(centerX, centerY) - 40;
+
+    if (total > 0) {
+        const inputAngle = (tokensIn / total) * 2 * Math.PI;
+
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(centerX, centerY, radius, -Math.PI / 2, -Math.PI / 2 + inputAngle);
+        ctx.closePath();
+        ctx.fillStyle = '#58a6ff';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(centerX, centerY, radius, -Math.PI / 2 + inputAngle, -Math.PI / 2 + 2 * Math.PI);
+        ctx.closePath();
+        ctx.fillStyle = '#3fb950';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius * 0.6, 0, 2 * Math.PI);
+        ctx.fillStyle = '#161b22';
+        ctx.fill();
+
+        ctx.fillStyle = '#e6edf3';
+        ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(formatNumber(total), centerX, centerY - 5);
+        ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillStyle = '#8b949e';
+        ctx.fillText('Total Tokens', centerX, centerY + 12);
+    } else {
+        ctx.fillStyle = '#8b949e';
+        ctx.font = '14px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No token data', centerX, centerY);
+    }
+
+    const legendY = canvas.height - 25;
+    ctx.fillStyle = '#58a6ff';
+    ctx.fillRect(centerX - 100, legendY, 12, 12);
+    ctx.fillStyle = '#e6edf3';
+    ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Input: ${formatNumber(tokensIn)}`, centerX - 82, legendY + 10);
+
+    ctx.fillStyle = '#3fb950';
+    ctx.fillRect(centerX + 20, legendY, 12, 12);
+    ctx.fillStyle = '#e6edf3';
+    ctx.fillText(`Output: ${formatNumber(tokensOut)}`, centerX + 38, legendY + 10);
+}
+
+function renderAgentMetricsTable(data) {
+    const container = evalElements.agentMetricsTable;
+    if (!container) return;
+
+    const agents = Object.entries(data.agent_metrics);
+
+    container.innerHTML = `
+        <table class="metrics-table">
+            <thead>
+                <tr>
+                    <th>Agent</th>
+                    <th>Events</th>
+                    <th>Duration</th>
+                    <th>Tokens In</th>
+                    <th>Tokens Out</th>
+                    <th>Facts</th>
+                    <th>Tools</th>
+                    <th>Errors</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${agents.map(([agent, metrics]) => `
+                    <tr>
+                        <td>
+                            <span class="agent-indicator-small" style="background-color: ${getAgentColor(agent)}"></span>
+                            ${agent}
+                        </td>
+                        <td>${metrics.event_count}</td>
+                        <td>${formatDuration(metrics.duration_ms)}</td>
+                        <td>${formatNumber(metrics.tokens_in)}</td>
+                        <td>${formatNumber(metrics.tokens_out)}</td>
+                        <td>${metrics.fact_count}</td>
+                        <td>${metrics.tool_calls}</td>
+                        <td class="${metrics.error_count > 0 ? 'has-errors' : ''}">${metrics.error_count}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+}
+
+function renderErrorTimeline(data) {
+    const container = evalElements.errorTimeline;
+    if (!container) return;
+
+    if (data.error_timeline.length === 0) {
+        container.innerHTML = '<div class="no-errors">No errors recorded</div>';
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="error-timeline-list">
+            ${data.error_timeline.map(error => `
+                <div class="error-item">
+                    <div class="error-marker"></div>
+                    <div class="error-content">
+                        <div class="error-header">
+                            <span class="error-seq">#${error.seq}</span>
+                            <span class="error-agent" style="color: ${getAgentColor(error.agent)}">${error.agent}</span>
+                            <span class="error-category">${error.category}</span>
+                            ${error.recoverable ? '<span class="error-recoverable">Recoverable</span>' : ''}
+                        </div>
+                        <div class="error-message">${escapeHtml(error.message)}</div>
+                        <div class="error-time">${formatTimestamp(error.timestamp)}</div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// Evaluation Loading and Rendering
+async function loadEvaluation() {
+    if (!state.currentChain) return;
+
+    try {
+        const response = await fetch(`/api/evaluation/${encodeURIComponent(state.currentChain.chain.filename)}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}`);
+        }
+
+        evalState.evaluationData = await response.json();
+        renderEvaluationDashboard();
+
+    } catch (error) {
+        console.error('Failed to load evaluation:', error);
+        showToast('Failed to load evaluation', 'error');
+    }
+}
+
+function renderEvaluationDashboard() {
+    const data = evalState.evaluationData;
+    if (!data) return;
+
+    renderScoreCards(data.scores);
+    renderIssuesAndWarnings(data);
+    renderConfidenceHeatmap(data);
+    renderEvalSummary(data);
+}
+
+function renderScoreCards(scores) {
+    if (evalElements.overallScore) {
+        evalElements.overallScore.textContent = scores.overall;
+        evalElements.overallScore.className = `score-value ${getScoreClass(scores.overall)}`;
+    }
+
+    if (evalElements.overallRing) {
+        evalElements.overallRing.setAttribute('stroke-dasharray', `${scores.overall}, 100`);
+        evalElements.overallRing.style.stroke = getScoreColor(scores.overall);
+    }
+
+    if (evalElements.perfScore) {
+        evalElements.perfScore.textContent = scores.performance;
+    }
+    if (evalElements.perfBar) {
+        evalElements.perfBar.style.width = `${scores.performance}%`;
+        evalElements.perfBar.style.backgroundColor = getScoreColor(scores.performance);
+    }
+
+    if (evalElements.reliabilityScore) {
+        evalElements.reliabilityScore.textContent = scores.reliability;
+    }
+    if (evalElements.reliabilityBar) {
+        evalElements.reliabilityBar.style.width = `${scores.reliability}%`;
+        evalElements.reliabilityBar.style.backgroundColor = getScoreColor(scores.reliability);
+    }
+
+    if (evalElements.qualityScore) {
+        evalElements.qualityScore.textContent = scores.quality;
+    }
+    if (evalElements.qualityBar) {
+        evalElements.qualityBar.style.width = `${scores.quality}%`;
+        evalElements.qualityBar.style.backgroundColor = getScoreColor(scores.quality);
+    }
+}
+
+function renderIssuesAndWarnings(data) {
+    const container = evalElements.issuesList;
+    if (!container) return;
+
+    const allItems = [...data.issues, ...data.warnings];
+
+    if (allItems.length === 0) {
+        container.innerHTML = '<div class="no-issues">No issues or warnings detected</div>';
+        return;
+    }
+
+    container.innerHTML = allItems.map(item => `
+        <div class="issue-item severity-${item.severity}">
+            <div class="issue-icon">
+                ${item.severity === 'high' ? '!' : item.severity === 'medium' ? '!!' : 'i'}
+            </div>
+            <div class="issue-content">
+                <div class="issue-type">${item.type.replace(/_/g, ' ')}</div>
+                <div class="issue-message">${escapeHtml(item.message)}</div>
+            </div>
+            <div class="issue-severity">${item.severity}</div>
+        </div>
+    `).join('');
+}
+
+function renderConfidenceHeatmap(data) {
+    const container = evalElements.confidenceHeatmap;
+    if (!container) return;
+
+    const heatmapData = data.fact_confidence_heatmap;
+
+    if (heatmapData.length === 0) {
+        container.innerHTML = '<div class="no-heatmap">No fact confidence data available</div>';
+        return;
+    }
+
+    const factIds = [...new Set(heatmapData.map(d => d.fact_id))];
+    const maxSeq = Math.max(...heatmapData.map(d => d.seq));
+
+    container.innerHTML = `
+        <div class="heatmap-grid">
+            <div class="heatmap-header">
+                <div class="heatmap-corner">Fact ID</div>
+                <div class="heatmap-seqs">
+                    ${Array.from({length: Math.min(maxSeq, 20)}, (_, i) => i + 1).map(seq => `
+                        <div class="heatmap-seq">${seq}</div>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="heatmap-body">
+                ${factIds.slice(0, 10).map(factId => {
+                    const factData = heatmapData.filter(d => d.fact_id === factId);
+                    return `
+                        <div class="heatmap-row">
+                            <div class="heatmap-label">${factId.substring(0, 12)}</div>
+                            <div class="heatmap-cells">
+                                ${Array.from({length: Math.min(maxSeq, 20)}, (_, i) => {
+                                    const point = factData.find(d => d.seq === i + 1);
+                                    if (point) {
+                                        return `<div class="heatmap-cell" style="background-color: ${getConfidenceColor(point.confidence)}" title="${factId}: ${(point.confidence * 100).toFixed(0)}% at seq ${point.seq}"></div>`;
+                                    }
+                                    return '<div class="heatmap-cell empty"></div>';
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+        <div class="heatmap-legend">
+            <span>Low</span>
+            <div class="heatmap-legend-bar"></div>
+            <span>High</span>
+        </div>
+    `;
+}
+
+function renderEvalSummary(data) {
+    const container = evalElements.evalSummary;
+    if (!container) return;
+
+    const metrics = data.metrics;
+
+    container.innerHTML = `
+        <div class="eval-metrics-grid">
+            <div class="eval-metric">
+                <div class="eval-metric-value">${metrics.total_events}</div>
+                <div class="eval-metric-label">Total Events</div>
+            </div>
+            <div class="eval-metric">
+                <div class="eval-metric-value">${formatDuration(metrics.total_duration_ms)}</div>
+                <div class="eval-metric-label">Total Duration</div>
+            </div>
+            <div class="eval-metric">
+                <div class="eval-metric-value">${formatNumber(metrics.total_tokens)}</div>
+                <div class="eval-metric-label">Total Tokens</div>
+            </div>
+            <div class="eval-metric">
+                <div class="eval-metric-value">${metrics.fact_count}</div>
+                <div class="eval-metric-label">Facts Generated</div>
+            </div>
+            <div class="eval-metric">
+                <div class="eval-metric-value">${(metrics.average_confidence * 100).toFixed(1)}%</div>
+                <div class="eval-metric-label">Avg Confidence</div>
+            </div>
+            <div class="eval-metric ${metrics.error_count > 0 ? 'has-errors' : ''}">
+                <div class="eval-metric-value">${metrics.error_count}</div>
+                <div class="eval-metric-label">Errors</div>
+            </div>
+        </div>
+        ${data.low_confidence_facts.length > 0 ? `
+            <div class="low-confidence-section">
+                <h4>Low Confidence Facts (< 70%)</h4>
+                <div class="low-confidence-list">
+                    ${data.low_confidence_facts.slice(0, 5).map(fact => `
+                        <div class="low-confidence-fact">
+                            <span class="fact-id">${fact.id}</span>
+                            <span class="fact-confidence" style="color: ${getConfidenceColor(fact.confidence)}">${(fact.confidence * 100).toFixed(0)}%</span>
+                            <span class="fact-text">${escapeHtml((fact.text || '').substring(0, 50))}...</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        ` : ''}
+    `;
+}
+
+// Utility Functions for Evaluation
+function getScoreClass(score) {
+    if (score >= 80) return 'score-good';
+    if (score >= 60) return 'score-medium';
+    return 'score-poor';
+}
+
+function getScoreColor(score) {
+    if (score >= 80) return '#3fb950';
+    if (score >= 60) return '#d29922';
+    return '#f85149';
+}
+
+function getConfidenceColor(confidence) {
+    const r = Math.round(248 - confidence * 185);
+    const g = Math.round(81 + confidence * 104);
+    const b = Math.round(73 + confidence * 7);
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+function adjustColor(color, amount) {
+    const hex = color.replace('#', '');
+    const r = Math.max(0, Math.min(255, parseInt(hex.substr(0, 2), 16) + amount));
+    const g = Math.max(0, Math.min(255, parseInt(hex.substr(2, 2), 16) + amount));
+    const b = Math.max(0, Math.min(255, parseInt(hex.substr(4, 2), 16) + amount));
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+// Override loadChain to enable compare button
+const originalLoadChain = loadChain;
+loadChain = async function(filename) {
+    await originalLoadChain(filename);
+    if (evalElements.compareBtn) {
+        evalElements.compareBtn.disabled = state.chains.length < 2;
+    }
+};
+
+// Override loadChains to enable compare button
+const originalLoadChains = loadChains;
+loadChains = async function() {
+    await originalLoadChains();
+    if (evalElements.compareBtn) {
+        evalElements.compareBtn.disabled = state.chains.filter(c => !c.error).length < 2;
+    }
+};
+
+// ============================================================================
+// WEBSOCKET STREAMING FEATURES
+// ============================================================================
+
+function connectWebSocket() {
+    if (state.websocket && state.websocket.readyState === WebSocket.OPEN) {
+        return;
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+    try {
+        state.websocket = new WebSocket(wsUrl);
+
+        state.websocket.onopen = function() {
+            state.wsConnected = true;
+            console.log('[LCTL] WebSocket connected');
+            updateConnectionStatus(true);
+        };
+
+        state.websocket.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                handleStreamingEvent(data);
+            } catch (e) {
+                console.error('[LCTL] Failed to parse WebSocket message:', e);
+            }
+        };
+
+        state.websocket.onclose = function() {
+            state.wsConnected = false;
+            state.wsClientId = null;
+            console.log('[LCTL] WebSocket disconnected');
+            updateConnectionStatus(false);
+
+            if (state.liveMode) {
+                setTimeout(connectWebSocket, 3000);
+            }
+        };
+
+        state.websocket.onerror = function(error) {
+            console.error('[LCTL] WebSocket error:', error);
+            updateConnectionStatus(false);
+        };
+
+    } catch (error) {
+        console.error('[LCTL] Failed to create WebSocket:', error);
+    }
+}
+
+function disconnectWebSocket() {
+    if (state.websocket) {
+        state.websocket.close();
+        state.websocket = null;
+    }
+    state.wsConnected = false;
+    state.wsClientId = null;
+}
+
+function handleStreamingEvent(data) {
+    switch (data.type) {
+        case 'connected':
+            state.wsClientId = data.client_id;
+            showToast(`Connected to stream (ID: ${data.client_id})`, 'success');
+            break;
+
+        case 'heartbeat':
+            break;
+
+        case 'pong':
+            break;
+
+        case 'event':
+            handleLiveEvent(data);
+            break;
+
+        case 'chain_start':
+            handleChainStart(data);
+            break;
+
+        case 'chain_end':
+            handleChainEnd(data);
+            break;
+
+        case 'error':
+            console.error('[LCTL] Stream error:', data.payload?.message);
+            showToast(`Stream error: ${data.payload?.message || 'Unknown'}`, 'error');
+            break;
+
+        default:
+            console.log('[LCTL] Unknown streaming event:', data.type);
+    }
+}
+
+function handleLiveEvent(data) {
+    if (!state.liveMode) return;
+
+    const payload = data.payload;
+    if (!payload) return;
+
+    state.liveEvents.push(payload);
+
+    if (state.liveEvents.length > 1000) {
+        state.liveEvents = state.liveEvents.slice(-500);
+    }
+
+    if (state.currentChain && data.chain_id === state.currentChain.chain.id) {
+        state.currentChain.events.push(payload);
+        state.maxSeq = payload.seq;
+        state.currentSeq = state.maxSeq;
+
+        updateSlider();
+        renderTimeline();
+        renderSwimlanes();
+
+        if (payload.type === 'fact_added' || payload.type === 'fact_modified') {
+            renderFactRegistry();
+        }
+
+        updateLiveStats(payload);
+    }
+
+    addLiveEventToTimeline(payload);
+}
+
+function handleChainStart(data) {
+    if (state.liveMode) {
+        showToast(`New chain started: ${data.chain_id || data.payload?.chain_id}`, 'info');
+    }
+}
+
+function handleChainEnd(data) {
+    if (state.liveMode) {
+        const chainId = data.chain_id || data.payload?.chain_id;
+        const eventCount = data.payload?.event_count || 0;
+        showToast(`Chain ended: ${chainId} (${eventCount} events)`, 'info');
+
+        loadChains();
+    }
+}
+
+function addLiveEventToTimeline(event) {
+    const container = elements.timeline;
+    if (!container) return;
+
+    const el = document.createElement('div');
+    el.className = 'timeline-event live-event';
+    el.setAttribute('data-seq', event.seq);
+
+    el.innerHTML = `
+        <span class="event-seq">#${event.seq}</span>
+        <div class="event-info">
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <span class="event-type-badge ${event.type}">${formatEventType(event.type)}</span>
+                <span class="event-agent" style="color: ${getAgentColor(event.agent)}">${event.agent}</span>
+                <span class="live-indicator">LIVE</span>
+            </div>
+            <div class="event-summary">${getEventSummary(event)}</div>
+        </div>
+    `;
+
+    el.addEventListener('click', () => selectEvent(event));
+    container.appendChild(el);
+    container.scrollTop = container.scrollHeight;
+}
+
+function updateLiveStats(event) {
+    if (!state.currentChain) return;
+
+    const eventType = event.type;
+
+    if (eventType === 'step_end') {
+        const duration = event.data?.duration_ms || 0;
+        const tokensIn = event.data?.tokens?.input || event.data?.tokens?.in || 0;
+        const tokensOut = event.data?.tokens?.output || event.data?.tokens?.out || 0;
+
+        state.currentChain.state.metrics.total_duration_ms += duration;
+        state.currentChain.state.metrics.total_tokens_in += tokensIn;
+        state.currentChain.state.metrics.total_tokens_out += tokensOut;
+    }
+
+    if (eventType === 'error') {
+        state.currentChain.state.metrics.error_count += 1;
+    }
+
+    if (eventType === 'fact_added') {
+        const factId = event.data?.id;
+        if (factId) {
+            state.currentChain.state.facts[factId] = {
+                text: event.data?.text || '',
+                confidence: event.data?.confidence || 1.0,
+                source: event.data?.source || event.agent
+            };
+        }
+    }
+
+    if (eventType === 'fact_modified') {
+        const factId = event.data?.id;
+        if (factId && state.currentChain.state.facts[factId]) {
+            if (event.data?.text) {
+                state.currentChain.state.facts[factId].text = event.data.text;
+            }
+            if (event.data?.confidence !== undefined) {
+                state.currentChain.state.facts[factId].confidence = event.data.confidence;
+            }
+        }
+    }
+
+    updateStats();
+}
+
+function toggleLiveMode() {
+    state.liveMode = !state.liveMode;
+
+    if (state.liveMode) {
+        connectWebSocket();
+        showToast('Live mode enabled', 'success');
+        updateLiveModeUI(true);
+    } else {
+        disconnectWebSocket();
+        showToast('Live mode disabled', 'info');
+        updateLiveModeUI(false);
+    }
+}
+
+function updateLiveModeUI(isLive) {
+    const liveBtn = document.getElementById('live-btn');
+    if (liveBtn) {
+        liveBtn.classList.toggle('active', isLive);
+        liveBtn.textContent = isLive ? 'LIVE' : 'Go Live';
+    }
+
+    const liveIndicator = document.getElementById('live-indicator');
+    if (liveIndicator) {
+        liveIndicator.classList.toggle('hidden', !isLive);
+    }
+}
+
+function updateConnectionStatus(connected) {
+    const statusEl = document.getElementById('connection-status');
+    if (statusEl) {
+        statusEl.classList.toggle('connected', connected);
+        statusEl.classList.toggle('disconnected', !connected);
+        statusEl.title = connected ? 'Connected to live stream' : 'Disconnected';
+    }
+}
+
+function subscribeToChain(chainId) {
+    if (!state.websocket || state.websocket.readyState !== WebSocket.OPEN) {
+        console.warn('[LCTL] WebSocket not connected');
+        return;
+    }
+
+    state.websocket.send(JSON.stringify({
+        type: 'subscribe',
+        filters: {
+            chain_id: chainId
+        }
+    }));
+}
+
+function subscribeToEventTypes(eventTypes) {
+    if (!state.websocket || state.websocket.readyState !== WebSocket.OPEN) {
+        console.warn('[LCTL] WebSocket not connected');
+        return;
+    }
+
+    state.websocket.send(JSON.stringify({
+        type: 'subscribe',
+        filters: {
+            event_types: eventTypes
+        }
+    }));
+}
+
+function unsubscribeFromStream() {
+    if (!state.websocket || state.websocket.readyState !== WebSocket.OPEN) {
+        return;
+    }
+
+    state.websocket.send(JSON.stringify({
+        type: 'unsubscribe'
+    }));
+}
+
+function sendPing() {
+    if (!state.websocket || state.websocket.readyState !== WebSocket.OPEN) {
+        return;
+    }
+
+    state.websocket.send(JSON.stringify({
+        type: 'ping'
+    }));
+}
+
+async function getStreamingStatus() {
+    try {
+        const response = await fetch('/api/streaming/status');
+        if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('[LCTL] Failed to get streaming status:', error);
+        return null;
+    }
+}
+
+window.lctlStreaming = {
+    connect: connectWebSocket,
+    disconnect: disconnectWebSocket,
+    toggleLive: toggleLiveMode,
+    subscribe: subscribeToChain,
+    subscribeEventTypes: subscribeToEventTypes,
+    unsubscribe: unsubscribeFromStream,
+    ping: sendPing,
+    getStatus: getStreamingStatus,
+    get isConnected() { return state.wsConnected; },
+    get isLive() { return state.liveMode; },
+    get clientId() { return state.wsClientId; }
+};

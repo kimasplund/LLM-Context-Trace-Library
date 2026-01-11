@@ -1,0 +1,96 @@
+{
+  "name": "lctl-debugger",
+  "displayName": "LCTL Time-Travel Debugger",
+  "description": "Debug and visualize LCTL v4.0 context chains with time-travel capabilities",
+  "version": "0.1.0",
+  "publisher": "lctl",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Debuggers",
+    "Visualization"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/*.lctl.json",
+    "onView:lctlExplorer"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "lctl.openDashboard",
+        "title": "Open LCTL Dashboard",
+        "category": "LCTL",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "lctl.loadChain",
+        "title": "Load Chain",
+        "category": "LCTL",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "lctl.replay",
+        "title": "Replay Chain",
+        "category": "LCTL",
+        "icon": "$(debug-start)"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "lctlExplorer",
+          "name": "LCTL Explorer",
+          "icon": "$(git-branch)",
+          "contextualTitle": "LCTL Chains"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "lctlExplorer",
+        "contents": "No LCTL chains found in this workspace.\n[Create New Chain](command:lctl.openDashboard)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "lctl.openDashboard",
+          "when": "view == lctlExplorer",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "lctl.loadChain",
+          "when": "view == lctlExplorer && viewItem == chainFile",
+          "group": "inline"
+        },
+        {
+          "command": "lctl.replay",
+          "when": "view == lctlExplorer && viewItem == chainFile",
+          "group": "inline"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0",
+    "@vscode/test-cli": "^0.0.4",
+    "@vscode/test-electron": "^2.3.8",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  }
+}
