@@ -100,17 +100,18 @@ class Chain:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "Chain":
-        if "chain" not in d or not isinstance(d["chain"], dict):
-             # Allow legacy format or be strict? Protocol says 'chain' key is required.
-             # But let's be safe and check.
+        chain_meta = d.get("chain")
+        
+        # Validation logic
+        if chain_meta is None or not isinstance(chain_meta, dict):
+             # If "chain" key is missing or invalid (e.g. string), we fall back ONLY if "events" exists (legacy support)
              if "events" in d:
-                 # Minimal valid structure
-                 pass
+                 chain_meta = {}
              else:
                  raise ValueError("Invalid chain format: missing 'chain' or 'events' keys")
         
         return cls(
-            id=d.get("chain", {}).get("id", "unknown"),
+            id=chain_meta.get("id", "unknown"),
             version=d.get("lctl", "4.0"),
             events=[Event.from_dict(e) for e in d.get("events", [])]
         )
