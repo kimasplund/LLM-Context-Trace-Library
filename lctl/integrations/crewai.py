@@ -24,14 +24,10 @@ Usage:
     crew.export_trace("research_crew.lctl.json")
 """
 
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
-from uuid import uuid4
-import functools
 import time
+from typing import Any, Dict, List, Optional, Union
+from uuid import uuid4
 
-from ..core.events import Chain, Event, EventType
 from ..core.session import LCTLSession
 
 # Try to import CrewAI - graceful degradation if not available
@@ -390,15 +386,14 @@ class LCTLCrew:
         """Callback for task completion."""
         try:
             task_description = ""
-            output_summary = ""
 
             if hasattr(task_output, "description"):
                 task_description = str(task_output.description)[:200]
 
             if hasattr(task_output, "raw"):
-                output_summary = str(task_output.raw)[:500]
+                str(task_output.raw)[:500]
             elif hasattr(task_output, "output"):
-                output_summary = str(task_output.output)[:500]
+                str(task_output.output)[:500]
 
             # Add fact about task completion
             fact_id = f"task-{len(self._session.chain.events)}"

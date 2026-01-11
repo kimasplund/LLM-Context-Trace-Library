@@ -4,10 +4,9 @@ import asyncio
 import threading
 import time
 from abc import ABC, abstractmethod
-from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Deque, Dict, List, Optional, Set, Union
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from .emitter import EventEmitter, StreamingEvent, StreamingEventType
 

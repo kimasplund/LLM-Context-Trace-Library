@@ -3,14 +3,13 @@
 import asyncio
 import json
 import threading
-import weakref
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 from uuid import uuid4
 
-from ..core.events import Event, EventType
+from ..core.events import Event
 
 
 class StreamingEventType(str, Enum):

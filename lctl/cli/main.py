@@ -9,8 +9,8 @@ from typing import Optional
 
 import click
 
-from ..core.events import Chain, Event, ReplayEngine, State
-from ..evaluation import ChainMetrics, MetricComparison, compute_all_metrics
+from ..core.events import Chain, Event, ReplayEngine
+from ..evaluation import ChainMetrics, compute_all_metrics
 
 
 def _load_chain_safely(chain_file: str) -> Optional[Chain]:
@@ -321,7 +321,7 @@ def debug(chain_file: str, port: int):
     if chain is None:
         sys.exit(1)
 
-    click.echo(f"Starting LCTL Visual Debugger...")
+    click.echo("Starting LCTL Visual Debugger...")
     click.echo(f"  Chain: {chain.id}")
     click.echo(f"  Events: {len(chain.events)}")
     click.echo()
@@ -398,7 +398,7 @@ def evaluate(chain_file: str, as_json: bool):
         click.echo(f"  Facts Generated: {metrics.fact_count}")
         click.echo(f"  Avg Fact Confidence: {metrics.avg_fact_confidence:.2f}")
         error_color = "red" if metrics.error_count > 0 else "green"
-        click.echo(f"  Errors: " + click.style(str(metrics.error_count), fg=error_color))
+        click.echo("  Errors: " + click.style(str(metrics.error_count), fg=error_color))
         click.echo(f"  Error Rate: {metrics.error_rate:.2%}")
         click.echo()
 
@@ -489,8 +489,8 @@ def compare(chain1: str, chain2: str, as_json: bool):
         regressions = sum(1 for c in comparisons.values() if c.improvement is False)
 
         click.echo(click.style("Summary", fg="white", bold=True))
-        click.echo(f"  Improvements: " + click.style(str(improvements), fg="green"))
-        click.echo(f"  Regressions: " + click.style(str(regressions), fg="red"))
+        click.echo("  Improvements: " + click.style(str(improvements), fg="green"))
+        click.echo("  Regressions: " + click.style(str(regressions), fg="red"))
 
         if improvements > regressions:
             click.echo()
@@ -654,49 +654,49 @@ def metrics(chain_file: str, output_format: str, as_json: bool):
         chain_id = chain_metrics.chain_id.replace("-", "_").replace(".", "_")
 
         prometheus_lines = [
-            f'# HELP lctl_chain_events_total Total number of events in chain',
-            f'# TYPE lctl_chain_events_total gauge',
+            '# HELP lctl_chain_events_total Total number of events in chain',
+            '# TYPE lctl_chain_events_total gauge',
             f'lctl_chain_events_total{{chain_id="{chain_id}"}} {chain_metrics.total_events}',
-            f'',
-            f'# HELP lctl_chain_duration_ms Total duration in milliseconds',
-            f'# TYPE lctl_chain_duration_ms gauge',
+            '',
+            '# HELP lctl_chain_duration_ms Total duration in milliseconds',
+            '# TYPE lctl_chain_duration_ms gauge',
             f'lctl_chain_duration_ms{{chain_id="{chain_id}"}} {chain_metrics.total_duration_ms}',
-            f'',
-            f'# HELP lctl_chain_tokens_total Total tokens used',
-            f'# TYPE lctl_chain_tokens_total gauge',
+            '',
+            '# HELP lctl_chain_tokens_total Total tokens used',
+            '# TYPE lctl_chain_tokens_total gauge',
             f'lctl_chain_tokens_total{{chain_id="{chain_id}",type="input"}} {chain_metrics.total_tokens_in}',
             f'lctl_chain_tokens_total{{chain_id="{chain_id}",type="output"}} {chain_metrics.total_tokens_out}',
-            f'',
-            f'# HELP lctl_chain_errors_total Total number of errors',
-            f'# TYPE lctl_chain_errors_total gauge',
+            '',
+            '# HELP lctl_chain_errors_total Total number of errors',
+            '# TYPE lctl_chain_errors_total gauge',
             f'lctl_chain_errors_total{{chain_id="{chain_id}"}} {chain_metrics.error_count}',
-            f'',
-            f'# HELP lctl_chain_facts_total Total number of facts',
-            f'# TYPE lctl_chain_facts_total gauge',
+            '',
+            '# HELP lctl_chain_facts_total Total number of facts',
+            '# TYPE lctl_chain_facts_total gauge',
             f'lctl_chain_facts_total{{chain_id="{chain_id}"}} {chain_metrics.fact_count}',
-            f'',
-            f'# HELP lctl_chain_steps_total Total number of steps',
-            f'# TYPE lctl_chain_steps_total gauge',
+            '',
+            '# HELP lctl_chain_steps_total Total number of steps',
+            '# TYPE lctl_chain_steps_total gauge',
             f'lctl_chain_steps_total{{chain_id="{chain_id}"}} {chain_metrics.step_count}',
-            f'',
-            f'# HELP lctl_chain_agents_total Total number of agents',
-            f'# TYPE lctl_chain_agents_total gauge',
+            '',
+            '# HELP lctl_chain_agents_total Total number of agents',
+            '# TYPE lctl_chain_agents_total gauge',
             f'lctl_chain_agents_total{{chain_id="{chain_id}"}} {chain_metrics.agent_count}',
-            f'',
-            f'# HELP lctl_chain_avg_step_duration_ms Average step duration in milliseconds',
-            f'# TYPE lctl_chain_avg_step_duration_ms gauge',
+            '',
+            '# HELP lctl_chain_avg_step_duration_ms Average step duration in milliseconds',
+            '# TYPE lctl_chain_avg_step_duration_ms gauge',
             f'lctl_chain_avg_step_duration_ms{{chain_id="{chain_id}"}} {chain_metrics.avg_step_duration_ms:.2f}',
-            f'',
-            f'# HELP lctl_chain_avg_fact_confidence Average fact confidence',
-            f'# TYPE lctl_chain_avg_fact_confidence gauge',
+            '',
+            '# HELP lctl_chain_avg_fact_confidence Average fact confidence',
+            '# TYPE lctl_chain_avg_fact_confidence gauge',
             f'lctl_chain_avg_fact_confidence{{chain_id="{chain_id}"}} {chain_metrics.avg_fact_confidence:.4f}',
-            f'',
-            f'# HELP lctl_chain_token_efficiency Tokens per second',
-            f'# TYPE lctl_chain_token_efficiency gauge',
+            '',
+            '# HELP lctl_chain_token_efficiency Tokens per second',
+            '# TYPE lctl_chain_token_efficiency gauge',
             f'lctl_chain_token_efficiency{{chain_id="{chain_id}"}} {chain_metrics.token_efficiency:.2f}',
-            f'',
-            f'# HELP lctl_chain_error_rate Error rate (errors/events)',
-            f'# TYPE lctl_chain_error_rate gauge',
+            '',
+            '# HELP lctl_chain_error_rate Error rate (errors/events)',
+            '# TYPE lctl_chain_error_rate gauge',
             f'lctl_chain_error_rate{{chain_id="{chain_id}"}} {chain_metrics.error_rate:.6f}',
         ]
 
@@ -734,7 +734,7 @@ def dashboard(port: int, host: str, working_dir: Optional[str]):
     click.echo(f"  Working directory: {work_path}")
     click.echo(f"  Available chains: {chain_count}")
     click.echo()
-    click.echo(f"  Dashboard URL: " + click.style(f"http://{host}:{port}", fg="green", bold=True))
+    click.echo("  Dashboard URL: " + click.style(f"http://{host}:{port}", fg="green", bold=True))
     click.echo()
     click.echo("Press Ctrl+C to stop the server")
     click.echo()

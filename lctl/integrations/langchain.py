@@ -13,14 +13,14 @@ Usage:
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence
 from uuid import UUID
 
 from ..core.session import LCTLSession
 
 try:
-    from langchain_core.callbacks import BaseCallbackHandler
     from langchain_core.agents import AgentAction, AgentFinish
+    from langchain_core.callbacks import BaseCallbackHandler
     from langchain_core.messages import BaseMessage
     from langchain_core.outputs import LLMResult
 

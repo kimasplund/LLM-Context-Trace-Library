@@ -4,7 +4,7 @@ import asyncio
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, Optional
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ..core.events import Chain, ReplayEngine
+from ..evaluation.metrics import ChainMetrics
 from ..streaming.emitter import EventEmitter, StreamingEvent, StreamingEventType
 
 
@@ -71,13 +72,13 @@ def create_app(working_dir: Optional[Path] = None) -> FastAPI:
         """Get ReplayEngine from cache or load it."""
         if not file_path.exists():
             raise HTTPException(status_code=404, detail=f"Chain file not found: {file_path.name}")
-        
+
         stat = file_path.stat()
         cache_key = (str(file_path), stat.st_mtime)
-        
+
         if cache_key in app.state.engine_cache:
             return app.state.engine_cache[cache_key]
-        
+
         # Prune cache if too big (simple strategy)
         if len(app.state.engine_cache) > 50:
             app.state.engine_cache.clear()
@@ -157,7 +158,7 @@ def create_app(working_dir: Optional[Path] = None) -> FastAPI:
         events = [e.to_dict() for e in chain.events]
 
         # Find errors
-        errors = [e.to_dict() for e in chain.events
+        [e.to_dict() for e in chain.events
                   if (e.type.value if hasattr(e.type, 'value') else e.type) == "error"]
 
         return {
@@ -219,40 +220,13 @@ def create_app(working_dir: Optional[Path] = None) -> FastAPI:
         file_path = get_secure_path(filename)
         engine = get_cached_engine(file_path)
         chain = engine.chain
-        
+
         state = engine.replay_all()
         bottlenecks = engine.find_bottlenecks()
 
-        agent_metrics: Dict[str, Any] = {}
-        for event in chain.events:
-            agent = event.agent
-            if agent not in agent_metrics:
-                agent_metrics[agent] = {
-                    "event_count": 0,
-                    "duration_ms": 0,
-                    "tokens_in": 0,
-                    "tokens_out": 0,
-                    "error_count": 0,
-                    "fact_count": 0,
-                    "tool_calls": 0
-                }
-
-            agent_metrics[agent]["event_count"] += 1
-
-            event_type = event.type.value if hasattr(event.type, 'value') else event.type
-
-            if event_type == "step_end":
-                agent_metrics[agent]["duration_ms"] += event.data.get("duration_ms", 0)
-                tokens = event.data.get("tokens", {})
-                agent_metrics[agent]["tokens_in"] += tokens.get("input", tokens.get("in", 0))
-                agent_metrics[agent]["tokens_out"] += tokens.get("output", tokens.get("out", 0))
-            elif event_type == "error":
-                agent_metrics[agent]["error_count"] += 1
-            elif event_type in ("fact_added", "fact_modified"):
-                agent_metrics[agent]["fact_count"] += 1
-            elif event_type == "tool_call":
-                agent_metrics[agent]["tool_calls"] += 1
-                agent_metrics[agent]["duration_ms"] += event.data.get("duration_ms", 0)
+        # use shared ChainMetrics to calculate stats efficiently
+        metrics = ChainMetrics.from_chain(chain, state)
+        agent_metrics = metrics.agent_stats
 
         error_timeline = []
         for event in chain.events:
@@ -279,12 +253,12 @@ def create_app(working_dir: Optional[Path] = None) -> FastAPI:
                 "filename": filename
             },
             "summary": {
-                "total_events": len(chain.events),
-                "total_agents": len(agent_metrics),
-                "total_duration_ms": state.metrics.get("total_duration_ms", 0),
-                "total_tokens": token_distribution["input"] + token_distribution["output"],
-                "total_errors": state.metrics.get("error_count", 0),
-                "total_facts": len(state.facts)
+                "total_events": metrics.total_events,
+                "total_agents": metrics.agent_count,
+                "total_duration_ms": metrics.total_duration_ms,
+                "total_tokens": metrics.total_tokens,
+                "total_errors": metrics.error_count,
+                "total_facts": metrics.fact_count
             },
             "agent_metrics": agent_metrics,
             "token_distribution": token_distribution,
@@ -297,7 +271,7 @@ def create_app(working_dir: Optional[Path] = None) -> FastAPI:
         """Compare two chains and return differences."""
         path1 = get_secure_path(request.filename1)
         path2 = get_secure_path(request.filename2)
-        
+
         engine1 = get_cached_engine(path1)
         engine2 = get_cached_engine(path2)
         chain1 = engine1.chain

@@ -101,7 +101,7 @@ class Chain:
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "Chain":
         chain_meta = d.get("chain")
-        
+
         # Validation logic
         if chain_meta is None or not isinstance(chain_meta, dict):
              # If "chain" key is missing or invalid (e.g. string), we fall back ONLY if "events" exists (legacy support)
@@ -109,7 +109,7 @@ class Chain:
                  chain_meta = {}
              else:
                  raise ValueError("Invalid chain format: missing 'chain' or 'events' keys")
-        
+
         return cls(
             id=chain_meta.get("id", "unknown"),
             version=d.get("lctl", "4.0"),

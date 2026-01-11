@@ -3,10 +3,9 @@
 import asyncio
 import json
 import threading
-import weakref
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Iterator, List, Optional, Set
+from typing import Any, Dict, Iterator, Optional
 from uuid import uuid4
 
 from .emitter import EventEmitter, StreamingEvent, StreamingEventType

@@ -25,17 +25,57 @@ class ChainMetrics:
     avg_fact_confidence: float
     token_efficiency: float
     error_rate: float
+    agent_stats: Dict[str, Any] = field(default_factory=dict)
     facts: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     @classmethod
-    def from_chain(cls, chain: Chain) -> "ChainMetrics":
-        """Compute metrics from a chain."""
-        engine = ReplayEngine(chain)
-        state = engine.replay_all()
+    def from_chain(cls, chain: Chain, state: Optional[State] = None) -> "ChainMetrics":
+        """Compute metrics from a chain.
+
+        Args:
+            chain: The chain to analyze.
+            state: Optional pre-computed state. If None, chain will be replayed.
+        """
+        if state is None:
+            engine = ReplayEngine(chain)
+            state = engine.replay_all()
 
         agents = list(set(e.agent for e in chain.events if e.agent != "system"))
         step_starts = [e for e in chain.events if e.type == EventType.STEP_START]
-        step_ends = [e for e in chain.events if e.type == EventType.STEP_END]
+        [e for e in chain.events if e.type == EventType.STEP_END]
+
+        # Calculate per-agent metrics
+        agent_stats: Dict[str, Any] = {}
+        for event in chain.events:
+            agent = event.agent
+            if agent not in agent_stats:
+                agent_stats[agent] = {
+                    "event_count": 0,
+                    "duration_ms": 0,
+                    "tokens_in": 0,
+                    "tokens_out": 0,
+                    "error_count": 0,
+                    "fact_count": 0,
+                    "tool_calls": 0
+                }
+
+            agent_stats[agent]["event_count"] += 1
+
+            # Normalize event type
+            event_type = event.type.value if hasattr(event.type, 'value') else event.type
+
+            if event_type == "step_end":
+                agent_stats[agent]["duration_ms"] += event.data.get("duration_ms", 0)
+                tokens = event.data.get("tokens", {})
+                agent_stats[agent]["tokens_in"] += tokens.get("input", tokens.get("in", 0))
+                agent_stats[agent]["tokens_out"] += tokens.get("output", tokens.get("out", 0))
+            elif event_type == "error":
+                agent_stats[agent]["error_count"] += 1
+            elif event_type in ("fact_added", "fact_modified"):
+                agent_stats[agent]["fact_count"] += 1
+            elif event_type == "tool_call":
+                agent_stats[agent]["tool_calls"] += 1
+                agent_stats[agent]["duration_ms"] += event.data.get("duration_ms", 0)
 
         total_duration = state.metrics["total_duration_ms"]
         total_tokens_in = state.metrics["total_tokens_in"]
@@ -73,6 +113,7 @@ class ChainMetrics:
             avg_fact_confidence=avg_confidence,
             token_efficiency=token_efficiency,
             error_rate=error_rate,
+            agent_stats=agent_stats,
             facts=state.facts,
         )
 
@@ -94,6 +135,7 @@ class ChainMetrics:
             "avg_fact_confidence": self.avg_fact_confidence,
             "token_efficiency": self.token_efficiency,
             "error_rate": self.error_rate,
+            "agent_stats": self.agent_stats,
         }
 
 

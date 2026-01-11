@@ -10,13 +10,13 @@ Usage:
 """
 
 from .aggregators import (
+    AgentAggregator,
     AggregatedAgentMetrics,
     AggregatedErrorMetrics,
     AggregatedFactMetrics,
     AggregatedLatencyMetrics,
     AggregatedMetrics,
     AggregatedTokenMetrics,
-    AgentAggregator,
     ErrorAggregator,
     FactAggregator,
     LatencyAggregator,

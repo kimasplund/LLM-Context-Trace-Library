@@ -91,6 +91,8 @@ class TestLCTLAutogenCallbackBasics:
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
         ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
+        ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
@@ -105,6 +107,8 @@ class TestLCTLAutogenCallbackBasics:
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
         ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
+        ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
@@ -116,6 +120,8 @@ class TestLCTLAutogenCallbackBasics:
         """Test callback creation with existing session."""
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
         ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
@@ -134,6 +140,8 @@ class TestLCTLAutogenCallbackAttach:
         """Test attaching callback to an agent."""
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
         ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
@@ -154,6 +162,8 @@ class TestLCTLAutogenCallbackAttach:
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
         ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
+        ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
@@ -171,6 +181,8 @@ class TestLCTLAutogenCallbackAttach:
         """Test that attaching agent records a fact."""
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
         ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
@@ -195,6 +207,8 @@ class TestLCTLAutogenCallbackGroupChat:
         """Test attaching callback to a GroupChat."""
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
         ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ), patch(
@@ -227,6 +241,8 @@ class TestLCTLAutogenCallbackGroupChat:
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
         ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
+        ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ), patch(
             "lctl.integrations.autogen.GroupChat", MockGroupChat
@@ -255,6 +271,8 @@ class TestLCTLAutogenCallbackNestedChats:
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
         ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
+        ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
@@ -277,6 +295,8 @@ class TestLCTLAutogenCallbackNestedChats:
         """Test ending a nested chat."""
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
         ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
@@ -301,6 +321,8 @@ class TestLCTLAutogenCallbackNestedChats:
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
         ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
+        ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
@@ -324,6 +346,8 @@ class TestLCTLAutogenCallbackNestedChats:
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
         ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
+        ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
@@ -342,6 +366,8 @@ class TestLCTLAutogenCallbackToolTracking:
         """Test recording a tool result."""
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
         ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
@@ -372,6 +398,8 @@ class TestLCTLAutogenCallbackErrorHandling:
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
         ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
+        ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
@@ -401,6 +429,8 @@ class TestLCTLAutogenCallbackExport:
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
         ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
+        ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
@@ -422,6 +452,8 @@ class TestLCTLAutogenCallbackExport:
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
         ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
+        ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
@@ -440,6 +472,8 @@ class TestLCTLAutogenCallbackHooks:
         """Test that before_send hook creates appropriate events."""
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
         ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
@@ -473,6 +507,8 @@ class TestLCTLAutogenCallbackHooks:
         """Test that before_send hook handles tool calls."""
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
         ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
@@ -509,6 +545,8 @@ class TestLCTLAutogenCallbackHooks:
         """Test that before_reply hook processes messages."""
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
         ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
@@ -618,6 +656,8 @@ class TestTraceAgentFunction:
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
         ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
+        ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
             from lctl.integrations.autogen import trace_agent
@@ -632,6 +672,8 @@ class TestTraceAgentFunction:
         """Test trace_agent with custom chain ID."""
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
         ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
@@ -650,6 +692,8 @@ class TestTraceGroupChatFunction:
         """Test trace_group_chat returns a callback."""
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
         ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ), patch(
@@ -671,6 +715,8 @@ class TestTraceGroupChatFunction:
         """Test trace_group_chat with manager."""
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
         ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ), patch(
@@ -696,6 +742,8 @@ class TestIntegration:
         """Test complete workflow: create, attach, record, export."""
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
         ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):
@@ -728,6 +776,8 @@ class TestIntegration:
         """Test workflow with nested conversations."""
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
         ), patch(
             "lctl.integrations.autogen.ConversableAgent", MockAgent
         ):

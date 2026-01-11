@@ -6,24 +6,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from ..core.events import Chain, ReplayEngine
-
 from .metrics import (
     ChainMetrics,
     MetricComparison,
     compute_all_metrics,
-    compute_error_rate,
-    compute_fact_confidence_avg,
-    compute_latency_diff,
-    compute_token_efficiency,
 )
 from .statistical import (
     StatisticalResult,
-    bootstrap_confidence_interval,
-    consensus_significant,
     is_significant,
-    mann_whitney_u,
     run_all_tests,
-    welch_t_test,
 )
 
 
