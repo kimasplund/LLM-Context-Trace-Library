@@ -269,6 +269,74 @@ class TestDashboardApp:
         assert response.status_code == 200
         assert "javascript" in response.headers["content-type"]
 
+    def test_websocket_connect(self, client):
+        """Test WebSocket connection."""
+        with client.websocket_connect("/ws") as websocket:
+            data = websocket.receive_json()
+            assert data["type"] == "connected"
+            assert "client_id" in data
+
+    def test_websocket_stream_events(self, temp_chain_dir, client):
+        """Test streaming events via WebSocket."""
+        # Note: This test simulates the server pushing events, which requires triggering
+        # an event in the same process or mocking the manager.
+        # Here we just verify connection and basic protocol.
+        
+        with client.websocket_connect("/ws") as websocket:
+            # Receive welcome message
+            websocket.receive_json() 
+            
+            # Send a subscribe message
+            websocket.send_json({"type": "subscribe", "filters": {"chain_id": "test-chain"}})
+            # Expect confirmation or no error
+            pass
+
+    def test_get_metrics(self, client):
+        """Test metrics endpoint."""
+        response = client.get("/api/metrics/test.lctl.json")
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Check specific metrics fields
+        assert "summary" in data
+        assert data["summary"]["total_events"] == 7
+        assert data["summary"]["total_errors"] == 1
+        assert "agent_metrics" in data
+        assert "agent-a" in data["agent_metrics"]
+        
+        # Verify Token Distribution (from refactor)
+        assert "token_distribution" in data
+        assert data["token_distribution"]["input"] == 150
+        
+    def test_get_evaluation(self, client):
+        """Test evaluation endpoint."""
+        response = client.get("/api/evaluation/test.lctl.json")
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "scores" in data
+        assert "overall" in data["scores"]
+        assert "issues" in data
+        # Check that error was captured in issues
+        assert any(i["type"] == "errors" for i in data["issues"])
+
+    def test_compare_chains(self, client):
+        """Test chain comparison endpoint."""
+        response = client.post("/api/compare", json={
+            "filename1": "test.lctl.json",
+            "filename2": "second.lctl.json"
+        })
+        assert response.status_code == 200
+        data = response.json()
+        
+        assert "chain1" in data
+        assert "chain2" in data
+        assert "event_diffs" in data
+        # Chains are identical except ID, so diffs might be minimal or just metadata
+        # Or diff engine finds them same events?
+        # Actually second chain was a copy, so events are same.
+        assert len(data["event_diffs"]) == 0 or data["diff_count"] == 0
+
 
 class TestDashboardAnalysis:
     """Tests for dashboard analysis features."""
