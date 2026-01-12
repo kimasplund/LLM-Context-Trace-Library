@@ -12,8 +12,9 @@ Usage:
 
 from __future__ import annotations
 
+import threading
 import time
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 from uuid import UUID
 
 from ..core.session import LCTLSession
@@ -105,8 +106,29 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         super().__init__()
         self.session = session or LCTLSession(chain_id=chain_id)
 
+        self._lock = threading.Lock()
         self._run_stack: Dict[UUID, Dict[str, Any]] = {}
         self._chain_depth = 0
+        self._monotonic_offset = time.time() - time.monotonic()
+
+    def cleanup_stale_runs(self, max_age_seconds: float = 3600) -> None:
+        """Remove run entries older than max_age_seconds.
+
+        This method cleans up orphaned run entries that may have been left
+        behind due to errors or incomplete callback sequences.
+
+        Args:
+            max_age_seconds: Maximum age in seconds before a run entry is
+                considered stale. Defaults to 3600 (1 hour).
+        """
+        now = time.monotonic()
+        with self._lock:
+            stale_ids = [
+                run_id for run_id, info in self._run_stack.items()
+                if now - info.get("start_time", now) > max_age_seconds
+            ]
+            for run_id in stale_ids:
+                self._run_stack.pop(run_id, None)
 
     @property
     def chain(self):
@@ -139,7 +161,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
     def on_llm_start(
         self,
         serialized: Dict[str, Any],
-        prompts: List[str],
+        prompts: Iterable[str],
         *,
         run_id: UUID,
         parent_run_id: Optional[UUID] = None,
@@ -149,20 +171,26 @@ class LCTLCallbackHandler(BaseCallbackHandler):
     ) -> None:
         """Called when LLM starts."""
         agent_name = self._get_agent_name(serialized, "llm")
-        prompt_summary = _truncate(prompts[0]) if prompts else ""
 
-        self._run_stack[run_id] = {
-            "type": "llm",
-            "agent": agent_name,
-            "start_time": time.time(),
-            "prompt_summary": prompt_summary,
-        }
+        prompts_list = list(prompts) if not isinstance(prompts, list) else prompts
+        prompt_summary = _truncate(prompts_list[0]) if prompts_list else ""
 
-        self.session.step_start(
-            agent=agent_name,
-            intent="llm_call",
-            input_summary=prompt_summary,
-        )
+        with self._lock:
+            self._run_stack[run_id] = {
+                "type": "llm",
+                "agent": agent_name,
+                "start_time": time.monotonic(),
+                "prompt_summary": prompt_summary,
+            }
+
+        try:
+            self.session.step_start(
+                agent=agent_name,
+                intent="llm_call",
+                input_summary=prompt_summary,
+            )
+        except Exception:
+            pass
 
     def on_llm_end(
         self,
@@ -173,10 +201,11 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Called when LLM ends."""
-        run_info = self._run_stack.pop(run_id, {})
+        with self._lock:
+            run_info = self._run_stack.pop(run_id, {})
         agent_name = run_info.get("agent", "llm")
-        start_time = run_info.get("start_time", time.time())
-        duration_ms = int((time.time() - start_time) * 1000)
+        start_time = run_info.get("start_time", time.monotonic())
+        duration_ms = int((time.monotonic() - start_time) * 1000)
 
         tokens = _extract_token_counts(response)
 
@@ -188,14 +217,17 @@ class LCTLCallbackHandler(BaseCallbackHandler):
             elif hasattr(first_gen, "message") and hasattr(first_gen.message, "content"):
                 output_text = first_gen.message.content
 
-        self.session.step_end(
-            agent=agent_name,
-            outcome="success",
-            output_summary=_truncate(output_text),
-            duration_ms=duration_ms,
-            tokens_in=tokens["input"],
-            tokens_out=tokens["output"],
-        )
+        try:
+            self.session.step_end(
+                agent=agent_name,
+                outcome="success",
+                output_summary=_truncate(output_text),
+                duration_ms=duration_ms,
+                tokens_in=tokens["input"],
+                tokens_out=tokens["output"],
+            )
+        except Exception:
+            pass
 
     def on_llm_error(
         self,
@@ -206,22 +238,26 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Called when LLM errors."""
-        run_info = self._run_stack.pop(run_id, {})
+        with self._lock:
+            run_info = self._run_stack.pop(run_id, {})
         agent_name = run_info.get("agent", "llm")
-        start_time = run_info.get("start_time", time.time())
-        duration_ms = int((time.time() - start_time) * 1000)
+        start_time = run_info.get("start_time", time.monotonic())
+        duration_ms = int((time.monotonic() - start_time) * 1000)
 
-        self.session.step_end(
-            agent=agent_name,
-            outcome="error",
-            duration_ms=duration_ms,
-        )
-        self.session.error(
-            category="llm_error",
-            error_type=type(error).__name__,
-            message=str(error),
-            recoverable=False,
-        )
+        try:
+            self.session.step_end(
+                agent=agent_name,
+                outcome="error",
+                duration_ms=duration_ms,
+            )
+            self.session.error(
+                category="llm_error",
+                error_type=type(error).__name__,
+                message=str(error),
+                recoverable=False,
+            )
+        except Exception:
+            pass
 
     def on_chat_model_start(
         self,
@@ -251,18 +287,22 @@ class LCTLCallbackHandler(BaseCallbackHandler):
                     elif isinstance(first_part, str):
                         message_summary = _truncate(first_part)
 
-        self._run_stack[run_id] = {
-            "type": "chat_model",
-            "agent": agent_name,
-            "start_time": time.time(),
-            "message_summary": message_summary,
-        }
+        with self._lock:
+            self._run_stack[run_id] = {
+                "type": "chat_model",
+                "agent": agent_name,
+                "start_time": time.monotonic(),
+                "message_summary": message_summary,
+            }
 
-        self.session.step_start(
-            agent=agent_name,
-            intent="chat_model_call",
-            input_summary=message_summary,
-        )
+        try:
+            self.session.step_start(
+                agent=agent_name,
+                intent="chat_model_call",
+                input_summary=message_summary,
+            )
+        except Exception:
+            pass
 
     def on_chain_start(
         self,
@@ -276,8 +316,10 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Called when chain starts."""
-        self._chain_depth += 1
-        agent_name = self._get_agent_name(serialized, f"chain_{self._chain_depth}")
+        with self._lock:
+            self._chain_depth += 1
+            current_depth = self._chain_depth
+        agent_name = self._get_agent_name(serialized, f"chain_{current_depth}")
 
         input_summary = ""
         if inputs:
@@ -287,19 +329,23 @@ class LCTLCallbackHandler(BaseCallbackHandler):
             else:
                 input_summary = _truncate(str(inputs))
 
-        self._run_stack[run_id] = {
-            "type": "chain",
-            "agent": agent_name,
-            "start_time": time.time(),
-            "depth": self._chain_depth,
-            "input_summary": input_summary,
-        }
+        with self._lock:
+            self._run_stack[run_id] = {
+                "type": "chain",
+                "agent": agent_name,
+                "start_time": time.monotonic(),
+                "depth": current_depth,
+                "input_summary": input_summary,
+            }
 
-        self.session.step_start(
-            agent=agent_name,
-            intent="chain_execution",
-            input_summary=input_summary,
-        )
+        try:
+            self.session.step_start(
+                agent=agent_name,
+                intent="chain_execution",
+                input_summary=input_summary,
+            )
+        except Exception:
+            pass
 
     def on_chain_end(
         self,
@@ -310,10 +356,11 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Called when chain ends."""
-        run_info = self._run_stack.pop(run_id, {})
+        with self._lock:
+            run_info = self._run_stack.pop(run_id, {})
         agent_name = run_info.get("agent", "chain")
-        start_time = run_info.get("start_time", time.time())
-        duration_ms = int((time.time() - start_time) * 1000)
+        start_time = run_info.get("start_time", time.monotonic())
+        duration_ms = int((time.monotonic() - start_time) * 1000)
 
         output_summary = ""
         if outputs:
@@ -323,15 +370,19 @@ class LCTLCallbackHandler(BaseCallbackHandler):
             else:
                 output_summary = _truncate(str(outputs))
 
-        self.session.step_end(
-            agent=agent_name,
-            outcome="success",
-            output_summary=output_summary,
-            duration_ms=duration_ms,
-        )
+        try:
+            self.session.step_end(
+                agent=agent_name,
+                outcome="success",
+                output_summary=output_summary,
+                duration_ms=duration_ms,
+            )
+        except Exception:
+            pass
 
-        if self._chain_depth > 0:
-            self._chain_depth -= 1
+        with self._lock:
+            if self._chain_depth > 0:
+                self._chain_depth -= 1
 
     def on_chain_error(
         self,
@@ -342,25 +393,30 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Called when chain errors."""
-        run_info = self._run_stack.pop(run_id, {})
+        with self._lock:
+            run_info = self._run_stack.pop(run_id, {})
         agent_name = run_info.get("agent", "chain")
-        start_time = run_info.get("start_time", time.time())
-        duration_ms = int((time.time() - start_time) * 1000)
+        start_time = run_info.get("start_time", time.monotonic())
+        duration_ms = int((time.monotonic() - start_time) * 1000)
 
-        self.session.step_end(
-            agent=agent_name,
-            outcome="error",
-            duration_ms=duration_ms,
-        )
-        self.session.error(
-            category="chain_error",
-            error_type=type(error).__name__,
-            message=str(error),
-            recoverable=False,
-        )
+        try:
+            self.session.step_end(
+                agent=agent_name,
+                outcome="error",
+                duration_ms=duration_ms,
+            )
+            self.session.error(
+                category="chain_error",
+                error_type=type(error).__name__,
+                message=str(error),
+                recoverable=False,
+            )
+        except Exception:
+            pass
 
-        if self._chain_depth > 0:
-            self._chain_depth -= 1
+        with self._lock:
+            if self._chain_depth > 0:
+                self._chain_depth -= 1
 
     def on_tool_start(
         self,
@@ -376,12 +432,13 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         """Called when tool starts."""
         tool_name = self._get_agent_name(serialized, "tool")
 
-        self._run_stack[run_id] = {
-            "type": "tool",
-            "tool_name": tool_name,
-            "start_time": time.time(),
-            "input": input_str,
-        }
+        with self._lock:
+            self._run_stack[run_id] = {
+                "type": "tool",
+                "tool_name": tool_name,
+                "start_time": time.monotonic(),
+                "input": input_str,
+            }
 
     def on_tool_end(
         self,
@@ -392,18 +449,22 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Called when tool ends."""
-        run_info = self._run_stack.pop(run_id, {})
+        with self._lock:
+            run_info = self._run_stack.pop(run_id, {})
         tool_name = run_info.get("tool_name", "tool")
-        start_time = run_info.get("start_time", time.time())
-        duration_ms = int((time.time() - start_time) * 1000)
+        start_time = run_info.get("start_time", time.monotonic())
+        duration_ms = int((time.monotonic() - start_time) * 1000)
         input_data = run_info.get("input", "")
 
-        self.session.tool_call(
-            tool=tool_name,
-            input_data=_truncate(input_data),
-            output_data=_truncate(output) if isinstance(output, str) else _truncate(str(output)),
-            duration_ms=duration_ms,
-        )
+        try:
+            self.session.tool_call(
+                tool=tool_name,
+                input_data=_truncate(input_data),
+                output_data=_truncate(output) if isinstance(output, str) else _truncate(str(output)),
+                duration_ms=duration_ms,
+            )
+        except Exception:
+            pass
 
     def on_tool_error(
         self,
@@ -414,24 +475,28 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Called when tool errors."""
-        run_info = self._run_stack.pop(run_id, {})
+        with self._lock:
+            run_info = self._run_stack.pop(run_id, {})
         tool_name = run_info.get("tool_name", "tool")
-        start_time = run_info.get("start_time", time.time())
-        duration_ms = int((time.time() - start_time) * 1000)
+        start_time = run_info.get("start_time", time.monotonic())
+        duration_ms = int((time.monotonic() - start_time) * 1000)
         input_data = run_info.get("input", "")
 
-        self.session.tool_call(
-            tool=tool_name,
-            input_data=_truncate(input_data),
-            output_data=f"ERROR: {type(error).__name__}: {error}",
-            duration_ms=duration_ms,
-        )
-        self.session.error(
-            category="tool_error",
-            error_type=type(error).__name__,
-            message=str(error),
-            recoverable=True,
-        )
+        try:
+            self.session.tool_call(
+                tool=tool_name,
+                input_data=_truncate(input_data),
+                output_data=f"ERROR: {type(error).__name__}: {error}",
+                duration_ms=duration_ms,
+            )
+            self.session.error(
+                category="tool_error",
+                error_type=type(error).__name__,
+                message=str(error),
+                recoverable=True,
+            )
+        except Exception:
+            pass
 
     def on_agent_action(
         self,
@@ -442,12 +507,15 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Called when agent takes an action."""
-        self.session.add_fact(
-            fact_id=f"action_{run_id.hex[:8]}",
-            text=f"Agent action: {action.tool} with input: {_truncate(str(action.tool_input))}",
-            confidence=1.0,
-            source="agent",
-        )
+        try:
+            self.session.add_fact(
+                fact_id=f"action_{run_id.hex[:8]}",
+                text=f"Agent action: {action.tool} with input: {_truncate(str(action.tool_input))}",
+                confidence=1.0,
+                source="agent",
+            )
+        except Exception:
+            pass
 
     def on_agent_finish(
         self,
@@ -458,13 +526,16 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Called when agent finishes."""
-        output = finish.return_values.get("output", "")
-        self.session.add_fact(
-            fact_id=f"finish_{run_id.hex[:8]}",
-            text=f"Agent finished: {_truncate(output)}",
-            confidence=1.0,
-            source="agent",
-        )
+        try:
+            output = finish.return_values.get("output", "")
+            self.session.add_fact(
+                fact_id=f"finish_{run_id.hex[:8]}",
+                text=f"Agent finished: {_truncate(output)}",
+                confidence=1.0,
+                source="agent",
+            )
+        except Exception:
+            pass
 
     def on_retriever_start(
         self,
@@ -480,12 +551,13 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         """Called when retriever starts."""
         retriever_name = self._get_agent_name(serialized, "retriever")
 
-        self._run_stack[run_id] = {
-            "type": "retriever",
-            "name": retriever_name,
-            "start_time": time.time(),
-            "query": query,
-        }
+        with self._lock:
+            self._run_stack[run_id] = {
+                "type": "retriever",
+                "name": retriever_name,
+                "start_time": time.monotonic(),
+                "query": query,
+            }
 
     def on_retriever_end(
         self,
@@ -496,18 +568,22 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Called when retriever ends."""
-        run_info = self._run_stack.pop(run_id, {})
+        with self._lock:
+            run_info = self._run_stack.pop(run_id, {})
         retriever_name = run_info.get("name", "retriever")
-        start_time = run_info.get("start_time", time.time())
-        duration_ms = int((time.time() - start_time) * 1000)
+        start_time = run_info.get("start_time", time.monotonic())
+        duration_ms = int((time.monotonic() - start_time) * 1000)
         query = run_info.get("query", "")
 
-        self.session.tool_call(
-            tool=retriever_name,
-            input_data=_truncate(query),
-            output_data=f"Retrieved {len(documents)} documents",
-            duration_ms=duration_ms,
-        )
+        try:
+            self.session.tool_call(
+                tool=retriever_name,
+                input_data=_truncate(query),
+                output_data=f"Retrieved {len(documents)} documents",
+                duration_ms=duration_ms,
+            )
+        except Exception:
+            pass
 
     def on_retriever_error(
         self,
@@ -518,24 +594,28 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Called when retriever errors."""
-        run_info = self._run_stack.pop(run_id, {})
+        with self._lock:
+            run_info = self._run_stack.pop(run_id, {})
         retriever_name = run_info.get("name", "retriever")
         query = run_info.get("query", "")
-        start_time = run_info.get("start_time", time.time())
-        duration_ms = int((time.time() - start_time) * 1000)
+        start_time = run_info.get("start_time", time.monotonic())
+        duration_ms = int((time.monotonic() - start_time) * 1000)
 
-        self.session.tool_call(
-            tool=retriever_name,
-            input_data=_truncate(query),
-            output_data=f"ERROR: {type(error).__name__}: {error}",
-            duration_ms=duration_ms,
-        )
-        self.session.error(
-            category="retriever_error",
-            error_type=type(error).__name__,
-            message=str(error),
-            recoverable=True,
-        )
+        try:
+            self.session.tool_call(
+                tool=retriever_name,
+                input_data=_truncate(query),
+                output_data=f"ERROR: {type(error).__name__}: {error}",
+                duration_ms=duration_ms,
+            )
+            self.session.error(
+                category="retriever_error",
+                error_type=type(error).__name__,
+                message=str(error),
+                recoverable=True,
+            )
+        except Exception:
+            pass
 
 
 class LCTLChain:
@@ -657,6 +737,54 @@ class LCTLChain:
         async for chunk in self._chain.astream(input, config=config, **kwargs):
             yield chunk
 
+    def batch(
+        self,
+        inputs: List[Any],
+        config: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> List[Any]:
+        """Batch invoke the chain with LCTL tracing.
+
+        Args:
+            inputs: List of inputs to process in parallel.
+            config: Optional config dict. Callbacks will be merged.
+            **kwargs: Additional arguments passed to the chain.
+
+        Returns:
+            List of the chain's outputs.
+        """
+        config = config or {}
+        existing_callbacks = config.get("callbacks", [])
+        if not isinstance(existing_callbacks, list):
+            existing_callbacks = [existing_callbacks]
+        config["callbacks"] = existing_callbacks + [self.handler]
+
+        return self._chain.batch(inputs, config=config, **kwargs)
+
+    async def abatch(
+        self,
+        inputs: List[Any],
+        config: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> List[Any]:
+        """Async batch invoke the chain with LCTL tracing.
+
+        Args:
+            inputs: List of inputs to process in parallel.
+            config: Optional config dict. Callbacks will be merged.
+            **kwargs: Additional arguments passed to the chain.
+
+        Returns:
+            List of the chain's outputs.
+        """
+        config = config or {}
+        existing_callbacks = config.get("callbacks", [])
+        if not isinstance(existing_callbacks, list):
+            existing_callbacks = [existing_callbacks]
+        config["callbacks"] = existing_callbacks + [self.handler]
+
+        return await self._chain.abatch(inputs, config=config, **kwargs)
+
     def export(self, path: str) -> None:
         """Export the LCTL trace to a file."""
         self.handler.export(path)
@@ -698,3 +826,14 @@ def is_available() -> bool:
         True if LangChain is installed, False otherwise.
     """
     return LANGCHAIN_AVAILABLE
+
+
+__all__ = [
+    "LANGCHAIN_AVAILABLE",
+    "LCTLCallbackHandler",
+    "LCTLChain",
+    "trace_chain",
+    "is_available",
+    "_truncate",
+    "_extract_token_counts",
+]

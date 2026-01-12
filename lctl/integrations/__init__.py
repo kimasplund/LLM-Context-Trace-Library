@@ -19,6 +19,15 @@ from .autogen import (
 from .autogen import (
     trace_agent as trace_autogen_agent,
 )
+from .crewai import (
+    LCTLAgent,
+    LCTLTask,
+    LCTLCrew,
+    trace_crew,
+)
+from .crewai import (
+    is_available as crewai_available,
+)
 from .dspy import (
     DSPyModuleContext,
     LCTLDSPyCallback,
@@ -56,6 +65,13 @@ from .openai_agents import (
 from .openai_agents import (
     is_available as openai_agents_available,
 )
+from .semantic_kernel import (
+    LCTLSemanticKernelTracer,
+    trace_kernel,
+)
+from .semantic_kernel import (
+    is_available as semantic_kernel_available,
+)
 
 __all__ = [
     # Claude Code integration
@@ -80,6 +96,12 @@ __all__ = [
     "trace_autogen_agent",
     "trace_group_chat",
     "autogen_available",
+    # CrewAI integration
+    "LCTLAgent",
+    "LCTLTask",
+    "LCTLCrew",
+    "trace_crew",
+    "crewai_available",
     # LlamaIndex integration
     "LCTLLlamaIndexCallback",
     "LCTLQueryEngine",
@@ -94,4 +116,8 @@ __all__ = [
     "DSPyModuleContext",
     "trace_module",
     "dspy_available",
+    # Semantic Kernel integration
+    "LCTLSemanticKernelTracer",
+    "trace_kernel",
+    "semantic_kernel_available",
 ]

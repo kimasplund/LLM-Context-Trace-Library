@@ -273,7 +273,7 @@ class TestLCTLDSPyCallbackLLMCalls:
     """Tests for LLM call tracing."""
 
     def test_on_llm_call(self, mock_dspy):
-        """Test on_llm_call records tool_call event."""
+        """Test on_llm_call records llm_trace event."""
         with patch(
             "lctl.integrations.dspy.DSPY_AVAILABLE", True
         ):
@@ -292,12 +292,14 @@ class TestLCTLDSPyCallbackLLMCalls:
 
             assert callback._llm_call_count == 1
 
-            tool_events = [
-                e for e in callback.chain.events if e.type == EventType.TOOL_CALL
+            llm_events = [
+                e for e in callback.chain.events if e.type == EventType.LLM_TRACE
             ]
-            assert len(tool_events) == 1
-            assert tool_events[0].data["tool"] == "llm:gpt-4"
-            assert tool_events[0].data["duration_ms"] == 100
+            assert len(llm_events) == 1
+            assert llm_events[0].data["model"] == "gpt-4"
+            assert llm_events[0].data["duration_ms"] == 100
+            assert llm_events[0].data["usage"]["input"] == 10
+            assert llm_events[0].data["usage"]["output"] == 5
 
     def test_on_llm_call_records_usage_fact(self, mock_dspy):
         """Test on_llm_call records token usage as fact."""

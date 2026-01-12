@@ -18,6 +18,7 @@ Usage:
 
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -49,9 +50,7 @@ class LlamaIndexNotAvailableError(ImportError):
     """Raised when LlamaIndex is not installed."""
 
     def __init__(self) -> None:
-        super().__init__(
-            "LlamaIndex is not installed. Install with: pip install llama-index"
-        )
+        super().__init__("LlamaIndex is not installed. Install with: pip install llama-index")
 
 
 def _check_llamaindex_available() -> None:
@@ -62,6 +61,9 @@ def _check_llamaindex_available() -> None:
 
 def _truncate(text: str, max_length: int = 200) -> str:
     """Truncate text for summaries."""
+    if not text:
+        return ""
+    text = str(text)
     if len(text) <= max_length:
         return text
     return text[: max_length - 3] + "..."
@@ -131,6 +133,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
         self.session = session or LCTLSession(chain_id=chain_id)
         self._event_stack: Dict[str, Dict[str, Any]] = {}
         self._query_depth = 0
+        self._lock = threading.Lock()
 
     @property
     def chain(self):
@@ -158,6 +161,26 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
         """Export the LCTL chain as a dictionary."""
         return self.session.to_dict()
 
+    def _safe_session_call(self, method_name: str, *args: Any, **kwargs: Any) -> None:
+        """Safely call a session method with graceful degradation."""
+        try:
+            method = getattr(self.session, method_name)
+            method(*args, **kwargs)
+        except Exception:
+            pass
+
+    def _cleanup_stale_events(self, max_age_seconds: float = 3600.0) -> None:
+        """Clean up stale events from the event stack."""
+        current_time = time.time()
+        with self._lock:
+            stale_ids = [
+                event_id
+                for event_id, info in self._event_stack.items()
+                if current_time - info.get("start_time", current_time) > max_age_seconds
+            ]
+            for event_id in stale_ids:
+                del self._event_stack[event_id]
+
     def on_event_start(
         self,
         event_type: "CBEventType",
@@ -170,37 +193,42 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
         payload = payload or {}
         event_name = _get_event_name(event_type)
 
-        self._event_stack[event_id] = {
-            "type": event_type,
-            "start_time": time.time(),
-            "parent_id": parent_id,
-        }
+        with self._lock:
+            self._event_stack[event_id] = {
+                "type": event_type,
+                "start_time": time.time(),
+                "parent_id": parent_id,
+            }
 
         if CBEventType is None:
             return event_id
 
-        if event_type == CBEventType.LLM:
-            self._on_llm_start(event_id, payload)
-        elif event_type == CBEventType.QUERY:
-            self._on_query_start(event_id, payload)
-        elif event_type == CBEventType.RETRIEVE:
-            self._on_retrieval_start(event_id, payload)
-        elif event_type == CBEventType.EMBEDDING:
-            self._on_embedding_start(event_id, payload)
-        elif event_type == CBEventType.SYNTHESIZE:
-            self._on_synthesize_start(event_id, payload)
-        elif event_type == CBEventType.TEMPLATING:
-            self._on_templating_start(event_id, payload)
-        elif event_type == CBEventType.CHUNKING:
-            self._on_chunking_start(event_id, payload)
-        elif event_type == CBEventType.RERANKING:
-            self._on_reranking_start(event_id, payload)
-        else:
-            self.session.step_start(
-                agent=f"llamaindex_{event_name}",
-                intent=event_name,
-                input_summary=f"Event: {event_name}",
-            )
+        try:
+            if event_type == CBEventType.LLM:
+                self._on_llm_start(event_id, payload)
+            elif event_type == CBEventType.QUERY:
+                self._on_query_start(event_id, payload)
+            elif event_type == CBEventType.RETRIEVE:
+                self._on_retrieval_start(event_id, payload)
+            elif event_type == CBEventType.EMBEDDING:
+                self._on_embedding_start(event_id, payload)
+            elif event_type == CBEventType.SYNTHESIZE:
+                self._on_synthesize_start(event_id, payload)
+            elif event_type == CBEventType.TEMPLATING:
+                self._on_templating_start(event_id, payload)
+            elif event_type == CBEventType.CHUNKING:
+                self._on_chunking_start(event_id, payload)
+            elif event_type == CBEventType.RERANKING:
+                self._on_reranking_start(event_id, payload)
+            else:
+                self._safe_session_call(
+                    "step_start",
+                    agent=f"llamaindex_{event_name}",
+                    intent=event_name,
+                    input_summary=f"Event: {event_name}",
+                )
+        except Exception:
+            pass
 
         return event_id
 
@@ -213,37 +241,100 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
     ) -> None:
         """Handle event end."""
         payload = payload or {}
-        event_info = self._event_stack.pop(event_id, {})
+
+        with self._lock:
+            event_info = self._event_stack.pop(event_id, {})
+
         start_time = event_info.get("start_time", time.time())
         duration_ms = int((time.time() - start_time) * 1000)
 
         if CBEventType is None:
             return
 
-        if event_type == CBEventType.LLM:
-            self._on_llm_end(event_id, payload, duration_ms)
-        elif event_type == CBEventType.QUERY:
-            self._on_query_end(event_id, payload, duration_ms)
-        elif event_type == CBEventType.RETRIEVE:
-            self._on_retrieval_end(event_id, payload, duration_ms)
-        elif event_type == CBEventType.EMBEDDING:
-            self._on_embedding_end(event_id, payload, duration_ms)
-        elif event_type == CBEventType.SYNTHESIZE:
-            self._on_synthesize_end(event_id, payload, duration_ms)
-        elif event_type == CBEventType.TEMPLATING:
-            self._on_templating_end(event_id, payload, duration_ms)
-        elif event_type == CBEventType.CHUNKING:
-            self._on_chunking_end(event_id, payload, duration_ms)
-        elif event_type == CBEventType.RERANKING:
-            self._on_reranking_end(event_id, payload, duration_ms)
-        else:
-            event_name = _get_event_name(event_type)
+        try:
+            if event_type == CBEventType.LLM:
+                self._on_llm_end(event_id, payload, duration_ms, event_info)
+            elif event_type == CBEventType.QUERY:
+                self._on_query_end(event_id, payload, duration_ms, event_info)
+            elif event_type == CBEventType.RETRIEVE:
+                self._on_retrieval_end(event_id, payload, duration_ms, event_info)
+            elif event_type == CBEventType.EMBEDDING:
+                self._on_embedding_end(event_id, payload, duration_ms, event_info)
+            elif event_type == CBEventType.SYNTHESIZE:
+                self._on_synthesize_end(event_id, payload, duration_ms, event_info)
+            elif event_type == CBEventType.TEMPLATING:
+                self._on_templating_end(event_id, payload, duration_ms, event_info)
+            elif event_type == CBEventType.CHUNKING:
+                self._on_chunking_end(event_id, payload, duration_ms, event_info)
+            elif event_type == CBEventType.RERANKING:
+                self._on_reranking_end(event_id, payload, duration_ms, event_info)
+            else:
+                event_name = _get_event_name(event_type)
+                self._safe_session_call(
+                    "step_end",
+                    agent=f"llamaindex_{event_name}",
+                    outcome="success",
+                    output_summary=f"Completed: {event_name}",
+                    duration_ms=duration_ms,
+                )
+        except Exception:
+            pass
+
+    def on_event_error(
+        self,
+        event_type: "CBEventType",
+        error: BaseException,
+        event_id: str = "",
+        **kwargs: Any,
+    ) -> None:
+        """Handle event error."""
+        with self._lock:
+            event_info = self._event_stack.pop(event_id, {})
+
+        start_time = event_info.get("start_time", time.time())
+        duration_ms = int((time.time() - start_time) * 1000)
+        event_name = _get_event_name(event_type)
+
+        agent_name = self._get_agent_for_event_type(event_type, event_info)
+
+        try:
             self.session.step_end(
-                agent=f"llamaindex_{event_name}",
-                outcome="success",
-                output_summary=f"Completed: {event_name}",
+                agent=agent_name,
+                outcome="error",
+                output_summary=_truncate(str(error)),
                 duration_ms=duration_ms,
             )
+            self.session.error(
+                category=f"{event_name}_error",
+                error_type=type(error).__name__,
+                message=str(error),
+                recoverable=False,
+            )
+        except Exception:
+            pass
+
+        with self._lock:
+            if event_type == CBEventType.QUERY and self._query_depth > 0:
+                self._query_depth -= 1
+
+    def _get_agent_for_event_type(
+        self, event_type: "CBEventType", event_info: Dict[str, Any]
+    ) -> str:
+        """Get the agent name for an event type."""
+        if CBEventType is None:
+            return "llamaindex"
+
+        agent_map = {
+            CBEventType.LLM: "llm",
+            CBEventType.QUERY: "query_engine",
+            CBEventType.RETRIEVE: "retriever",
+            CBEventType.EMBEDDING: "embedding",
+            CBEventType.SYNTHESIZE: "synthesizer",
+            CBEventType.TEMPLATING: "templater",
+            CBEventType.CHUNKING: "chunker",
+            CBEventType.RERANKING: "reranker",
+        }
+        return agent_map.get(event_type, f"llamaindex_{_get_event_name(event_type)}")
 
     def _on_llm_start(self, event_id: str, payload: Dict[str, Any]) -> None:
         """Handle LLM start event."""
@@ -263,16 +354,23 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
         elif prompt:
             input_summary = _truncate(str(prompt))
 
-        self._event_stack[event_id]["input_summary"] = input_summary
+        with self._lock:
+            if event_id in self._event_stack:
+                self._event_stack[event_id]["input_summary"] = input_summary
 
-        self.session.step_start(
+        self._safe_session_call(
+            "step_start",
             agent="llm",
             intent="llm_call",
             input_summary=input_summary,
         )
 
     def _on_llm_end(
-        self, event_id: str, payload: Dict[str, Any], duration_ms: int
+        self,
+        event_id: str,
+        payload: Dict[str, Any],
+        duration_ms: int,
+        event_info: Dict[str, Any],
     ) -> None:
         """Handle LLM end event."""
         tokens = _extract_token_counts(payload)
@@ -292,7 +390,8 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             if completion and not response_text:
                 response_text = str(completion)
 
-        self.session.step_end(
+        self._safe_session_call(
+            "step_end",
             agent="llm",
             outcome="success",
             output_summary=_truncate(response_text),
@@ -303,21 +402,32 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
 
     def _on_query_start(self, event_id: str, payload: Dict[str, Any]) -> None:
         """Handle query start event."""
-        self._query_depth += 1
+        with self._lock:
+            self._query_depth += 1
+            if self._query_depth > 100:
+                self._query_depth = 100
+
         query_str = ""
         if EventPayload is not None:
             query_str = str(payload.get(EventPayload.QUERY_STR, ""))
 
-        self._event_stack[event_id]["query"] = query_str
+        with self._lock:
+            if event_id in self._event_stack:
+                self._event_stack[event_id]["query"] = query_str
 
-        self.session.step_start(
+        self._safe_session_call(
+            "step_start",
             agent="query_engine",
             intent="query",
             input_summary=_truncate(query_str) if query_str else "Query execution",
         )
 
     def _on_query_end(
-        self, event_id: str, payload: Dict[str, Any], duration_ms: int
+        self,
+        event_id: str,
+        payload: Dict[str, Any],
+        duration_ms: int,
+        event_info: Dict[str, Any],
     ) -> None:
         """Handle query end event."""
         response_text = ""
@@ -329,15 +439,17 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
                 else:
                     response_text = str(response)
 
-        self.session.step_end(
+        self._safe_session_call(
+            "step_end",
             agent="query_engine",
             outcome="success",
             output_summary=_truncate(response_text),
             duration_ms=duration_ms,
         )
 
-        if self._query_depth > 0:
-            self._query_depth -= 1
+        with self._lock:
+            if self._query_depth > 0:
+                self._query_depth -= 1
 
     def _on_retrieval_start(self, event_id: str, payload: Dict[str, Any]) -> None:
         """Handle retrieval start event."""
@@ -345,16 +457,23 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
         if EventPayload is not None:
             query_str = str(payload.get(EventPayload.QUERY_STR, ""))
 
-        self._event_stack[event_id]["query"] = query_str
+        with self._lock:
+            if event_id in self._event_stack:
+                self._event_stack[event_id]["query"] = query_str
 
-        self.session.step_start(
+        self._safe_session_call(
+            "step_start",
             agent="retriever",
             intent="retrieve",
             input_summary=_truncate(query_str) if query_str else "Retrieval",
         )
 
     def _on_retrieval_end(
-        self, event_id: str, payload: Dict[str, Any], duration_ms: int
+        self,
+        event_id: str,
+        payload: Dict[str, Any],
+        duration_ms: int,
+        event_info: Dict[str, Any],
     ) -> None:
         """Handle retrieval end event."""
         num_nodes = 0
@@ -362,17 +481,18 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             nodes = payload.get(EventPayload.NODES, [])
             num_nodes = len(nodes) if nodes else 0
 
-        event_info = self._event_stack.get(event_id, {})
         query = event_info.get("query", "")
 
-        self.session.tool_call(
+        self._safe_session_call(
+            "tool_call",
             tool="retriever",
             input_data=_truncate(query) if query else "retrieval query",
             output_data=f"Retrieved {num_nodes} nodes",
             duration_ms=duration_ms,
         )
 
-        self.session.step_end(
+        self._safe_session_call(
+            "step_end",
             agent="retriever",
             outcome="success",
             output_summary=f"Retrieved {num_nodes} nodes",
@@ -391,7 +511,8 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
                     node_text = node.get_content()
 
                 if node_text:
-                    self.session.add_fact(
+                    self._safe_session_call(
+                        "add_fact",
                         fact_id=f"retrieved-{event_id[:8]}-{i}",
                         text=_truncate(node_text, 300),
                         confidence=1.0,
@@ -400,14 +521,19 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
 
     def _on_embedding_start(self, event_id: str, payload: Dict[str, Any]) -> None:
         """Handle embedding start event."""
-        self.session.step_start(
+        self._safe_session_call(
+            "step_start",
             agent="embedding",
             intent="generate_embedding",
             input_summary="Generating embeddings",
         )
 
     def _on_embedding_end(
-        self, event_id: str, payload: Dict[str, Any], duration_ms: int
+        self,
+        event_id: str,
+        payload: Dict[str, Any],
+        duration_ms: int,
+        event_info: Dict[str, Any],
     ) -> None:
         """Handle embedding end event."""
         num_chunks = 0
@@ -415,7 +541,8 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             chunks = payload.get(EventPayload.CHUNKS, [])
             num_chunks = len(chunks) if chunks else 0
 
-        self.session.step_end(
+        self._safe_session_call(
+            "step_end",
             agent="embedding",
             outcome="success",
             output_summary=f"Generated embeddings for {num_chunks} chunks",
@@ -428,14 +555,19 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
         if EventPayload is not None:
             query_str = str(payload.get(EventPayload.QUERY_STR, ""))
 
-        self.session.step_start(
+        self._safe_session_call(
+            "step_start",
             agent="synthesizer",
             intent="synthesize",
             input_summary=_truncate(query_str) if query_str else "Response synthesis",
         )
 
     def _on_synthesize_end(
-        self, event_id: str, payload: Dict[str, Any], duration_ms: int
+        self,
+        event_id: str,
+        payload: Dict[str, Any],
+        duration_ms: int,
+        event_info: Dict[str, Any],
     ) -> None:
         """Handle synthesize end event."""
         response_text = ""
@@ -447,7 +579,8 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
                 else:
                     response_text = str(response)
 
-        self.session.step_end(
+        self._safe_session_call(
+            "step_end",
             agent="synthesizer",
             outcome="success",
             output_summary=_truncate(response_text),
@@ -460,17 +593,23 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
         if EventPayload is not None:
             template = str(payload.get(EventPayload.TEMPLATE, ""))
 
-        self.session.step_start(
+        self._safe_session_call(
+            "step_start",
             agent="templater",
             intent="template",
             input_summary=_truncate(template) if template else "Template processing",
         )
 
     def _on_templating_end(
-        self, event_id: str, payload: Dict[str, Any], duration_ms: int
+        self,
+        event_id: str,
+        payload: Dict[str, Any],
+        duration_ms: int,
+        event_info: Dict[str, Any],
     ) -> None:
         """Handle templating end event."""
-        self.session.step_end(
+        self._safe_session_call(
+            "step_end",
             agent="templater",
             outcome="success",
             output_summary="Template processed",
@@ -479,14 +618,19 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
 
     def _on_chunking_start(self, event_id: str, payload: Dict[str, Any]) -> None:
         """Handle chunking start event."""
-        self.session.step_start(
+        self._safe_session_call(
+            "step_start",
             agent="chunker",
             intent="chunk",
             input_summary="Document chunking",
         )
 
     def _on_chunking_end(
-        self, event_id: str, payload: Dict[str, Any], duration_ms: int
+        self,
+        event_id: str,
+        payload: Dict[str, Any],
+        duration_ms: int,
+        event_info: Dict[str, Any],
     ) -> None:
         """Handle chunking end event."""
         num_chunks = 0
@@ -494,7 +638,8 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             chunks = payload.get(EventPayload.CHUNKS, [])
             num_chunks = len(chunks) if chunks else 0
 
-        self.session.step_end(
+        self._safe_session_call(
+            "step_end",
             agent="chunker",
             outcome="success",
             output_summary=f"Created {num_chunks} chunks",
@@ -507,14 +652,19 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
         if EventPayload is not None:
             query_str = str(payload.get(EventPayload.QUERY_STR, ""))
 
-        self.session.step_start(
+        self._safe_session_call(
+            "step_start",
             agent="reranker",
             intent="rerank",
             input_summary=_truncate(query_str) if query_str else "Reranking nodes",
         )
 
     def _on_reranking_end(
-        self, event_id: str, payload: Dict[str, Any], duration_ms: int
+        self,
+        event_id: str,
+        payload: Dict[str, Any],
+        duration_ms: int,
+        event_info: Dict[str, Any],
     ) -> None:
         """Handle reranking end event."""
         num_nodes = 0
@@ -522,7 +672,8 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             nodes = payload.get(EventPayload.NODES, [])
             num_nodes = len(nodes) if nodes else 0
 
-        self.session.step_end(
+        self._safe_session_call(
+            "step_end",
             agent="reranker",
             outcome="success",
             output_summary=f"Reranked {num_nodes} nodes",
@@ -540,6 +691,41 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
     ) -> None:
         """End a trace (required by BaseCallbackHandler interface)."""
         pass
+
+
+def _is_already_traced(engine: Any) -> bool:
+    """Check if an engine is already being traced by LCTL."""
+    if not hasattr(engine, "callback_manager") or engine.callback_manager is None:
+        return False
+
+    for handler in engine.callback_manager.handlers:
+        if isinstance(handler, LCTLLlamaIndexCallback):
+            return True
+    return False
+
+
+def _merge_callback_manager(
+    existing_manager: Any,
+    new_handler: LCTLLlamaIndexCallback,
+) -> "CallbackManager":
+    """Merge a new handler into an existing callback manager, preserving state."""
+    _check_llamaindex_available()
+
+    if existing_manager is None:
+        return CallbackManager([new_handler])
+
+    existing_handlers = list(existing_manager.handlers) if existing_manager.handlers else []
+
+    new_manager = CallbackManager(existing_handlers + [new_handler])
+
+    if hasattr(existing_manager, "trace_map"):
+        new_manager.trace_map = existing_manager.trace_map
+    if hasattr(existing_manager, "event_starts_to_ignore"):
+        new_manager.event_starts_to_ignore = existing_manager.event_starts_to_ignore
+    if hasattr(existing_manager, "event_ends_to_ignore"):
+        new_manager.event_ends_to_ignore = existing_manager.event_ends_to_ignore
+
+    return new_manager
 
 
 class LCTLQueryEngine:
@@ -563,8 +749,17 @@ class LCTLQueryEngine:
             query_engine: The LlamaIndex query engine to wrap.
             chain_id: Optional chain ID for LCTL session.
             session: Optional existing LCTL session to use.
+
+        Raises:
+            ValueError: If the query engine is already being traced by LCTL.
         """
         _check_llamaindex_available()
+
+        if _is_already_traced(query_engine):
+            raise ValueError(
+                "Query engine is already being traced by LCTL. "
+                "Use the existing tracer or remove it first."
+            )
 
         self._query_engine = query_engine
         self._callback = LCTLLlamaIndexCallback(
@@ -573,11 +768,9 @@ class LCTLQueryEngine:
         )
 
         if hasattr(query_engine, "callback_manager"):
-            existing_handlers = []
-            if query_engine.callback_manager:
-                existing_handlers = list(query_engine.callback_manager.handlers)
-            query_engine.callback_manager = CallbackManager(
-                existing_handlers + [self._callback]
+            query_engine.callback_manager = _merge_callback_manager(
+                query_engine.callback_manager,
+                self._callback,
             )
 
     @property
@@ -653,8 +846,17 @@ class LCTLChatEngine:
             chat_engine: The LlamaIndex chat engine to wrap.
             chain_id: Optional chain ID for LCTL session.
             session: Optional existing LCTL session to use.
+
+        Raises:
+            ValueError: If the chat engine is already being traced by LCTL.
         """
         _check_llamaindex_available()
+
+        if _is_already_traced(chat_engine):
+            raise ValueError(
+                "Chat engine is already being traced by LCTL. "
+                "Use the existing tracer or remove it first."
+            )
 
         self._chat_engine = chat_engine
         self._callback = LCTLLlamaIndexCallback(
@@ -663,11 +865,9 @@ class LCTLChatEngine:
         )
 
         if hasattr(chat_engine, "callback_manager"):
-            existing_handlers = []
-            if chat_engine.callback_manager:
-                existing_handlers = list(chat_engine.callback_manager.handlers)
-            chat_engine.callback_manager = CallbackManager(
-                existing_handlers + [self._callback]
+            chat_engine.callback_manager = _merge_callback_manager(
+                chat_engine.callback_manager,
+                self._callback,
             )
 
     @property
@@ -766,6 +966,9 @@ def trace_query_engine(
     Returns:
         An LCTLQueryEngine wrapper with tracing enabled.
 
+    Raises:
+        ValueError: If the query engine is already being traced by LCTL.
+
     Example:
         from llama_index.core import VectorStoreIndex
         from lctl.integrations.llamaindex import trace_query_engine
@@ -794,6 +997,9 @@ def trace_chat_engine(
 
     Returns:
         An LCTLChatEngine wrapper with tracing enabled.
+
+    Raises:
+        ValueError: If the chat engine is already being traced by LCTL.
 
     Example:
         from llama_index.core import VectorStoreIndex

@@ -10,7 +10,8 @@ Requires:
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Optional
+import time
+from typing import Any, Callable, Dict, Optional
 
 from ..core.session import LCTLSession
 
@@ -28,6 +29,13 @@ try:
     SK_AVAILABLE = True
 except ImportError:
     SK_AVAILABLE = False
+
+
+def _truncate(text: str, max_length: int = 200) -> str:
+    """Truncate text for summaries."""
+    if len(text) <= max_length:
+        return text
+    return text[:max_length - 3] + "..."
 
 
 class SemanticKernelNotAvailableError(ImportError):
@@ -65,16 +73,31 @@ class LCTLSemanticKernelTracer:
         )
         self._verbose = verbose
         self._logger = logging.getLogger(__name__)
+        self._traced_kernels: set = set()  # Track kernels to prevent double-tracing
 
     @property
     def chain(self):
         return self.session.chain
+
+    def export(self, path: str) -> None:
+        """Export the LCTL chain to a file."""
+        self.session.export(path)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Export the LCTL chain as a dictionary."""
+        return self.session.to_dict()
 
     def trace_kernel(self, kernel: Kernel) -> Kernel:
         """Attach tracing to a Semantic Kernel instance.
 
         Adds filters to the kernel.
         """
+        kernel_id = id(kernel)
+        if kernel_id in self._traced_kernels:
+            self._logger.warning("Kernel already traced, skipping to prevent double-tracing")
+            return kernel
+
+        self._traced_kernels.add(kernel_id)
         kernel.add_filter(FilterTypes.FUNCTION_INVOCATION, self._function_invocation_filter)
         kernel.add_filter(FilterTypes.PROMPT_RENDERING, self._prompt_render_filter)
         return kernel
@@ -112,7 +135,7 @@ class LCTLSemanticKernelTracer:
         full_name = f"{plugin_name}.{function_name}"
 
         # Summarize inputs
-        input_summary = str(context.arguments)
+        input_summary = _truncate(str(context.arguments))
 
         self.session.step_start(
             agent=full_name,
@@ -120,52 +143,60 @@ class LCTLSemanticKernelTracer:
             input_summary=input_summary
         )
 
+        start_time = time.time()
+
         try:
             # 2. Execute next filter/function directly
             await next(context)
 
             # 3. Handle Result (Streaming vs Non-Streaming)
             result = context.result
-            
+
             # Check for streaming (AsyncGenerator) in result.value
             if result and hasattr(result, "value") and hasattr(result.value, "__aiter__"):
                 original_stream = result.value
-                
+                stream_start_time = time.time()
+
                 async def stream_wrapper():
                     accumulated_content = ""
                     tokens_in = 0
                     tokens_out = 0
-                    
+                    stream_completed = False
+
                     try:
                         async for chunk in original_stream:
                             # Accumulate content
                             chunk_str = str(chunk)
                             accumulated_content += chunk_str
-                            
+
                             # Check for usage in chunk metadata
                             if hasattr(chunk, "metadata") and chunk.metadata:
                                 usage = chunk.metadata.get("usage")
                                 if usage:
-                                     if hasattr(usage, "prompt_tokens"):
-                                         tokens_in = usage.prompt_tokens
-                                     elif isinstance(usage, dict):
-                                         tokens_in = usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0)
+                                    if hasattr(usage, "prompt_tokens"):
+                                        tokens_in = usage.prompt_tokens
+                                    elif isinstance(usage, dict):
+                                        tokens_in = usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0)
 
-                                     if hasattr(usage, "completion_tokens"):
-                                         tokens_out = usage.completion_tokens
-                                     elif isinstance(usage, dict):
-                                         tokens_out = usage.get("completion_tokens", 0) or usage.get("output_tokens", 0)
-                            
+                                    if hasattr(usage, "completion_tokens"):
+                                        tokens_out = usage.completion_tokens
+                                    elif isinstance(usage, dict):
+                                        tokens_out = usage.get("completion_tokens", 0) or usage.get("output_tokens", 0)
+
                             yield chunk
-                        
+
                         # Stream finished successfully
+                        stream_completed = True
+                        duration_ms = int((time.time() - stream_start_time) * 1000)
                         self.session.step_end(
+                            agent=full_name,
                             outcome="success",
-                            output_summary=accumulated_content,
+                            output_summary=_truncate(accumulated_content),
+                            duration_ms=duration_ms,
                             tokens_in=tokens_in,
                             tokens_out=tokens_out
                         )
-                        
+
                     except Exception as e:
                         # Stream error
                         self.session.error(
@@ -174,15 +205,36 @@ class LCTLSemanticKernelTracer:
                             message=str(e),
                             recoverable=False
                         )
-                        self.session.step_end(outcome="error")
+                        duration_ms = int((time.time() - stream_start_time) * 1000)
+                        self.session.step_end(
+                            agent=full_name,
+                            outcome="error",
+                            duration_ms=duration_ms
+                        )
                         raise
+                    finally:
+                        # Ensure step_end is called even if stream is abandoned
+                        if not stream_completed:
+                            try:
+                                duration_ms = int((time.time() - stream_start_time) * 1000)
+                                self.session.step_end(
+                                    agent=full_name,
+                                    outcome="abandoned",
+                                    output_summary=_truncate(accumulated_content),
+                                    duration_ms=duration_ms,
+                                    tokens_in=tokens_in,
+                                    tokens_out=tokens_out
+                                )
+                            except Exception:
+                                pass  # Don't fail if cleanup fails
 
                 # Replace the stream with our wrapper
                 result.value = stream_wrapper()
                 return
 
             # Non-streaming handling
-            output_summary = str(result) if result else ""
+            duration_ms = int((time.time() - start_time) * 1000)
+            output_summary = _truncate(str(result)) if result else ""
 
             # Extract usage if available
             tokens_in = 0
@@ -190,38 +242,46 @@ class LCTLSemanticKernelTracer:
             if result and hasattr(result, "metadata") and result.metadata:
                 usage = result.metadata.get("usage", None)
                 if usage:
-                     # Attempt to read common usage patterns (OpenAI, etc)
-                     # Usage might be an object or dict
-                     if hasattr(usage, "prompt_tokens"):
-                         tokens_in = usage.prompt_tokens
-                     elif isinstance(usage, dict):
-                         tokens_in = usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0)
+                    # Attempt to read common usage patterns (OpenAI, etc)
+                    # Usage might be an object or dict
+                    if hasattr(usage, "prompt_tokens"):
+                        tokens_in = usage.prompt_tokens
+                    elif isinstance(usage, dict):
+                        tokens_in = usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0)
 
-                     if hasattr(usage, "completion_tokens"):
-                         tokens_out = usage.completion_tokens
-                     elif isinstance(usage, dict):
-                         tokens_out = usage.get("completion_tokens", 0) or usage.get("output_tokens", 0)
+                    if hasattr(usage, "completion_tokens"):
+                        tokens_out = usage.completion_tokens
+                    elif isinstance(usage, dict):
+                        tokens_out = usage.get("completion_tokens", 0) or usage.get("output_tokens", 0)
 
             self.session.step_end(
+                agent=full_name,
                 outcome="success",
                 output_summary=output_summary,
+                duration_ms=duration_ms,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out
             )
 
         except Exception as e:
             # 4. Step End (Error) - only catches sync/setup errors, stream errors caught in wrapper
+            duration_ms = int((time.time() - start_time) * 1000)
             self.session.error(
                 category="execution_error",
                 error_type=type(e).__name__,
                 message=str(e),
                 recoverable=False
             )
-            self.session.step_end(outcome="error")
+            self.session.step_end(
+                agent=full_name,
+                outcome="error",
+                duration_ms=duration_ms
+            )
             raise
 
 
 __all__ = [
+    "SK_AVAILABLE",
     "LCTLSemanticKernelTracer",
     "trace_kernel",
     "is_available",

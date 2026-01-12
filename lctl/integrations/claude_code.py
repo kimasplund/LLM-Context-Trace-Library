@@ -62,7 +62,11 @@ Programmatic usage:
 
 from __future__ import annotations
 
+import fcntl
+import html
 import json
+import logging
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -70,7 +74,11 @@ from typing import Any, Dict, List, Optional
 
 from ..core.session import LCTLSession
 
-# Singleton instance for hook-based usage
+# Logger for debugging
+logger = logging.getLogger("lctl.claude_code")
+
+# Thread-safe singleton support
+_tracer_lock = threading.Lock()
 _tracer_instance: Optional["LCTLClaudeCodeTracer"] = None
 _tracer_file: Optional[Path] = None
 
@@ -107,7 +115,6 @@ class LCTLClaudeCodeTracer:
         self.agent_stack: List[Dict[str, Any]] = []
         self.tool_counts: Dict[str, int] = {}
         self._start_times: Dict[str, float] = {}
-        self._background_tasks: Dict[str, Dict[str, Any]] = {}  # task_id -> info
         self._agent_ids: Dict[str, str] = {}  # agent_type -> last agent_id
         self._parallel_group: Optional[str] = None  # Current parallel execution group
         self._file_changes: List[Dict[str, Any]] = []  # Track file modifications
@@ -121,7 +128,7 @@ class LCTLClaudeCodeTracer:
         """Get existing tracer instance or create new one.
 
         This is useful for hook scripts that need to maintain state
-        across multiple invocations.
+        across multiple invocations. Thread-safe via lock.
 
         Args:
             chain_id: Chain ID for new tracer
@@ -132,70 +139,85 @@ class LCTLClaudeCodeTracer:
         """
         global _tracer_instance, _tracer_file
 
-        state_path = Path(state_file) if state_file else Path(".claude/traces/.lctl-state.json")
+        with _tracer_lock:
+            state_path = Path(state_file) if state_file else Path(".claude/traces/.lctl-state.json")
 
-        if _tracer_instance is not None:
+            if _tracer_instance is not None:
+                return _tracer_instance
+
+            # Try to restore from state file
+            if state_path.exists():
+                try:
+                    with open(state_path) as f:
+                        fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+                        try:
+                            state = json.load(f)
+                        finally:
+                            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+                    # Load existing chain
+                    chain_path = Path(state.get("chain_path", ""))
+                    if chain_path.exists():
+                        from ..core.events import Chain
+                        chain = Chain.load(chain_path)
+                        session = LCTLSession(chain_id=chain.id)
+                        session.chain = chain
+                        session._seq = len(chain.events)
+
+                        _tracer_instance = cls(session=session)
+                        _tracer_instance.agent_stack = state.get("agent_stack", [])
+                        _tracer_instance.tool_counts = state.get("tool_counts", {})
+                        _tracer_instance._start_times = state.get("start_times", {})
+                        _tracer_instance._agent_ids = state.get("agent_ids", {})
+                        _tracer_instance._parallel_group = state.get("parallel_group")
+                        _tracer_instance._file_changes = state.get("file_changes", [])
+                        _tracer_file = state_path
+                        return _tracer_instance
+                except Exception as e:
+                    logger.debug(f"State restoration failed: {e}")
+                    # Fall through to create new
+
+            # Create new tracer
+            _tracer_instance = cls(chain_id=chain_id)
+            _tracer_file = state_path
+            _tracer_instance._save_state()
             return _tracer_instance
 
-        # Try to restore from state file
-        if state_path.exists():
-            try:
-                with open(state_path) as f:
-                    state = json.load(f)
-
-                # Load existing chain
-                chain_path = Path(state.get("chain_path", ""))
-                if chain_path.exists():
-                    from ..core.events import Chain
-                    chain = Chain.load(chain_path)
-                    session = LCTLSession(chain_id=chain.id)
-                    session.chain = chain
-                    session._seq = len(chain.events)
-
-                    _tracer_instance = cls(session=session)
-                    _tracer_instance.agent_stack = state.get("agent_stack", [])
-                    _tracer_instance.tool_counts = state.get("tool_counts", {})
-                    _tracer_instance._start_times = state.get("start_times", {})
-                    _tracer_instance._background_tasks = state.get("background_tasks", {})
-                    _tracer_instance._agent_ids = state.get("agent_ids", {})
-                    _tracer_instance._parallel_group = state.get("parallel_group")
-                    _tracer_instance._file_changes = state.get("file_changes", [])
-                    _tracer_file = state_path
-                    return _tracer_instance
-            except Exception:
-                pass  # Fall through to create new
-
-        # Create new tracer
-        _tracer_instance = cls(chain_id=chain_id)
-        _tracer_file = state_path
-        _tracer_instance._save_state()
-        return _tracer_instance
-
     def _save_state(self) -> None:
-        """Persist tracer state for hook continuity."""
+        """Persist tracer state for hook continuity.
+
+        Uses file locking (fcntl.LOCK_EX) to prevent concurrent writes
+        from corrupting the state file.
+        """
         if _tracer_file is None:
             return
 
-        _tracer_file.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            _tracer_file.parent.mkdir(parents=True, exist_ok=True)
 
-        # Save chain
-        chain_path = self.output_dir / f"{self.session.chain.id}.lctl.json"
-        chain_path.parent.mkdir(parents=True, exist_ok=True)
-        self.session.export(str(chain_path))
+            # Save chain
+            chain_path = self.output_dir / f"{self.session.chain.id}.lctl.json"
+            chain_path.parent.mkdir(parents=True, exist_ok=True)
+            self.session.export(str(chain_path))
 
-        # Save state
-        state = {
-            "chain_path": str(chain_path),
-            "agent_stack": self.agent_stack,
-            "tool_counts": self.tool_counts,
-            "start_times": self._start_times,
-            "background_tasks": self._background_tasks,
-            "agent_ids": self._agent_ids,
-            "parallel_group": self._parallel_group,
-            "file_changes": self._file_changes,
-        }
-        with open(_tracer_file, "w") as f:
-            json.dump(state, f)
+            # Save state with file locking
+            state = {
+                "chain_path": str(chain_path),
+                "agent_stack": self.agent_stack,
+                "tool_counts": self.tool_counts,
+                "start_times": self._start_times,
+                "agent_ids": self._agent_ids,
+                "parallel_group": self._parallel_group,
+                "file_changes": self._file_changes,
+            }
+            with open(_tracer_file, "w") as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    json.dump(state, f)
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        except Exception as e:
+            logger.debug(f"State save failed: {e}")
 
     def on_task_start(
         self,
@@ -308,9 +330,11 @@ class LCTLClaudeCodeTracer:
         if agent_id:
             self._agent_ids[agent_type] = agent_id
 
-        # Pop from agent stack
-        if self.agent_stack and self.agent_stack[-1]["agent_type"] == agent_type:
-            self.agent_stack.pop()
+        # Pop from agent stack - search for matching agent (handles out-of-order completion)
+        for i in range(len(self.agent_stack) - 1, -1, -1):
+            if self.agent_stack[i]["agent_type"] == agent_type:
+                self.agent_stack.pop(i)
+                break
 
         outcome = "success" if success else "failure"
 
@@ -987,6 +1011,35 @@ class LCTLClaudeCodeTracer:
             "agent_ids": self._agent_ids,
         }
 
+    def cleanup_stale_start_times(self, max_age_seconds: float = 3600.0) -> int:
+        """Remove stale start times that are older than max_age_seconds.
+
+        This is useful for cleaning up orphaned agent starts that never completed,
+        which can happen if an agent crashes or is interrupted.
+
+        Args:
+            max_age_seconds: Maximum age in seconds before a start time is
+                considered stale. Defaults to 1 hour.
+
+        Returns:
+            Number of stale entries removed.
+        """
+        current_time = time.time()
+        stale_agents = [
+            agent_type
+            for agent_type, start_time in self._start_times.items()
+            if (current_time - start_time) > max_age_seconds
+        ]
+
+        for agent_type in stale_agents:
+            del self._start_times[agent_type]
+            logger.debug(f"Cleaned up stale start time for agent: {agent_type}")
+
+        if stale_agents:
+            self._save_state()
+
+        return len(stale_agents)
+
     def reset(self) -> None:
         """Reset the tracer for a new workflow."""
         global _tracer_instance, _tracer_file
@@ -997,14 +1050,16 @@ class LCTLClaudeCodeTracer:
         self.agent_stack = []
         self.tool_counts = {}
         self._start_times = {}
-        self._background_tasks = {}
         self._agent_ids = {}
         self._parallel_group = None
         self._file_changes = []
 
         # Clear state file
         if _tracer_file and _tracer_file.exists():
-            _tracer_file.unlink()
+            try:
+                _tracer_file.unlink()
+            except Exception as e:
+                logger.debug(f"Failed to remove state file: {e}")
 
         _tracer_instance = None
 
@@ -1325,7 +1380,6 @@ except Exception as e:
             "agent_stack": [],
             "tool_counts": {},
             "start_times": {},
-            "background_tasks": {},
             "agent_ids": {},
             "parallel_group": None,
             "file_changes": [],
@@ -1413,6 +1467,10 @@ def generate_html_report(chain: Any, output_path: str) -> str:
     """
     from ..core.events import ReplayEngine
 
+    # Helper to escape user-controlled data for XSS prevention
+    def esc(text: Any) -> str:
+        return html.escape(str(text))
+
     engine = ReplayEngine(chain)
     state = engine.replay_all()
     trace = engine.get_trace()
@@ -1446,13 +1504,17 @@ def generate_html_report(chain: Any, output_path: str) -> str:
             "data": str(event.data)[:200],
         })
 
+    # Escape chain metadata
+    chain_id_esc = esc(chain.id)
+    chain_version_esc = esc(chain.version)
+
     # Generate HTML
-    html = f'''<!DOCTYPE html>
+    html_content = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LCTL Report - {chain.id}</title>
+    <title>LCTL Report - {chain_id_esc}</title>
     <style>
         * {{ box-sizing: border-box; margin: 0; padding: 0; }}
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; line-height: 1.6; }}
@@ -1491,7 +1553,7 @@ def generate_html_report(chain: Any, output_path: str) -> str:
     <div class="container">
         <header>
             <h1>LCTL Workflow Report</h1>
-            <p class="subtitle">Chain: {chain.id} | Version: {chain.version}</p>
+            <p class="subtitle">Chain: {chain_id_esc} | Version: {chain_version_esc}</p>
         </header>
 
         <div class="grid">
@@ -1521,25 +1583,25 @@ def generate_html_report(chain: Any, output_path: str) -> str:
             <div class="card">
                 <h3>Agents ({len(agents)})</h3>
                 <div class="agents">
-                    {"".join(f'<span class="agent-chip">{a} ({s["steps"]} steps)</span>' for a, s in agents.items())}
+                    {"".join(f'<span class="agent-chip">{esc(a)} ({s["steps"]} steps)</span>' for a, s in agents.items())}
                 </div>
             </div>
             <div class="card">
                 <h3>Facts ({len(state.facts)})</h3>
                 <div class="facts">
-                    {"".join(f'<div class="fact"><span class="fact-id">{fid}</span><span class="fact-conf">{f.get("confidence", 1.0):.0%}</span><br>{f.get("text", "")[:100]}</div>' for fid, f in list(state.facts.items())[:10])}
+                    {"".join(f'<div class="fact"><span class="fact-id">{esc(fid)}</span><span class="fact-conf">{f.get("confidence", 1.0):.0%}</span><br>{esc(f.get("text", "")[:100])}</div>' for fid, f in list(state.facts.items())[:10])}
                 </div>
             </div>
         </div>
 
         <div class="card">
             <h3>Bottleneck Analysis</h3>
-            {"".join(f'<div class="bottleneck"><span class="bottleneck-label">{b["agent"]}</span><div class="bottleneck-bar" style="width: {b.get("percentage", 0)}%"></div>{b.get("percentage", 0):.1f}% ({b["duration_ms"]}ms)</div>' for b in bottlenecks[:5])}
+            {"".join(f'<div class="bottleneck"><span class="bottleneck-label">{esc(b["agent"])}</span><div class="bottleneck-bar" style="width: {b.get("percentage", 0)}%"></div>{b.get("percentage", 0):.1f}% ({b["duration_ms"]}ms)</div>' for b in bottlenecks[:5])}
         </div>
 
         <div class="timeline card">
             <h3>Event Timeline (first 50)</h3>
-            {"".join(f'<div class="event"><span class="event-seq">{e["seq"]}</span><span class="event-type {e["type"]}">{e["type"]}</span><span class="event-agent">{e["agent"]}</span><span class="event-data">{e["data"]}</span></div>' for e in events_data[:50])}
+            {"".join(f'<div class="event"><span class="event-seq">{e["seq"]}</span><span class="event-type {esc(e["type"])}">{esc(e["type"])}</span><span class="event-agent">{esc(e["agent"])}</span><span class="event-data">{esc(e["data"])}</span></div>' for e in events_data[:50])}
         </div>
 
         <footer>
@@ -1549,7 +1611,7 @@ def generate_html_report(chain: Any, output_path: str) -> str:
 </body>
 </html>'''
 
-    Path(output_path).write_text(html)
+    Path(output_path).write_text(html_content)
     return output_path
 
 

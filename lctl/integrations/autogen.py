@@ -18,6 +18,7 @@ Usage:
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
@@ -25,7 +26,7 @@ from uuid import uuid4
 from ..core.session import LCTLSession
 
 # Metadata for availability
-AUTOGEN_MODE = "none" # none, legacy, modern
+AUTOGEN_MODE = "none"  # none, legacy, modern
 
 try:
     # Try modern AutoGen (0.4+)
@@ -78,7 +79,13 @@ def _check_autogen_available() -> None:
 
 
 def _truncate(text: str, max_length: int = 200) -> str:
-    """Truncate text for summaries."""
+    """Truncate text for summaries.
+
+    Handles edge case where max_length < 4 by returning truncated text
+    without ellipsis suffix.
+    """
+    if max_length < 4:
+        return text[:max_length] if len(text) > max_length else text
     if len(text) <= max_length:
         return text
     return text[: max_length - 3] + "..."
@@ -113,12 +120,16 @@ def _get_agent_name(agent: Any) -> str:
 
 
 class LCTLAutogenHandler(logging.Handler):
-    """Logging handler for Modern AutoGen (0.4+) events."""
+    """Logging handler for Modern AutoGen (0.4+) events.
+
+    Thread-safe handler that captures AutoGen events and records them
+    to an LCTL session.
+    """
 
     def __init__(self, session: LCTLSession):
         super().__init__()
         self.session = session
-        self._message_times: Dict[str, float] = {}
+        self._lock = threading.Lock()
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
@@ -146,10 +157,17 @@ class LCTLAutogenHandler(logging.Handler):
             return event.kwargs.get(field, default)
         return default
 
-    def _handle_llm_call(self, event: ag_logging.LLMCallEvent):
+    def _handle_llm_call(self, event: ag_logging.LLMCallEvent) -> None:
         # LLMCallEvent -> messages, response, prompt_tokens, completion_tokens
-        agent_name = "llm" 
-        
+        # Try to extract agent name from event
+        agent_name = self._get_event_field(event, "agent_name")
+        if not agent_name:
+            agent_name = self._get_event_field(event, "source")
+        if not agent_name:
+            # Check if there's model info we can use
+            model = self._get_event_field(event, "model", "")
+            agent_name = f"llm-{model}" if model else "llm"
+
         messages = self._get_event_field(event, "messages", [])
         response = self._get_event_field(event, "response", {})
         prompt_tokens = self._get_event_field(event, "prompt_tokens", 0)
@@ -158,42 +176,55 @@ class LCTLAutogenHandler(logging.Handler):
         input_summary = f"{len(messages)} messages" if messages else "LLM Call"
         output_summary = _truncate(str(response)) if response else ""
 
-        self.session.step_start(agent=agent_name, intent="llm_call", input_summary=input_summary)
-        self.session.step_end(
-            agent=agent_name,
-            outcome="success",
-            output_summary=output_summary,
-            tokens_in=prompt_tokens,
-            tokens_out=completion_tokens
-        )
+        with self._lock:
+            try:
+                self.session.step_start(agent=agent_name, intent="llm_call", input_summary=input_summary)
+                self.session.step_end(
+                    agent=agent_name,
+                    outcome="success",
+                    output_summary=output_summary,
+                    tokens_in=prompt_tokens,
+                    tokens_out=completion_tokens
+                )
+            except Exception:
+                pass  # Graceful degradation - don't break execution if tracing fails
 
-    def _handle_tool_call(self, event: ag_logging.ToolCallEvent):
+    def _handle_tool_call(self, event: ag_logging.ToolCallEvent) -> None:
         # ToolCallEvent -> tool_name, arguments, result
         tool_name = self._get_event_field(event, "tool_name", "unknown_tool")
         args = str(self._get_event_field(event, "arguments", ""))
         result = str(self._get_event_field(event, "result", ""))
 
-        self.session.tool_call(
-            tool=tool_name,
-            input_data=_truncate(args, 200),
-            output_data=_truncate(result, 200),
-            duration_ms=0
-        )
+        with self._lock:
+            try:
+                self.session.tool_call(
+                    tool=tool_name,
+                    input_data=_truncate(args, 200),
+                    output_data=_truncate(result, 200),
+                    duration_ms=0
+                )
+            except Exception:
+                pass  # Graceful degradation
 
-    def _handle_message(self, event: ag_logging.MessageEvent):
+    def _handle_message(self, event: ag_logging.MessageEvent) -> None:
         # MessageEvent -> payload, sender, receiver, kind, delivery_stage
-        
+
         sender = str(self._get_event_field(event, "sender", "unknown"))
         payload = str(self._get_event_field(event, "payload", ""))
 
-        self.session.step_start(agent=sender, intent="send_message", input_summary=_truncate(payload, 50))
-        self.session.step_end(agent=sender, outcome="success", output_summary="Message processed")
+        with self._lock:
+            try:
+                self.session.step_start(agent=sender, intent="send_message", input_summary=_truncate(payload, 50))
+                self.session.step_end(agent=sender, outcome="success", output_summary="Message processed")
+            except Exception:
+                pass  # Graceful degradation
 
 
 class LCTLAutogenCallback:
     """AutoGen callback handler that records events to LCTL.
 
     Supports both Legacy (hooks) and Modern (event logging) AutoGen.
+    Thread-safe for concurrent agent operations.
     """
 
     def __init__(
@@ -207,9 +238,14 @@ class LCTLAutogenCallback:
         self.session = session or LCTLSession(chain_id=chain_id)
         self._attached_agents: List[Any] = []
         self._conversation_stack: List[Dict[str, Any]] = []
-        self._message_times: Dict[str, float] = {}
         self._nested_depth = 0
         self._logging_handler: Optional[LCTLAutogenHandler] = None
+
+        # Thread safety locks
+        self._lock = threading.Lock()
+
+        # Track active steps for proper step_start/step_end pairing
+        self._active_steps: Dict[str, Dict[str, Any]] = {}
 
         if AUTOGEN_MODE == "modern":
             self._setup_modern_tracing()
@@ -219,7 +255,7 @@ class LCTLAutogenCallback:
         """Access the underlying LCTL chain."""
         return self.session.chain
 
-    def _setup_modern_tracing(self):
+    def _setup_modern_tracing(self) -> None:
         """Setup global logging handler for Modern AutoGen."""
         if self._logging_handler:
             return
@@ -227,15 +263,42 @@ class LCTLAutogenCallback:
         logger = logging.getLogger(EVENT_LOGGER_NAME)
         self._logging_handler = LCTLAutogenHandler(self.session)
         logger.addHandler(self._logging_handler)
-        # Note: This is global. We don't detach in __init__, consumer should call detach?
-        # For simplicity, we assume one session active.
 
-        self.session.add_fact(
-            fact_id="tracing-enabled",
-            text="Enabled global AutoGen event tracing",
-            confidence=1.0,
-            source="lctl-autogen"
-        )
+        try:
+            self.session.add_fact(
+                fact_id="tracing-enabled",
+                text="Enabled global AutoGen event tracing",
+                confidence=1.0,
+                source="lctl-autogen"
+            )
+        except Exception:
+            pass  # Graceful degradation
+
+    def detach_all(self) -> None:
+        """Clean up logging handler and detach from all agents.
+
+        Call this method when done tracing to prevent memory leaks
+        and remove the global logging handler.
+        """
+        with self._lock:
+            # Remove modern logging handler
+            if self._logging_handler and AUTOGEN_MODE == "modern":
+                try:
+                    logger = logging.getLogger(EVENT_LOGGER_NAME)
+                    logger.removeHandler(self._logging_handler)
+                except Exception:
+                    pass  # Ignore errors during cleanup
+                self._logging_handler = None
+
+            # Clear attached agents list
+            self._attached_agents.clear()
+
+            # Clear active steps tracking
+            self._active_steps.clear()
+
+            # Clear conversation stack
+            self._conversation_stack.clear()
+            self._nested_depth = 0
 
     def attach(self, agent: Any) -> None:
         """Attach LCTL tracing to an agent."""
@@ -245,19 +308,22 @@ class LCTLAutogenCallback:
             # Modern mode relies on global logging, attach does nothing/little
             # But we can log that we are 'watching' this agent
             name = _get_agent_name(agent)
-            self.session.add_fact(
-                 fact_id=f"agent-watched-{name}",
-                 text=f"Watching agent {name}",
-                 confidence=1.0,
-                 source="lctl-autogen"
-            )
+            try:
+                self.session.add_fact(
+                    fact_id=f"agent-watched-{name}",
+                    text=f"Watching agent {name}",
+                    confidence=1.0,
+                    source="lctl-autogen"
+                )
+            except Exception:
+                pass  # Graceful degradation
             return
 
         # Legacy Mode
-        if agent in self._attached_agents:
-            return
+        with self._lock:
+            if agent in self._attached_agents:
+                return
 
-        # ... (Legacy logic for hooks) ...
         # Ensure we check for register_hook existence
         if not hasattr(agent, "register_hook"):
             # Fallback or error?
@@ -275,69 +341,116 @@ class LCTLAutogenCallback:
                 self._create_before_reply_hook(agent_name),
             )
             agent.register_hook(
+                "process_last_received_message",
+                self._create_after_reply_hook(agent_name),
+            )
+            agent.register_hook(
                 "update_agent_state",
                 self._create_state_update_hook(agent_name),
             )
-            self._attached_agents.append(agent)
+            with self._lock:
+                self._attached_agents.append(agent)
         except Exception:
-            pass # Ignore if hooks not supported on this object
+            pass  # Ignore if hooks not supported on this object
 
-        self.session.add_fact(
-            fact_id=f"agent-attached-{agent_name}",
-            text=f"Agent '{agent_name}' attached for tracing",
-            confidence=1.0,
-            source="lctl-autogen",
-        )
-
-    # ... (Keep existing legacy helper methods: _create_before_send_hook, etc.) ...
-    # Copying existing methods for completeness of the file rewrite
+        try:
+            self.session.add_fact(
+                fact_id=f"agent-attached-{agent_name}",
+                text=f"Agent '{agent_name}' attached for tracing",
+                confidence=1.0,
+                source="lctl-autogen",
+            )
+        except Exception:
+            pass  # Graceful degradation
 
     def _create_before_send_hook(self, sender_name: str):
         def hook(sender, message, recipient, silent):
             recipient_name = _get_agent_name(recipient)
             content = _extract_message_content(message)
 
-            message_id = f"{sender_name}->{recipient_name}-{time.time()}"
-            self._message_times[message_id] = time.time()
+            with self._lock:
+                try:
+                    self.session.step_start(
+                        agent=sender_name,
+                        intent="send_message",
+                        input_summary=f"To {recipient_name}: {_truncate(content, 100)}",
+                    )
 
-            self.session.step_start(
-                agent=sender_name,
-                intent="send_message",
-                input_summary=f"To {recipient_name}: {_truncate(content, 100)}",
-            )
+                    if isinstance(message, dict):
+                        if "tool_calls" in message or "function_call" in message:
+                            tool_calls = message.get("tool_calls", [])
+                            if not tool_calls and "function_call" in message:
+                                tool_calls = [{"function": message["function_call"]}]
 
-            if isinstance(message, dict):
-                if "tool_calls" in message or "function_call" in message:
-                    tool_calls = message.get("tool_calls", [])
-                    if not tool_calls and "function_call" in message:
-                        tool_calls = [{"function": message["function_call"]}]
+                            for tool_call in tool_calls:
+                                func_info = tool_call.get("function", {})
+                                tool_name = func_info.get("name", "unknown_tool")
+                                tool_args = func_info.get("arguments", "")
 
-                    for tool_call in tool_calls:
-                        func_info = tool_call.get("function", {})
-                        tool_name = func_info.get("name", "unknown_tool")
-                        tool_args = func_info.get("arguments", "")
+                                self.session.tool_call(
+                                    tool=tool_name,
+                                    input_data=_truncate(str(tool_args), 200),
+                                    output_data="(pending)",
+                                    duration_ms=0,
+                                )
 
-                        self.session.tool_call(
-                            tool=tool_name,
-                            input_data=_truncate(str(tool_args), 200),
-                            output_data="(pending)",
-                            duration_ms=0,
-                        )
-
-            self.session.step_end(
-                agent=sender_name,
-                outcome="success",
-                output_summary=f"Message sent to {recipient_name}",
-            )
+                    self.session.step_end(
+                        agent=sender_name,
+                        outcome="success",
+                        output_summary=f"Message sent to {recipient_name}",
+                    )
+                except Exception:
+                    pass  # Graceful degradation
 
             return message
         return hook
 
     def _create_before_reply_hook(self, agent_name: str):
+        """Create hook for before reply generation.
+
+        Tracks the step start so it can be properly ended in after_reply_hook.
+        """
         def hook(messages):
             if messages:
-                self.session.step_start(agent=agent_name, intent="generate_reply", input_summary="Generating reply")
+                step_key = f"{agent_name}-generate_reply"
+                with self._lock:
+                    try:
+                        self.session.step_start(
+                            agent=agent_name,
+                            intent="generate_reply",
+                            input_summary=f"Processing {len(messages)} messages"
+                        )
+                        self._active_steps[step_key] = {
+                            "agent": agent_name,
+                            "start_time": time.time(),
+                        }
+                    except Exception:
+                        pass  # Graceful degradation
             return messages
+        return hook
+
+    def _create_after_reply_hook(self, agent_name: str):
+        """Create hook for after reply generation.
+
+        Ends the step that was started in before_reply_hook.
+        """
+        def hook(message):
+            step_key = f"{agent_name}-generate_reply"
+            with self._lock:
+                step_info = self._active_steps.pop(step_key, None)
+                if step_info:
+                    try:
+                        duration_ms = int((time.time() - step_info["start_time"]) * 1000)
+                        content = _extract_message_content(message)
+                        self.session.step_end(
+                            agent=agent_name,
+                            outcome="success",
+                            output_summary=_truncate(content, 100),
+                            duration_ms=duration_ms,
+                        )
+                    except Exception:
+                        pass  # Graceful degradation
+            return message
         return hook
 
     def _create_state_update_hook(self, agent_name: str):
@@ -348,60 +461,71 @@ class LCTLAutogenCallback:
     def attach_group_chat(self, group_chat: Any, manager: Optional[Any] = None) -> None:
         """Attach LCTL tracing to a GroupChat."""
         if AUTOGEN_MODE == "modern":
-             # Modern tracing is global
-             return
+            # Modern tracing is global
+            return
 
         for agent in group_chat.agents:
             self.attach(agent)
 
-        self.session.add_fact(
-            fact_id="groupchat-config",
-            text=f"GroupChat configured with {len(group_chat.agents)} agents, "
-            f"max_round={group_chat.max_round}",
-            confidence=1.0,
-            source="lctl-autogen",
-        )
+        try:
+            self.session.add_fact(
+                fact_id="groupchat-config",
+                text=f"GroupChat configured with {len(group_chat.agents)} agents, "
+                f"max_round={group_chat.max_round}",
+                confidence=1.0,
+                source="lctl-autogen",
+            )
+        except Exception:
+            pass  # Graceful degradation
 
         if manager is not None:
             self.attach(manager)
 
     def start_nested_chat(self, parent_agent: str, description: str = "") -> None:
         """Record the start of a nested conversation."""
-        self._nested_depth += 1
-        self._conversation_stack.append(
-            {
-                "parent": parent_agent,
-                "depth": self._nested_depth,
-                "start_time": time.time(),
-            }
-        )
+        with self._lock:
+            self._nested_depth += 1
+            self._conversation_stack.append(
+                {
+                    "parent": parent_agent,
+                    "depth": self._nested_depth,
+                    "start_time": time.time(),
+                }
+            )
 
-        self.session.step_start(
-            agent=parent_agent,
-            intent="start_nested_chat",
-            input_summary=description or f"Nested chat at depth {self._nested_depth}",
-        )
+        try:
+            self.session.step_start(
+                agent=parent_agent,
+                intent="start_nested_chat",
+                input_summary=description or f"Nested chat at depth {self._nested_depth}",
+            )
+        except Exception:
+            pass  # Graceful degradation
 
     def end_nested_chat(
         self, result_summary: str = "", outcome: str = "success"
     ) -> None:
         """Record the end of a nested conversation."""
-        if not self._conversation_stack:
-            return
+        with self._lock:
+            if not self._conversation_stack:
+                return
 
-        context = self._conversation_stack.pop()
-        parent_agent = context["parent"]
-        start_time = context["start_time"]
-        duration_ms = int((time.time() - start_time) * 1000)
+            context = self._conversation_stack.pop()
+            parent_agent = context["parent"]
+            start_time = context["start_time"]
+            duration_ms = int((time.time() - start_time) * 1000)
+            current_depth = self._nested_depth
+            self._nested_depth = max(0, self._nested_depth - 1)
 
-        self.session.step_end(
-            agent=parent_agent,
-            outcome=outcome,
-            output_summary=result_summary or f"Nested chat completed at depth {self._nested_depth}",
-            duration_ms=duration_ms,
-        )
-
-        self._nested_depth = max(0, self._nested_depth - 1)
+        try:
+            self.session.step_end(
+                agent=parent_agent,
+                outcome=outcome,
+                output_summary=result_summary or f"Nested chat completed at depth {current_depth}",
+                duration_ms=duration_ms,
+            )
+        except Exception:
+            pass  # Graceful degradation
 
     def record_tool_result(
         self,
@@ -410,15 +534,26 @@ class LCTLAutogenCallback:
         duration_ms: int = 0,
         agent: Optional[str] = None,
     ) -> None:
-        """Manually record a tool call result."""
+        """Manually record a tool call result.
+
+        Args:
+            tool_name: Name of the tool that was called
+            result: The result returned by the tool
+            duration_ms: How long the tool call took in milliseconds
+            agent: Optional agent name that invoked the tool
+        """
         result_str = _truncate(str(result), 500) if result else "(no result)"
 
-        self.session.add_fact(
-            fact_id=f"tool-result-{tool_name}-{len(self.session.chain.events)}",
-            text=f"Tool '{tool_name}' returned: {result_str}",
-            confidence=1.0,
-            source=agent or "tool-executor",
-        )
+        try:
+            self.session.tool_call(
+                tool=tool_name,
+                input_data="(recorded manually)",
+                output_data=result_str,
+                duration_ms=duration_ms,
+                agent=agent or "tool-executor",
+            )
+        except Exception:
+            pass  # Graceful degradation
 
     def record_error(
         self,
@@ -427,13 +562,16 @@ class LCTLAutogenCallback:
         recoverable: bool = True,
     ) -> None:
         """Record an error during conversation."""
-        self.session.error(
-            category="autogen_error",
-            error_type=type(error).__name__,
-            message=str(error),
-            recoverable=recoverable,
-            suggested_action="Check agent configuration and message format",
-        )
+        try:
+            self.session.error(
+                category="autogen_error",
+                error_type=type(error).__name__,
+                message=str(error),
+                recoverable=recoverable,
+                suggested_action="Check agent configuration and message format",
+            )
+        except Exception:
+            pass  # Graceful degradation
 
     def export(self, path: str) -> None:
         """Export the LCTL chain to a file."""
@@ -450,6 +588,7 @@ def trace_agent(agent: Any, chain_id: Optional[str] = None) -> LCTLAutogenCallba
     callback = LCTLAutogenCallback(chain_id=chain_id)
     callback.attach(agent)
     return callback
+
 
 def trace_group_chat(group_chat: Any, manager: Optional[Any] = None, chain_id: Optional[str] = None) -> LCTLAutogenCallback:
     callback = LCTLAutogenCallback(chain_id=chain_id)
@@ -482,11 +621,11 @@ class LCTLConversableAgent:
         _check_autogen_available()
 
         if AUTOGEN_MODE == "modern":
-           # In modern mode, we can't easily inherit or wrap if ConversableAgent doesn't exist.
-           # But we can try to use trace_agent on the *modern equivalent* if user passed it?
-           # Actually, this class assumes creating a NEW agent.
-           # If ConversableAgent class is missing, we can't create it.
-           raise AutogenNotAvailableError()
+            # In modern mode, we can't easily inherit or wrap if ConversableAgent doesn't exist.
+            # But we can try to use trace_agent on the *modern equivalent* if user passed it?
+            # Actually, this class assumes creating a NEW agent.
+            # If ConversableAgent class is missing, we can't create it.
+            raise AutogenNotAvailableError()
 
         self._callback = LCTLAutogenCallback(
             chain_id=chain_id or f"agent-{name}-{str(uuid4())[:8]}"
@@ -534,11 +673,14 @@ class LCTLConversableAgent:
             if recipient_agent not in self._callback._attached_agents:
                 self._callback.attach(recipient_agent)
 
-        self._callback.session.step_start(
-            agent=self._agent.name,
-            intent="initiate_chat",
-            input_summary=f"Starting chat with {recipient_name}",
-        )
+        try:
+            self._callback.session.step_start(
+                agent=self._agent.name,
+                intent="initiate_chat",
+                input_summary=f"Starting chat with {recipient_name}",
+            )
+        except Exception:
+            pass  # Graceful degradation
 
         start_time = time.time()
         try:
@@ -549,32 +691,36 @@ class LCTLConversableAgent:
             )
             duration_ms = int((time.time() - start_time) * 1000)
 
-            self._callback.session.step_end(
-                agent=self._agent.name,
-                outcome="success",
-                output_summary=f"Chat with {recipient_name} completed",
-                duration_ms=duration_ms,
-            )
+            try:
+                self._callback.session.step_end(
+                    agent=self._agent.name,
+                    outcome="success",
+                    output_summary=f"Chat with {recipient_name} completed",
+                    duration_ms=duration_ms,
+                )
+            except Exception:
+                pass  # Graceful degradation
 
             return result
 
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
 
-            self._callback.session.step_end(
-                agent=self._agent.name,
-                outcome="error",
-                output_summary=f"Chat with {recipient_name} failed: {str(e)[:100]}",
-                duration_ms=duration_ms,
-            )
-            # Only record error if callback has that method
-            # Re-implement simple error recording here since we removed record_error from callback
-            self._callback.session.error(
-                category="autogen_error",
-                error_type=type(e).__name__,
-                message=str(e),
-                recoverable=False
-            )
+            try:
+                self._callback.session.step_end(
+                    agent=self._agent.name,
+                    outcome="error",
+                    output_summary=f"Chat with {recipient_name} failed: {str(e)[:100]}",
+                    duration_ms=duration_ms,
+                )
+                self._callback.session.error(
+                    category="autogen_error",
+                    error_type=type(e).__name__,
+                    message=str(e),
+                    recoverable=False
+                )
+            except Exception:
+                pass  # Graceful degradation
             raise
 
     def export_trace(self, path: str) -> None:
@@ -616,12 +762,15 @@ class LCTLGroupChatManager:
         self._callback.attach_group_chat(groupchat, self._manager)
 
         agent_names = [_get_agent_name(a) for a in groupchat.agents]
-        self._callback.session.add_fact(
-            fact_id="groupchat-agents",
-            text=f"GroupChat agents: {', '.join(agent_names)}",
-            confidence=1.0,
-            source="lctl-autogen",
-        )
+        try:
+            self._callback.session.add_fact(
+                fact_id="groupchat-agents",
+                text=f"GroupChat agents: {', '.join(agent_names)}",
+                confidence=1.0,
+                source="lctl-autogen",
+            )
+        except Exception:
+            pass  # Graceful degradation
 
     @property
     def manager(self) -> Any:
@@ -648,6 +797,7 @@ class LCTLGroupChatManager:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._manager, name)
 
+
 def is_available() -> bool:
     return AUTOGEN_AVAILABLE
 
@@ -663,4 +813,3 @@ __all__ = [
     "trace_group_chat",
     "is_available",
 ]
-

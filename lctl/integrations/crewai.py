@@ -24,11 +24,19 @@ Usage:
     crew.export_trace("research_crew.lctl.json")
 """
 
+import threading
 import time
 from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
 
 from ..core.session import LCTLSession
+
+
+def _truncate(text: str, max_length: int = 200) -> str:
+    """Truncate text to a maximum length with ellipsis."""
+    if len(text) <= max_length:
+        return text
+    return text[:max_length - 3] + "..."
 
 # Try to import CrewAI - graceful degradation if not available
 try:
@@ -47,19 +55,31 @@ except ImportError:
     LLMCallCompletedEvent = None
 
 
-# Global map for agent_id -> session
+# Global map for agent_id -> session with thread safety
 _agent_id_session_map: Dict[str, LCTLSession] = {}
+_agent_map_lock = threading.Lock()
+
+
+def _cleanup_stale_entries() -> None:
+    """Remove stale entries from the agent session map.
+
+    Call this periodically or when sessions are known to be finished.
+    """
+    with _agent_map_lock:
+        _agent_id_session_map.clear()
 
 
 def _llm_event_handler(source: Any, event: Any) -> None:
     """Handle LLM completion events globally."""
     # event is LLMCallCompletedEvent but typed Any to avoid runtime errors if import failed
     agent_id = getattr(event, "agent_id", None)
-    
+
     if not agent_id:
         return
-        
-    session = _agent_id_session_map.get(str(agent_id))
+
+    with _agent_map_lock:
+        session = _agent_id_session_map.get(str(agent_id))
+
     if not session:
         return
         
@@ -365,7 +385,12 @@ class LCTLCrew:
         return "unknown-agent"
 
     def _on_step(self, step_output: Any) -> None:
-        """Callback for each agent step."""
+        """Callback for each agent step.
+
+        Note: This callback is invoked after the step completes, so we estimate
+        duration based on step timestamps if available, otherwise use 0.
+        """
+        step_start_time = time.time()
         try:
             agent_name = "unknown"
             thought = ""
@@ -378,7 +403,7 @@ class LCTLCrew:
                 agent_name = self._get_agent_name(step_output.agent)
 
             if hasattr(step_output, "thought"):
-                thought = str(step_output.thought)[:500]
+                thought = _truncate(str(step_output.thought), 500)
 
             if hasattr(step_output, "tool"):
                 tool_name = str(step_output.tool)
@@ -387,13 +412,20 @@ class LCTLCrew:
                 tool_input = step_output.tool_input
 
             if hasattr(step_output, "result"):
-                tool_output = str(step_output.result)[:500] if step_output.result else None
+                tool_output = _truncate(str(step_output.result), 500) if step_output.result else None
+
+            # Extract duration from step output if available
+            duration_ms = 0
+            if hasattr(step_output, "duration_ms"):
+                duration_ms = int(step_output.duration_ms)
+            elif hasattr(step_output, "execution_time"):
+                duration_ms = int(step_output.execution_time * 1000)
 
             # Record step start
             self._session.step_start(
                 agent=agent_name,
                 intent="execute_step",
-                input_summary=thought[:100] if thought else "Agent step"
+                input_summary=_truncate(thought, 100) if thought else "Agent step"
             )
 
             # Record tool call if applicable
@@ -402,14 +434,15 @@ class LCTLCrew:
                     tool=tool_name,
                     input_data=tool_input,
                     output_data=tool_output,
-                    duration_ms=0  # Duration not available at step level
+                    duration_ms=duration_ms
                 )
 
-            # Record step end
+            # Record step end with duration
             self._session.step_end(
                 agent=agent_name,
                 outcome="success",
-                output_summary=tool_output[:100] if tool_output else "Step completed"
+                output_summary=_truncate(tool_output, 100) if tool_output else "Step completed",
+                duration_ms=duration_ms
             )
 
         except Exception as e:
@@ -417,9 +450,13 @@ class LCTLCrew:
             if self._verbose:
                 print(f"[LCTL] Warning: Error in step callback: {e}")
 
-        # Call original callback if present
+        # Call original callback if present - wrap in try/except
         if self._original_step_callback:
-            self._original_step_callback(step_output)
+            try:
+                self._original_step_callback(step_output)
+            except Exception as e:
+                if self._verbose:
+                    print(f"[LCTL] Warning: Error in original step callback: {e}")
 
     def _on_task_complete(self, task_output: Any) -> None:
         """Callback for task completion."""
@@ -428,12 +465,12 @@ class LCTLCrew:
             task_output_text = ""
 
             if hasattr(task_output, "description"):
-                task_description = str(task_output.description)[:200]
+                task_description = _truncate(str(task_output.description), 200)
 
             if hasattr(task_output, "raw"):
-                task_output_text = str(task_output.raw)[:500]
+                task_output_text = _truncate(str(task_output.raw), 500)
             elif hasattr(task_output, "output"):
-                task_output_text = str(task_output.output)[:500]
+                task_output_text = _truncate(str(task_output.output), 500)
 
             # Add fact about task completion
             fact_id = f"task-{len(self._session.chain.events)}"
@@ -451,9 +488,13 @@ class LCTLCrew:
             if self._verbose:
                 print(f"[LCTL] Warning: Error in task callback: {e}")
 
-        # Call original callback if present
+        # Call original callback if present - wrap in try/except
         if self._original_task_callback:
-            self._original_task_callback(task_output)
+            try:
+                self._original_task_callback(task_output)
+            except Exception as e:
+                if self._verbose:
+                    print(f"[LCTL] Warning: Error in original task callback: {e}")
 
     def kickoff(self, inputs: Optional[Dict[str, Any]] = None) -> Any:
         """Execute the crew with LCTL tracing.
@@ -466,10 +507,11 @@ class LCTLCrew:
         """
         start_time = time.time()
 
-        # Register agents for LLM tracing
-        for agent in self._crew.agents:
-            if hasattr(agent, "id"):
-                _agent_id_session_map[str(agent.id)] = self._session
+        # Register agents for LLM tracing with thread safety
+        with _agent_map_lock:
+            for agent in self._crew.agents:
+                if hasattr(agent, "id"):
+                    _agent_id_session_map[str(agent.id)] = self._session
 
         # Record crew kickoff
         self._session.step_start(
@@ -556,12 +598,14 @@ class LCTLCrew:
 
             raise
         finally:
-            # Cleanup agent registration
-            for agent in self._crew.agents:
-                if hasattr(agent, "id"):
-                    # Only remove if it points to US (in case of nested calls or weird concurrency, though simple deletion is safer)
-                    if _agent_id_session_map.get(str(agent.id)) == self._session:
-                         del _agent_id_session_map[str(agent.id)]
+            # Cleanup agent registration with thread safety
+            with _agent_map_lock:
+                for agent in self._crew.agents:
+                    if hasattr(agent, "id"):
+                        agent_id = str(agent.id)
+                        # Only remove if it points to this session
+                        if _agent_id_session_map.get(agent_id) is self._session:
+                            del _agent_id_session_map[agent_id]
 
     async def kickoff_async(self, inputs: Optional[Dict[str, Any]] = None) -> Any:
         """Execute the crew asynchronously with LCTL tracing.
@@ -573,11 +617,12 @@ class LCTLCrew:
             Async result of crew execution.
         """
         start_time = time.time()
-        
-        # Register agents for LLM tracing
-        for agent in self._crew.agents:
-            if hasattr(agent, "id"):
-                _agent_id_session_map[str(agent.id)] = self._session
+
+        # Register agents for LLM tracing with thread safety
+        with _agent_map_lock:
+            for agent in self._crew.agents:
+                if hasattr(agent, "id"):
+                    _agent_id_session_map[str(agent.id)] = self._session
 
         # Record async kickoff
         self._session.step_start(
@@ -641,11 +686,14 @@ class LCTLCrew:
             )
             raise
         finally:
-            # Cleanup agent registration
-            for agent in self._crew.agents:
-                if hasattr(agent, "id"):
-                    if _agent_id_session_map.get(str(agent.id)) == self._session:
-                         del _agent_id_session_map[str(agent.id)]
+            # Cleanup agent registration with thread safety
+            with _agent_map_lock:
+                for agent in self._crew.agents:
+                    if hasattr(agent, "id"):
+                        agent_id = str(agent.id)
+                        # Only remove if it points to this session
+                        if _agent_id_session_map.get(agent_id) is self._session:
+                            del _agent_id_session_map[agent_id]
 
     def export_trace(self, path: str) -> None:
         """Export the LCTL trace to a file.
@@ -727,6 +775,11 @@ def trace_crew(
     return wrapper
 
 
+def is_available() -> bool:
+    """Check if CrewAI is available."""
+    return CREWAI_AVAILABLE
+
+
 __all__ = [
     "CREWAI_AVAILABLE",
     "is_available",
@@ -735,8 +788,5 @@ __all__ = [
     "LCTLTask",
     "LCTLCrew",
     "trace_crew",
+    "_cleanup_stale_entries",
 ]
-
-def is_available() -> bool:
-    """Check if CrewAI is available."""
-    return CREWAI_AVAILABLE

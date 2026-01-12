@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lctl.core.events import Chain, Event, EventType, ReplayEngine
+from lctl.core.events import EventType, ReplayEngine
 from lctl.core.session import LCTLSession
 
 sys.modules["autogen"] = MagicMock()
@@ -155,6 +155,7 @@ class TestLCTLAutogenCallbackAttach:
             assert agent in callback._attached_agents
             assert len(agent.get_hooks("process_message_before_send")) == 1
             assert len(agent.get_hooks("process_all_messages_before_reply")) == 1
+            assert len(agent.get_hooks("process_last_received_message")) == 1
             assert len(agent.get_hooks("update_agent_state")) == 1
 
     def test_attach_agent_twice_no_duplicate(self, mock_autogen):
@@ -198,6 +199,73 @@ class TestLCTLAutogenCallbackAttach:
             ]
             assert len(fact_events) == 1
             assert "my_agent" in fact_events[0].data["text"]
+
+
+class TestLCTLAutogenCallbackDetach:
+    """Tests for detach_all functionality."""
+
+    def test_detach_all_clears_agents(self, mock_autogen):
+        """Test detach_all clears attached agents."""
+        with patch(
+            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
+        ), patch(
+            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        ):
+            from lctl.integrations.autogen import LCTLAutogenCallback
+
+            callback = LCTLAutogenCallback()
+            agent1 = MockAgent(name="agent1")
+            agent2 = MockAgent(name="agent2")
+            callback.attach(agent1)
+            callback.attach(agent2)
+
+            assert len(callback._attached_agents) == 2
+
+            callback.detach_all()
+
+            assert len(callback._attached_agents) == 0
+
+    def test_detach_all_clears_active_steps(self, mock_autogen):
+        """Test detach_all clears active steps tracking."""
+        with patch(
+            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
+        ), patch(
+            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        ):
+            from lctl.integrations.autogen import LCTLAutogenCallback
+
+            callback = LCTLAutogenCallback()
+            callback._active_steps["test-step"] = {"agent": "test", "start_time": 0}
+
+            callback.detach_all()
+
+            assert len(callback._active_steps) == 0
+
+    def test_detach_all_clears_conversation_stack(self, mock_autogen):
+        """Test detach_all clears conversation stack."""
+        with patch(
+            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
+        ), patch(
+            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        ):
+            from lctl.integrations.autogen import LCTLAutogenCallback
+
+            callback = LCTLAutogenCallback()
+            callback.start_nested_chat("agent1", "test")
+            callback.start_nested_chat("agent2", "test2")
+
+            assert callback._nested_depth == 2
+
+            callback.detach_all()
+
+            assert callback._nested_depth == 0
+            assert len(callback._conversation_stack) == 0
 
 
 class TestLCTLAutogenCallbackGroupChat:
@@ -363,7 +431,7 @@ class TestLCTLAutogenCallbackToolTracking:
     """Tests for tool call tracking."""
 
     def test_record_tool_result(self, mock_autogen):
-        """Test recording a tool result."""
+        """Test recording a tool result uses session.tool_call()."""
         with patch(
             "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
         ), patch(
@@ -382,12 +450,13 @@ class TestLCTLAutogenCallbackToolTracking:
                 agent="math_agent",
             )
 
-            fact_events = [
-                e for e in callback.chain.events if e.type == EventType.FACT_ADDED
+            tool_events = [
+                e for e in callback.chain.events if e.type == EventType.TOOL_CALL
             ]
-            assert len(fact_events) == 1
-            assert "calculator" in fact_events[0].data["text"]
-            assert "42" in fact_events[0].data["text"]
+            assert len(tool_events) == 1
+            assert tool_events[0].data["tool"] == "calculator"
+            assert "42" in tool_events[0].data["output"]
+            assert tool_events[0].data["duration_ms"] == 100
 
 
 class TestLCTLAutogenCallbackErrorHandling:
@@ -496,9 +565,6 @@ class TestLCTLAutogenCallbackHooks:
             step_starts = [
                 e for e in callback.chain.events if e.type == EventType.STEP_START
             ]
-            step_ends = [
-                e for e in callback.chain.events if e.type == EventType.STEP_END
-            ]
 
             send_starts = [s for s in step_starts if s.data.get("intent") == "send_message"]
             assert len(send_starts) >= 1
@@ -576,6 +642,43 @@ class TestLCTLAutogenCallbackHooks:
             ]
             assert len(reply_starts) >= 1
 
+    def test_after_reply_hook_ends_step(self, mock_autogen):
+        """Test that after_reply hook properly ends the step started by before_reply."""
+        with patch(
+            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
+        ), patch(
+            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
+        ), patch(
+            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        ):
+            from lctl.integrations.autogen import LCTLAutogenCallback
+
+            callback = LCTLAutogenCallback()
+            agent = MockAgent(name="responder")
+            callback.attach(agent)
+
+            before_hook = agent.get_hooks("process_all_messages_before_reply")[0]
+            after_hook = agent.get_hooks("process_last_received_message")[0]
+
+            messages = [{"role": "user", "content": "Hello!"}]
+            before_hook(messages)
+
+            assert "responder-generate_reply" in callback._active_steps
+
+            reply_message = "Hi there!"
+            after_hook(reply_message)
+
+            assert "responder-generate_reply" not in callback._active_steps
+
+            step_ends = [
+                e for e in callback.chain.events if e.type == EventType.STEP_END
+            ]
+            reply_ends = [
+                e for e in step_ends if e.agent == "responder"
+            ]
+            assert len(reply_ends) >= 1
+            assert reply_ends[-1].data["outcome"] == "success"
+
 
 class TestHelperFunctions:
     """Tests for helper functions."""
@@ -596,6 +699,29 @@ class TestHelperFunctions:
         result = _truncate(text, max_length=100)
         assert len(result) == 100
         assert result.endswith("...")
+
+    def test_truncate_max_length_less_than_four(self):
+        """Test truncate with max_length < 4 (edge case)."""
+        from lctl.integrations.autogen import _truncate
+
+        text = "Hello World"
+        result = _truncate(text, max_length=3)
+        assert result == "Hel"
+        assert len(result) == 3
+
+        result2 = _truncate(text, max_length=1)
+        assert result2 == "H"
+
+        result3 = _truncate(text, max_length=0)
+        assert result3 == ""
+
+    def test_truncate_short_text_with_small_max_length(self):
+        """Test truncate with text shorter than max_length < 4."""
+        from lctl.integrations.autogen import _truncate
+
+        text = "Hi"
+        result = _truncate(text, max_length=3)
+        assert result == "Hi"
 
     def test_extract_message_content_string(self):
         """Test extract_message_content with string."""

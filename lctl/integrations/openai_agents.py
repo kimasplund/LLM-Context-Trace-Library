@@ -16,9 +16,10 @@ Usage:
 
 from __future__ import annotations
 
+import threading
 import time
+import uuid
 from typing import Any, Dict, Optional
-from uuid import uuid4
 
 from ..core.session import LCTLSession
 
@@ -38,13 +39,17 @@ try:
     OPENAI_AGENTS_AVAILABLE = True
 except ImportError:
     OPENAI_AGENTS_AVAILABLE = False
-    Agent = None
-    RunContextWrapper = None
-    RunHooks = object  # Base class for when SDK is not installed
-    Tool = None
-    Usage = None
-    Trace = None
-    TracingProcessor = object  # Base class for when SDK is not installed
+    Agent = None  # type: ignore[assignment, misc]
+    RunContextWrapper = None  # type: ignore[assignment, misc]
+    RunHooks = object  # type: ignore[assignment, misc]
+    Tool = None  # type: ignore[assignment, misc]
+    Usage = None  # type: ignore[assignment, misc]
+    Trace = None  # type: ignore[assignment, misc]
+    TracingProcessor = object  # type: ignore[assignment, misc]
+
+
+# Default timeout for stale entry cleanup (1 hour)
+DEFAULT_STALE_TIMEOUT_SECONDS: float = 3600.0
 
 
 def _truncate(text: str, max_length: int = 200) -> str:
@@ -93,6 +98,9 @@ class LCTLRunHooks(RunHooks):
     - Handoffs between agents
     - Streaming events
     - Errors
+
+    Thread-safe implementation with UUID-based tool tracking to prevent
+    race conditions when multiple tools run concurrently.
     """
 
     def __init__(self, session: LCTLSession, verbose: bool = False) -> None:
@@ -107,7 +115,18 @@ class LCTLRunHooks(RunHooks):
         self._run_stack: Dict[str, Dict[str, Any]] = {}
         self._tool_stack: Dict[str, Dict[str, Any]] = {}
         self._current_agent: Optional[str] = None
-        self._stream_buffer: Dict[str, str] = {}
+        self._lock = threading.Lock()
+        self._tool_context_map: Dict[int, str] = {}
+
+    def __repr__(self) -> str:
+        """Return string representation for debugging."""
+        with self._lock:
+            return (
+                f"LCTLRunHooks(session={self._session.chain.id!r}, "
+                f"run_stack_size={len(self._run_stack)}, "
+                f"tool_stack_size={len(self._tool_stack)}, "
+                f"verbose={self._verbose})"
+            )
 
     def _get_agent_name(self, agent: Any) -> str:
         """Extract agent name from agent object."""
@@ -119,42 +138,80 @@ class LCTLRunHooks(RunHooks):
             return agent.__class__.__name__
         return "agent"
 
+    def cleanup_stale_entries(self, max_age_seconds: float = DEFAULT_STALE_TIMEOUT_SECONDS) -> int:
+        """Remove stale entries from run and tool stacks.
+
+        Entries older than max_age_seconds are considered orphaned and removed.
+        This helps prevent memory leaks from tools/runs that never completed.
+
+        Args:
+            max_age_seconds: Maximum age in seconds before an entry is considered stale.
+
+        Returns:
+            Number of entries removed.
+        """
+        current_time = time.time()
+        removed_count = 0
+
+        with self._lock:
+            for stack in [self._run_stack, self._tool_stack]:
+                stale_keys = [
+                    k for k, v in stack.items()
+                    if current_time - v.get("start_time", current_time) > max_age_seconds
+                ]
+                for k in stale_keys:
+                    del stack[k]
+                    removed_count += 1
+
+            stale_context_keys = [
+                k for k, v in self._tool_context_map.items()
+                if v not in self._tool_stack
+            ]
+            for k in stale_context_keys:
+                del self._tool_context_map[k]
+
+        return removed_count
+
     async def on_agent_start(
         self,
         context: RunContextWrapper,
         agent: Agent,
     ) -> None:
         """Called when an agent starts execution."""
-        agent_name = self._get_agent_name(agent)
-        run_id = str(id(context))
+        try:
+            agent_name = self._get_agent_name(agent)
+            run_id = str(id(context))
 
-        self._run_stack[run_id] = {
-            "agent": agent_name,
-            "start_time": time.time(),
-        }
-        self._current_agent = agent_name
+            with self._lock:
+                self._run_stack[run_id] = {
+                    "agent": agent_name,
+                    "start_time": time.time(),
+                }
+                self._current_agent = agent_name
 
-        input_summary = ""
-        if hasattr(context, "input") and context.input:
-            input_text = str(context.input)
-            input_summary = _truncate(input_text)
+            input_summary = ""
+            if hasattr(context, "input") and context.input:
+                input_text = str(context.input)
+                input_summary = _truncate(input_text)
 
-        self._session.step_start(
-            agent=agent_name,
-            intent="agent_run",
-            input_summary=input_summary,
-        )
-
-        if hasattr(agent, "instructions") and agent.instructions:
-            self._session.add_fact(
-                fact_id=f"agent_{agent_name}_instructions",
-                text=f"Agent instructions: {_truncate(agent.instructions, 300)}",
-                confidence=1.0,
-                source=agent_name,
+            self._session.step_start(
+                agent=agent_name,
+                intent="agent_run",
+                input_summary=input_summary,
             )
 
-        if self._verbose:
-            print(f"[LCTL] Agent started: {agent_name}")
+            if hasattr(agent, "instructions") and agent.instructions:
+                self._session.add_fact(
+                    fact_id=f"agent_{agent_name}_instructions",
+                    text=f"Agent instructions: {_truncate(agent.instructions, 300)}",
+                    confidence=1.0,
+                    source=agent_name,
+                )
+
+            if self._verbose:
+                print(f"[LCTL] Agent started: {agent_name}")
+        except Exception:
+            pass
 
     async def on_agent_end(
         self,
@@ -163,37 +220,41 @@ class LCTLRunHooks(RunHooks):
         output: Any,
     ) -> None:
         """Called when an agent completes execution."""
-        agent_name = self._get_agent_name(agent)
-        run_id = str(id(context))
+        try:
+            agent_name = self._get_agent_name(agent)
+            run_id = str(id(context))
 
-        run_info = self._run_stack.pop(run_id, {})
-        start_time = run_info.get("start_time", time.time())
-        duration_ms = int((time.time() - start_time) * 1000)
+            with self._lock:
+                run_info = self._run_stack.pop(run_id, {})
+                self._current_agent = None
 
-        output_summary = ""
-        if output is not None:
-            if hasattr(output, "final_output"):
-                output_summary = _truncate(str(output.final_output))
-            else:
-                output_summary = _truncate(str(output))
+            start_time = run_info.get("start_time", time.time())
+            duration_ms = int((time.time() - start_time) * 1000)
 
-        tokens = {"input": 0, "output": 0}
-        if hasattr(output, "usage"):
-            tokens = _extract_usage(output.usage)
+            output_summary = ""
+            if output is not None:
+                if hasattr(output, "final_output"):
+                    output_summary = _truncate(str(output.final_output))
+                else:
+                    output_summary = _truncate(str(output))
 
-        self._session.step_end(
-            agent=agent_name,
-            outcome="success",
-            output_summary=output_summary,
-            duration_ms=duration_ms,
-            tokens_in=tokens["input"],
-            tokens_out=tokens["output"],
-        )
+            tokens = {"input": 0, "output": 0}
+            if hasattr(output, "usage"):
+                tokens = _extract_usage(output.usage)
 
-        self._current_agent = None
+            self._session.step_end(
+                agent=agent_name,
+                outcome="success",
+                output_summary=output_summary,
+                duration_ms=duration_ms,
+                tokens_in=tokens["input"],
+                tokens_out=tokens["output"],
+            )
 
-        if self._verbose:
-            print(f"[LCTL] Agent ended: {agent_name} ({duration_ms}ms)")
+            if self._verbose:
+                print(f"[LCTL] Agent ended: {agent_name} ({duration_ms}ms)")
+        except Exception:
+            pass
 
     async def on_tool_start(
         self,
@@ -202,19 +263,30 @@ class LCTLRunHooks(RunHooks):
         tool: Tool,
         input_data: Any,
     ) -> None:
-        """Called when a tool invocation starts."""
-        tool_name = getattr(tool, "name", str(tool))
-        tool_id = f"{tool_name}_{id(input_data)}"
+        """Called when a tool invocation starts.
 
-        self._tool_stack[tool_id] = {
-            "tool": tool_name,
-            "start_time": time.time(),
-            "input": input_data,
-        }
+        Uses UUID-based tracking to prevent race conditions when multiple
+        tools with the same name run concurrently.
+        """
+        try:
+            tool_name = getattr(tool, "name", str(tool))
+            tool_id = str(uuid.uuid4())
+            context_id = id(context)
 
-        if self._verbose:
-            agent_name = self._get_agent_name(agent)
-            print(f"[LCTL] Tool started: {tool_name} (agent: {agent_name})")
+            with self._lock:
+                self._tool_stack[tool_id] = {
+                    "tool": tool_name,
+                    "start_time": time.time(),
+                    "input": input_data,
+                    "tool_id": tool_id,
+                }
+                self._tool_context_map[context_id] = tool_id
+
+            if self._verbose:
+                agent_name = self._get_agent_name(agent)
+                print(f"[LCTL] Tool started: {tool_name} (agent: {agent_name})")
+        except Exception:
+            pass
 
     async def on_tool_end(
         self,
@@ -223,34 +295,95 @@ class LCTLRunHooks(RunHooks):
         tool: Tool,
         output: Any,
     ) -> None:
-        """Called when a tool invocation completes."""
-        tool_name = getattr(tool, "name", str(tool))
+        """Called when a tool invocation completes.
 
-        tool_info = None
-        for tid, info in list(self._tool_stack.items()):
-            if info["tool"] == tool_name:
-                tool_info = self._tool_stack.pop(tid)
-                break
+        Uses context-based UUID lookup for accurate tool matching.
+        """
+        try:
+            tool_name = getattr(tool, "name", str(tool))
+            context_id = id(context)
 
-        if tool_info is None:
-            tool_info = {"tool": tool_name, "start_time": time.time(), "input": ""}
+            with self._lock:
+                tool_id = self._tool_context_map.pop(context_id, None)
+                if tool_id is not None:
+                    tool_info = self._tool_stack.pop(tool_id, None)
+                else:
+                    tool_info = None
 
-        start_time = tool_info.get("start_time", time.time())
-        duration_ms = int((time.time() - start_time) * 1000)
-        input_data = tool_info.get("input", "")
+            if tool_info is None:
+                tool_info = {"tool": tool_name, "start_time": time.time(), "input": ""}
 
-        input_str = _truncate(str(input_data)) if input_data else ""
-        output_str = _truncate(str(output)) if output else ""
+            start_time = tool_info.get("start_time", time.time())
+            duration_ms = int((time.time() - start_time) * 1000)
+            input_data = tool_info.get("input", "")
 
-        self._session.tool_call(
-            tool=tool_name,
-            input_data=input_str,
-            output_data=output_str,
-            duration_ms=duration_ms,
-        )
+            input_str = _truncate(str(input_data)) if input_data else ""
+            output_str = _truncate(str(output)) if output else ""
 
-        if self._verbose:
-            print(f"[LCTL] Tool ended: {tool_name} ({duration_ms}ms)")
+            self._session.tool_call(
+                tool=tool_name,
+                input_data=input_str,
+                output_data=output_str,
+                duration_ms=duration_ms,
+            )
+
+            if self._verbose:
+                print(f"[LCTL] Tool ended: {tool_name} ({duration_ms}ms)")
+        except Exception:
+            pass
+
+    async def on_tool_error(
+        self,
+        context: RunContextWrapper,
+        agent: Agent,
+        tool: Tool,
+        error: BaseException,
+    ) -> None:
+        """Called when a tool invocation fails.
+
+        Records both the tool call (with error output) and an error event.
+        """
+        try:
+            tool_name = getattr(tool, "name", str(tool))
+            context_id = id(context)
+
+            with self._lock:
+                tool_id = self._tool_context_map.pop(context_id, None)
+                if tool_id is not None:
+                    tool_info = self._tool_stack.pop(tool_id, None)
+                else:
+                    tool_info = None
+
+            if tool_info is None:
+                tool_info = {"tool": tool_name, "start_time": time.time(), "input": ""}
+
+            start_time = tool_info.get("start_time", time.time())
+            duration_ms = int((time.time() - start_time) * 1000)
+            input_data = tool_info.get("input", "")
+
+            input_str = _truncate(str(input_data)) if input_data else ""
+            error_output = f"ERROR: {type(error).__name__}: {str(error)[:100]}"
+
+            self._session.tool_call(
+                tool=tool_name,
+                input_data=input_str,
+                output_data=error_output,
+                duration_ms=duration_ms,
+            )
+
+            self._session.error(
+                category="tool_error",
+                error_type=type(error).__name__,
+                message=str(error),
+                recoverable=True,
+                suggested_action="Check tool input and retry",
+            )
+
+            if self._verbose:
+                agent_name = self._get_agent_name(agent)
+                print(f"[LCTL] Tool error: {tool_name} (agent: {agent_name}): {error}")
+        except Exception:
+            pass
 
     async def on_handoff(
         self,
@@ -259,18 +392,21 @@ class LCTLRunHooks(RunHooks):
         to_agent: Agent,
     ) -> None:
         """Called when control is handed off between agents."""
-        from_name = self._get_agent_name(from_agent)
-        to_name = self._get_agent_name(to_agent)
+        try:
+            from_name = self._get_agent_name(from_agent)
+            to_name = self._get_agent_name(to_agent)
 
-        self._session.add_fact(
-            fact_id=f"handoff_{from_name}_to_{to_name}_{int(time.time() * 1000)}",
-            text=f"Handoff from {from_name} to {to_name}",
-            confidence=1.0,
-            source=from_name,
-        )
+            self._session.add_fact(
+                fact_id=f"handoff_{from_name}_to_{to_name}_{int(time.time() * 1000)}",
+                text=f"Handoff from {from_name} to {to_name}",
+                confidence=1.0,
+                source=from_name,
+            )
 
-        if self._verbose:
-            print(f"[LCTL] Handoff: {from_name} -> {to_name}")
+            if self._verbose:
+                print(f"[LCTL] Handoff: {from_name} -> {to_name}")
+        except Exception:
+            pass
 
     async def on_error(
         self,
@@ -279,30 +415,35 @@ class LCTLRunHooks(RunHooks):
         error: BaseException,
     ) -> None:
         """Called when an error occurs during agent execution."""
-        agent_name = self._get_agent_name(agent)
-        run_id = str(id(context))
+        try:
+            agent_name = self._get_agent_name(agent)
+            run_id = str(id(context))
 
-        run_info = self._run_stack.pop(run_id, {})
-        start_time = run_info.get("start_time", time.time())
-        duration_ms = int((time.time() - start_time) * 1000)
+            with self._lock:
+                run_info = self._run_stack.pop(run_id, {})
 
-        self._session.step_end(
-            agent=agent_name,
-            outcome="error",
-            output_summary=f"Error: {type(error).__name__}: {str(error)[:100]}",
-            duration_ms=duration_ms,
-        )
+            start_time = run_info.get("start_time", time.time())
+            duration_ms = int((time.time() - start_time) * 1000)
 
-        self._session.error(
-            category="agent_error",
-            error_type=type(error).__name__,
-            message=str(error),
-            recoverable=False,
-            suggested_action="Check agent configuration and input",
-        )
+            self._session.step_end(
+                agent=agent_name,
+                outcome="error",
+                output_summary=f"Error: {type(error).__name__}: {str(error)[:100]}",
+                duration_ms=duration_ms,
+            )
 
-        if self._verbose:
-            print(f"[LCTL] Error in agent {agent_name}: {error}")
+            self._session.error(
+                category="agent_error",
+                error_type=type(error).__name__,
+                message=str(error),
+                recoverable=False,
+                suggested_action="Check agent configuration and input",
+            )
+
+            if self._verbose:
+                print(f"[LCTL] Error in agent {agent_name}: {error}")
+        except Exception:
+            pass
 
 
 class LCTLTracingProcessor(TracingProcessor):
@@ -322,29 +463,39 @@ class LCTLTracingProcessor(TracingProcessor):
         self._session = session
         self._verbose = verbose
 
-    def process_trace(self, trace: Trace) -> None:
-        """Process a completed trace from the SDK."""
-        if trace is None:
-            return
-
-        trace_data = {}
-        if hasattr(trace, "to_dict"):
-            trace_data = trace.to_dict()
-        elif hasattr(trace, "__dict__"):
-            trace_data = {
-                k: v for k, v in trace.__dict__.items()
-                if not k.startswith("_")
-            }
-
-        self._session.add_fact(
-            fact_id=f"trace_{int(time.time() * 1000)}",
-            text=f"Trace completed: {_truncate(str(trace_data), 500)}",
-            confidence=1.0,
-            source="tracing_processor",
+    def __repr__(self) -> str:
+        """Return string representation for debugging."""
+        return (
+            f"LCTLTracingProcessor(session={self._session.chain.id!r}, "
+            f"verbose={self._verbose})"
         )
 
-        if self._verbose:
-            print("[LCTL] Trace processed")
+    def process_trace(self, trace: Trace) -> None:
+        """Process a completed trace from the SDK."""
+        try:
+            if trace is None:
+                return
+
+            trace_data = {}
+            if hasattr(trace, "to_dict"):
+                trace_data = trace.to_dict()
+            elif hasattr(trace, "__dict__"):
+                trace_data = {
+                    k: v for k, v in trace.__dict__.items()
+                    if not k.startswith("_")
+                }
+
+            self._session.add_fact(
+                fact_id=f"trace_{int(time.time() * 1000)}",
+                text=f"Trace completed: {_truncate(str(trace_data), 500)}",
+                confidence=1.0,
+                source="tracing_processor",
+            )
+
+            if self._verbose:
+                print("[LCTL] Trace processed")
+        except Exception:
+            pass
 
 
 class LCTLOpenAIAgentTracer:
@@ -385,10 +536,17 @@ class LCTLOpenAIAgentTracer:
         """
         _check_openai_agents_available()
 
-        self._session = session or LCTLSession(chain_id=chain_id or f"openai-agent-{str(uuid4())[:8]}")
+        self._session = session or LCTLSession(chain_id=chain_id or f"openai-agent-{str(uuid.uuid4())[:8]}")
         self._verbose = verbose
         self._hooks: Optional[LCTLRunHooks] = None
         self._tracing_processor: Optional[LCTLTracingProcessor] = None
+
+    def __repr__(self) -> str:
+        """Return string representation for debugging."""
+        return (
+            f"LCTLOpenAIAgentTracer(chain_id={self._session.chain.id!r}, "
+            f"verbose={self._verbose})"
+        )
 
     @property
     def session(self) -> LCTLSession:
@@ -571,6 +729,13 @@ class AgentRunContext:
         self._tokens_out: int = 0
         self._output_summary: str = ""
 
+    def __repr__(self) -> str:
+        """Return string representation for debugging."""
+        return (
+            f"AgentRunContext(agent_name={self._agent_name!r}, "
+            f"input_summary={self._input_summary[:50]!r}...)"
+        )
+
     def __enter__(self) -> "AgentRunContext":
         """Start tracing the agent run."""
         self._start_time = time.time()
@@ -707,6 +872,8 @@ class TracedAgent:
     a tracer for recording events.
     """
 
+    __slots__ = ("_agent", "_tracer")
+
     def __init__(
         self,
         agent: "Agent",
@@ -724,11 +891,15 @@ class TracedAgent:
         """
         _check_openai_agents_available()
 
-        self._agent = agent
-        self._tracer = LCTLOpenAIAgentTracer(
-            chain_id=chain_id,
-            session=session,
-            verbose=verbose,
+        object.__setattr__(self, "_agent", agent)
+        object.__setattr__(
+            self,
+            "_tracer",
+            LCTLOpenAIAgentTracer(
+                chain_id=chain_id,
+                session=session,
+                verbose=verbose,
+            ),
         )
 
         agent_name = getattr(agent, "name", "agent")
@@ -739,6 +910,14 @@ class TracedAgent:
                 confidence=1.0,
                 source="setup",
             )
+
+    def __repr__(self) -> str:
+        """Return string representation for debugging."""
+        agent_name = getattr(self._agent, "name", "unknown")
+        return (
+            f"TracedAgent(agent_name={agent_name!r}, "
+            f"chain_id={self._tracer.chain.id!r})"
+        )
 
     @property
     def agent(self) -> "Agent":
@@ -776,8 +955,19 @@ class TracedAgent:
         return self._tracer.to_dict()
 
     def __getattr__(self, name: str) -> Any:
-        """Proxy attribute access to the underlying agent."""
-        return getattr(self._agent, name)
+        """Proxy attribute access to the underlying agent.
+
+        This method is only called when the attribute is not found
+        on the TracedAgent instance itself. Uses object.__getattribute__
+        to safely access _agent without infinite recursion.
+        """
+        try:
+            agent = object.__getattribute__(self, "_agent")
+            return getattr(agent, name)
+        except AttributeError:
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{name}'"
+            )
 
 
 def is_available() -> bool:

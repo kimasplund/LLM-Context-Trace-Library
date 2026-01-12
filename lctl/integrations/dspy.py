@@ -25,6 +25,7 @@ Usage:
 from __future__ import annotations
 
 import functools
+import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 from uuid import uuid4
@@ -174,15 +175,21 @@ class LCTLDSPyCallback:
 
         self.session = session or LCTLSession(chain_id=chain_id or f"dspy-{str(uuid4())[:8]}")
         self._verbose = verbose
-        self._module_stack: List[Dict[str, Any]] = []
+        self._active_modules: Dict[int, Dict[str, Any]] = {}
         self._llm_call_count = 0
         self._optimization_iteration = 0
         self._current_module: Optional[str] = None
+        self._lock = threading.Lock()
 
     @property
     def chain(self):
         """Access the underlying LCTL chain."""
         return self.session.chain
+
+    @property
+    def _module_stack(self) -> List[Dict[str, Any]]:
+        """Backwards compatibility: return active modules as a list."""
+        return list(self._active_modules.values())
 
     def on_module_start(
         self,
@@ -196,7 +203,10 @@ class LCTLDSPyCallback:
             inputs: Input arguments to the module.
         """
         module_name = _get_module_name(module)
-        self._current_module = module_name
+        module_id = id(module)
+
+        with self._lock:
+            self._current_module = module_name
 
         input_summary = ""
         if inputs:
@@ -208,26 +218,34 @@ class LCTLDSPyCallback:
                 values_preview.append(f"{k}={v_str}")
             input_summary = ", ".join(values_preview)
 
-        self._module_stack.append({
-            "module": module_name,
-            "start_time": time.time(),
-            "inputs": inputs,
-        })
+        with self._lock:
+            self._active_modules[module_id] = {
+                "module": module_name,
+                "start_time": time.time(),
+                "inputs": inputs,
+            }
 
-        self.session.step_start(
-            agent=module_name,
-            intent="module_forward",
-            input_summary=_truncate(input_summary, 200),
-        )
+        try:
+            self.session.step_start(
+                agent=module_name,
+                intent="module_forward",
+                input_summary=_truncate(input_summary, 200),
+            )
+        except Exception:
+            pass
 
         sig_info = _extract_signature_info(getattr(module, "signature", None))
         if sig_info["input_fields"] or sig_info["output_fields"]:
-            self.session.add_fact(
-                fact_id=f"signature_{module_name}_{len(self.chain.events)}",
-                text=f"Signature: {sig_info['input_fields']} -> {sig_info['output_fields']}",
-                confidence=1.0,
-                source=module_name,
-            )
+            fact_id = f"signature_{module_name}_{uuid4().hex[:8]}"
+            try:
+                self.session.add_fact(
+                    fact_id=fact_id,
+                    text=f"Signature: {sig_info['input_fields']} -> {sig_info['output_fields']}",
+                    confidence=1.0,
+                    source=module_name,
+                )
+            except Exception:
+                pass
 
         if self._verbose:
             print(f"[LCTL] Module started: {module_name}")
@@ -246,45 +264,59 @@ class LCTLDSPyCallback:
             error: The exception (if failed).
         """
         module_name = _get_module_name(module)
+        module_id = id(module)
 
-        stack_info = {}
-        if self._module_stack:
-            stack_info = self._module_stack.pop()
+        with self._lock:
+            stack_info = self._active_modules.pop(module_id, {})
 
         start_time = stack_info.get("start_time", time.time())
         duration_ms = int((time.time() - start_time) * 1000)
 
         if error is not None:
-            self.session.step_end(
-                agent=module_name,
-                outcome="error",
-                output_summary=f"Error: {type(error).__name__}: {str(error)[:100]}",
-                duration_ms=duration_ms,
-            )
-            self.session.error(
-                category="module_error",
-                error_type=type(error).__name__,
-                message=str(error),
-                recoverable=False,
-                suggested_action="Check module configuration and inputs",
-            )
+            try:
+                self.session.step_end(
+                    agent=module_name,
+                    outcome="error",
+                    output_summary=f"Error: {type(error).__name__}: {str(error)[:100]}",
+                    duration_ms=duration_ms,
+                )
+            except Exception:
+                pass
+            try:
+                self.session.error(
+                    category="module_error",
+                    error_type=type(error).__name__,
+                    message=str(error),
+                    recoverable=False,
+                    suggested_action="Check module configuration and inputs",
+                )
+            except Exception:
+                pass
         else:
             prediction_text = _extract_prediction_text(prediction)
-            self.session.step_end(
-                agent=module_name,
-                outcome="success",
-                output_summary=_truncate(prediction_text, 200),
-                duration_ms=duration_ms,
-            )
+            try:
+                self.session.step_end(
+                    agent=module_name,
+                    outcome="success",
+                    output_summary=_truncate(prediction_text, 200),
+                    duration_ms=duration_ms,
+                )
+            except Exception:
+                pass
 
-            self.session.add_fact(
-                fact_id=f"prediction_{module_name}_{len(self.chain.events)}",
-                text=f"Prediction: {_truncate(prediction_text, 300)}",
-                confidence=1.0,
-                source=module_name,
-            )
+            fact_id = f"prediction_{module_name}_{uuid4().hex[:8]}"
+            try:
+                self.session.add_fact(
+                    fact_id=fact_id,
+                    text=f"Prediction: {_truncate(prediction_text, 300)}",
+                    confidence=1.0,
+                    source=module_name,
+                )
+            except Exception:
+                pass
 
-        self._current_module = None
+        with self._lock:
+            self._current_module = None
 
         if self._verbose:
             status = "error" if error else "success"
@@ -309,26 +341,36 @@ class LCTLDSPyCallback:
             tokens_out: Number of output tokens.
             duration_ms: Duration of the LLM call.
         """
-        self._llm_call_count += 1
-        agent = self._current_module or "llm"
+        with self._lock:
+            self._llm_call_count += 1
+            llm_call_num = self._llm_call_count
+            agent = self._current_module or "llm"
 
-        self.session.tool_call(
-            tool=f"llm:{model}",
-            input_data=_truncate(prompt, 300),
-            output_data=_truncate(response, 300),
-            duration_ms=duration_ms,
-        )
+        try:
+            self.session.llm_trace(
+                messages=[{"role": "user", "content": _truncate(prompt, 300)}],
+                response=_truncate(response, 300),
+                model=model,
+                usage={"input": tokens_in, "output": tokens_out},
+                duration_ms=duration_ms,
+            )
+        except Exception:
+            pass
 
         if tokens_in > 0 or tokens_out > 0:
-            self.session.add_fact(
-                fact_id=f"llm_usage_{self._llm_call_count}",
-                text=f"LLM call #{self._llm_call_count}: {tokens_in} tokens in, {tokens_out} tokens out",
-                confidence=1.0,
-                source=agent,
-            )
+            fact_id = f"llm_usage_{uuid4().hex[:8]}"
+            try:
+                self.session.add_fact(
+                    fact_id=fact_id,
+                    text=f"LLM call #{llm_call_num}: {tokens_in} tokens in, {tokens_out} tokens out",
+                    confidence=1.0,
+                    source=agent,
+                )
+            except Exception:
+                pass
 
         if self._verbose:
-            print(f"[LCTL] LLM call #{self._llm_call_count}: {model} ({tokens_in}+{tokens_out} tokens)")
+            print(f"[LCTL] LLM call #{llm_call_num}: {model} ({tokens_in}+{tokens_out} tokens)")
 
     def on_prediction(
         self,
@@ -345,12 +387,16 @@ class LCTLDSPyCallback:
         """
         prediction_text = _extract_prediction_text(prediction)
 
-        self.session.add_fact(
-            fact_id=f"prediction_{source}_{len(self.chain.events)}",
-            text=prediction_text,
-            confidence=confidence,
-            source=source,
-        )
+        fact_id = f"prediction_{source}_{uuid4().hex[:8]}"
+        try:
+            self.session.add_fact(
+                fact_id=fact_id,
+                text=prediction_text,
+                confidence=confidence,
+                source=source,
+            )
+        except Exception:
+            pass
 
     def on_optimization_start(
         self,
@@ -363,25 +409,33 @@ class LCTLDSPyCallback:
             teleprompter_name: Name of the teleprompter.
             config: Optimization configuration.
         """
-        self._optimization_iteration = 0
+        with self._lock:
+            self._optimization_iteration = 0
 
         config_summary = ""
         if config:
             config_items = [f"{k}={v}" for k, v in list(config.items())[:5]]
             config_summary = ", ".join(config_items)
 
-        self.session.step_start(
-            agent=teleprompter_name,
-            intent="optimization",
-            input_summary=_truncate(config_summary, 200),
-        )
+        try:
+            self.session.step_start(
+                agent=teleprompter_name,
+                intent="optimization",
+                input_summary=_truncate(config_summary, 200),
+            )
+        except Exception:
+            pass
 
-        self.session.add_fact(
-            fact_id=f"optimization_config_{teleprompter_name}",
-            text=f"Optimization started: {teleprompter_name} with config: {config_summary}",
-            confidence=1.0,
-            source=teleprompter_name,
-        )
+        fact_id = f"optimization_config_{teleprompter_name}_{uuid4().hex[:8]}"
+        try:
+            self.session.add_fact(
+                fact_id=fact_id,
+                text=f"Optimization started: {teleprompter_name} with config: {config_summary}",
+                confidence=1.0,
+                source=teleprompter_name,
+            )
+        except Exception:
+            pass
 
         if self._verbose:
             print(f"[LCTL] Optimization started: {teleprompter_name}")
@@ -401,7 +455,8 @@ class LCTLDSPyCallback:
             best_score: Best score so far.
             metrics: Additional metrics.
         """
-        self._optimization_iteration = iteration
+        with self._lock:
+            self._optimization_iteration = iteration
 
         metrics_summary = f"iteration={iteration}"
         if score is not None:
@@ -413,14 +468,21 @@ class LCTLDSPyCallback:
             for k, v in list(metrics.items())[:3]:
                 metrics_summary += f", {k}={v}"
 
-        self.session.checkpoint()
+        try:
+            self.session.checkpoint()
+        except Exception:
+            pass
 
-        self.session.add_fact(
-            fact_id=f"optimization_iteration_{iteration}",
-            text=f"Optimization iteration {iteration}: {metrics_summary}",
-            confidence=1.0,
-            source="teleprompter",
-        )
+        fact_id = f"optimization_iteration_{iteration}_{uuid4().hex[:8]}"
+        try:
+            self.session.add_fact(
+                fact_id=fact_id,
+                text=f"Optimization iteration {iteration}: {metrics_summary}",
+                confidence=1.0,
+                source="teleprompter",
+            )
+        except Exception:
+            pass
 
         if self._verbose:
             print(f"[LCTL] Optimization iteration {iteration}: score={score}")
@@ -442,13 +504,19 @@ class LCTLDSPyCallback:
         if best_score is not None:
             output_summary += f", best_score={best_score:.4f}"
 
-        self.session.step_end(
-            agent=teleprompter_name,
-            outcome="success",
-            output_summary=output_summary,
-        )
+        try:
+            self.session.step_end(
+                agent=teleprompter_name,
+                outcome="success",
+                output_summary=output_summary,
+            )
+        except Exception:
+            pass
 
-        self.session.checkpoint()
+        try:
+            self.session.checkpoint()
+        except Exception:
+            pass
 
         if self._verbose:
             print(f"[LCTL] Optimization ended: {teleprompter_name} ({total_iterations} iterations)")
@@ -466,13 +534,16 @@ class LCTLDSPyCallback:
             module_name: Optional module name where error occurred.
             recoverable: Whether the error is recoverable.
         """
-        self.session.error(
-            category="dspy_error",
-            error_type=type(error).__name__,
-            message=str(error),
-            recoverable=recoverable,
-            suggested_action="Check module configuration and LLM settings",
-        )
+        try:
+            self.session.error(
+                category="dspy_error",
+                error_type=type(error).__name__,
+                message=str(error),
+                recoverable=recoverable,
+                suggested_action="Check module configuration and LLM settings",
+            )
+        except Exception:
+            pass
 
     def export(self, path: str) -> None:
         """Export the LCTL chain to a file.
@@ -552,18 +623,23 @@ def _wrap_module(module: Any, callback: LCTLDSPyCallback) -> Any:
 def _wrap_module_class(module_class: type, callback: LCTLDSPyCallback) -> type:
     """Wrap a DSPy module class with LCTL tracing.
 
+    Creates a subclass with traced forward() method instead of mutating the original.
+
     Args:
         module_class: The module class to wrap.
         callback: The callback for recording events.
 
     Returns:
-        Wrapped module class.
+        New subclass with traced forward method.
     """
     original_forward = module_class.forward
 
     @functools.wraps(original_forward)
     def traced_forward(self, *args, **kwargs):
-        callback.on_module_start(self, kwargs)
+        all_inputs = kwargs.copy()
+        if args:
+            all_inputs["_positional_args"] = args
+        callback.on_module_start(self, all_inputs)
         try:
             result = original_forward(self, *args, **kwargs)
             callback.on_module_end(self, result)
@@ -572,10 +648,17 @@ def _wrap_module_class(module_class: type, callback: LCTLDSPyCallback) -> type:
             callback.on_module_end(self, None, error=e)
             raise
 
-    module_class.forward = traced_forward
-    module_class._lctl_callback = callback
+    class_name = f"Traced{module_class.__name__}"
+    traced_class = type(
+        class_name,
+        (module_class,),
+        {
+            "forward": traced_forward,
+            "_lctl_callback": callback,
+        }
+    )
 
-    return module_class
+    return traced_class
 
 
 def _wrap_module_instance(module: Any, callback: LCTLDSPyCallback) -> "TracedDSPyModule":
@@ -617,12 +700,16 @@ class TracedDSPyModule:
         self._callback = callback
 
         module_name = _get_module_name(module)
-        callback.session.add_fact(
-            fact_id=f"module_wrapped_{module_name}",
-            text=f"Module '{module_name}' wrapped for tracing",
-            confidence=1.0,
-            source="lctl-dspy",
-        )
+        fact_id = f"module_wrapped_{module_name}_{uuid4().hex[:8]}"
+        try:
+            callback.session.add_fact(
+                fact_id=fact_id,
+                text=f"Module '{module_name}' wrapped for tracing",
+                confidence=1.0,
+                source="lctl-dspy",
+            )
+        except Exception:
+            pass
 
     @property
     def module(self) -> Any:
@@ -644,7 +731,10 @@ class TracedDSPyModule:
         Returns:
             The module's prediction result.
         """
-        self._callback.on_module_start(self._module, kwargs)
+        all_inputs = kwargs.copy()
+        if args:
+            all_inputs["_positional_args"] = args
+        self._callback.on_module_start(self._module, all_inputs)
         try:
             result = self._module(*args, **kwargs)
             self._callback.on_module_end(self._module, result)
@@ -715,12 +805,16 @@ class LCTLDSPyTeleprompter:
         self._verbose = verbose
         self._teleprompter_name = type(teleprompter).__name__
 
-        callback.session.add_fact(
-            fact_id=f"teleprompter_{self._teleprompter_name}",
-            text=f"Teleprompter '{self._teleprompter_name}' configured for tracing",
-            confidence=1.0,
-            source="lctl-dspy",
-        )
+        fact_id = f"teleprompter_{self._teleprompter_name}_{uuid4().hex[:8]}"
+        try:
+            callback.session.add_fact(
+                fact_id=fact_id,
+                text=f"Teleprompter '{self._teleprompter_name}' configured for tracing",
+                confidence=1.0,
+                source="lctl-dspy",
+            )
+        except Exception:
+            pass
 
     @property
     def teleprompter(self) -> Any:
@@ -763,7 +857,7 @@ class LCTLDSPyTeleprompter:
         try:
             original_compile = self._teleprompter.compile
 
-            result = original_compile(student, trainset=trainset, **kwargs)
+            result = original_compile(student, trainset=trainset, valset=valset, **kwargs)
 
             total_time_ms = int((time.time() - start_time) * 1000)
 
@@ -772,21 +866,28 @@ class LCTLDSPyTeleprompter:
                 total_iterations=self._callback._optimization_iteration + 1,
             )
 
-            self._callback.session.add_fact(
-                fact_id=f"optimization_complete_{self._teleprompter_name}",
-                text=f"Optimization completed in {total_time_ms}ms",
-                confidence=1.0,
-                source=self._teleprompter_name,
-            )
+            fact_id = f"optimization_complete_{self._teleprompter_name}_{uuid4().hex[:8]}"
+            try:
+                self._callback.session.add_fact(
+                    fact_id=fact_id,
+                    text=f"Optimization completed in {total_time_ms}ms",
+                    confidence=1.0,
+                    source=self._teleprompter_name,
+                )
+            except Exception:
+                pass
 
             return result
 
         except Exception as e:
-            self._callback.session.step_end(
-                agent=self._teleprompter_name,
-                outcome="error",
-                output_summary=f"Optimization failed: {type(e).__name__}: {str(e)[:100]}",
-            )
+            try:
+                self._callback.session.step_end(
+                    agent=self._teleprompter_name,
+                    outcome="error",
+                    output_summary=f"Optimization failed: {type(e).__name__}: {str(e)[:100]}",
+                )
+            except Exception:
+                pass
             self._callback.record_error(e, self._teleprompter_name, recoverable=False)
             raise
 
@@ -824,6 +925,13 @@ class LCTLDSPyTeleprompter:
         return getattr(self._teleprompter, name)
 
 
+class _MockModule:
+    """Simple mock module for DSPyModuleContext."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
 class DSPyModuleContext:
     """Context manager for tracing DSPy module execution.
 
@@ -851,37 +959,19 @@ class DSPyModuleContext:
         self._inputs = inputs or {}
         self._result: Any = None
         self._error: Optional[BaseException] = None
+        self._mock_module = _MockModule(module_name)
 
     def __enter__(self) -> "DSPyModuleContext":
         """Start tracing the module execution."""
-
-        class MockModule:
-            def __init__(self, name: str):
-                self.name = name
-
-            def __class__(self):
-                return type("MockModule", (), {"__name__": self._module_name})
-
-        mock = MockModule(self._module_name)
-        mock.__class__ = type(self._module_name, (), {})
-
-        self._callback.on_module_start(mock, self._inputs)
+        self._callback.on_module_start(self._mock_module, self._inputs)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """End tracing the module execution."""
-
-        class MockModule:
-            def __init__(self, name: str):
-                self.name = name
-
-        mock = MockModule(self._module_name)
-        mock.__class__ = type(self._module_name, (), {})
-
         if exc_type is not None:
-            self._callback.on_module_end(mock, None, error=exc_val)
+            self._callback.on_module_end(self._mock_module, None, error=exc_val)
         else:
-            self._callback.on_module_end(mock, self._result)
+            self._callback.on_module_end(self._mock_module, self._result)
 
         return False
 

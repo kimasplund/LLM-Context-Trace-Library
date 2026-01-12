@@ -453,6 +453,61 @@ class TestLCTLClaudeCodeTracer:
         assert len(tracer._file_changes) == 0
         assert tracer.session.chain.id != "test-reset"
 
+    def test_cleanup_stale_start_times(self):
+        """Test cleanup of stale start times."""
+        import time
+
+        tracer = LCTLClaudeCodeTracer(chain_id="test-cleanup")
+
+        # Add some start times
+        tracer._start_times["agent1"] = time.time()  # Fresh
+        tracer._start_times["agent2"] = time.time() - 7200  # 2 hours old (stale)
+        tracer._start_times["agent3"] = time.time() - 100  # 100 seconds old
+
+        # Cleanup with 1 hour max age
+        removed = tracer.cleanup_stale_start_times(max_age_seconds=3600.0)
+
+        assert removed == 1  # Only agent2 should be removed
+        assert "agent1" in tracer._start_times
+        assert "agent2" not in tracer._start_times
+        assert "agent3" in tracer._start_times
+
+    def test_cleanup_stale_start_times_none_stale(self):
+        """Test cleanup when no start times are stale."""
+        import time
+
+        tracer = LCTLClaudeCodeTracer(chain_id="test-cleanup-none")
+
+        # Add only fresh start times
+        tracer._start_times["agent1"] = time.time()
+        tracer._start_times["agent2"] = time.time() - 60
+
+        removed = tracer.cleanup_stale_start_times(max_age_seconds=3600.0)
+
+        assert removed == 0
+        assert len(tracer._start_times) == 2
+
+    def test_agent_stack_out_of_order_completion(self):
+        """Test that agents can complete out of order."""
+        tracer = LCTLClaudeCodeTracer(chain_id="test-out-of-order")
+
+        # Start multiple agents
+        tracer.on_task_start(agent_type="agent1", description="Task 1", prompt="Prompt 1")
+        tracer.on_task_start(agent_type="agent2", description="Task 2", prompt="Prompt 2")
+        tracer.on_task_start(agent_type="agent3", description="Task 3", prompt="Prompt 3")
+
+        assert len(tracer.agent_stack) == 3
+
+        # Complete out of order (agent2 completes before agent3)
+        tracer.on_task_complete(agent_type="agent2", result="Done 2", success=True)
+
+        # agent1 and agent3 should still be in stack
+        assert len(tracer.agent_stack) == 2
+        agent_types = [a["agent_type"] for a in tracer.agent_stack]
+        assert "agent1" in agent_types
+        assert "agent3" in agent_types
+        assert "agent2" not in agent_types
+
 
 class TestGetOrCreate:
     """Tests for singleton pattern and state persistence."""
