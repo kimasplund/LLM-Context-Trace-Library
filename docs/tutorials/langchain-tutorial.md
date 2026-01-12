@@ -232,6 +232,216 @@ async def main():
 asyncio.run(main())
 ```
 
+### Example 7: RAG with Retrievers
+
+LCTL automatically captures retriever operations, making it easy to debug RAG pipelines:
+
+```python
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_core.documents import Document
+from lctl.integrations.langchain import LCTLCallbackHandler
+
+# Create sample documents
+docs = [
+    Document(page_content="LCTL is a time-travel debugging library for LLM workflows."),
+    Document(page_content="LCTL uses event sourcing to record agent execution."),
+    Document(page_content="The ReplayEngine allows stepping through events."),
+    Document(page_content="Chain comparison helps find divergence between runs."),
+]
+
+# Create vector store and retriever
+embeddings = OpenAIEmbeddings()
+vectorstore = FAISS.from_documents(docs, embeddings)
+retriever = vectorstore.as_retriever(search_kwargs={"k": 2})
+
+# Build RAG chain
+prompt = ChatPromptTemplate.from_template("""
+Answer based on the context below:
+
+Context: {context}
+
+Question: {question}
+""")
+
+llm = ChatOpenAI(model="gpt-3.5-turbo")
+
+def format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
+
+rag_chain = (
+    {"context": retriever | format_docs, "question": RunnablePassthrough()}
+    | prompt
+    | llm
+    | StrOutputParser()
+)
+
+# Trace the RAG pipeline
+handler = LCTLCallbackHandler(chain_id="rag-qa")
+
+result = rag_chain.invoke(
+    "What is LCTL used for?",
+    config={"callbacks": [handler]}
+)
+
+print(f"Answer: {result}")
+print(f"Events: {len(handler.chain.events)}")
+
+# Export - includes retriever events
+handler.export("rag_trace.lctl.json")
+```
+
+### Example 8: RAG with Document Loaders
+
+Trace a complete RAG pipeline from document loading to response:
+
+```python
+from langchain_community.document_loaders import TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from lctl.integrations.langchain import LCTLCallbackHandler
+
+# Load and split documents
+loader = TextLoader("knowledge_base.txt")
+documents = loader.load()
+
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=500,
+    chunk_overlap=50
+)
+splits = text_splitter.split_documents(documents)
+
+# Create vector store
+embeddings = OpenAIEmbeddings()
+vectorstore = FAISS.from_documents(splits, embeddings)
+retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+
+# Build RAG chain
+prompt = ChatPromptTemplate.from_template("""
+You are a helpful assistant. Answer the question based on the provided context.
+If you don't know the answer, say so.
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:""")
+
+llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+
+def format_docs(docs):
+    return "\n---\n".join(doc.page_content for doc in docs)
+
+rag_chain = (
+    {"context": retriever | format_docs, "question": RunnablePassthrough()}
+    | prompt
+    | llm
+    | StrOutputParser()
+)
+
+# Create handler for tracing
+handler = LCTLCallbackHandler(chain_id="document-qa")
+
+# Ask multiple questions
+questions = [
+    "What are the main features?",
+    "How do I get started?",
+    "What are the best practices?",
+]
+
+for question in questions:
+    result = rag_chain.invoke(question, config={"callbacks": [handler]})
+    print(f"Q: {question}")
+    print(f"A: {result[:100]}...\n")
+
+# Export combined trace
+handler.export("document_qa_trace.lctl.json")
+```
+
+### Example 9: Conversational RAG with History
+
+Trace a RAG chain that maintains conversation history:
+
+```python
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, AIMessage
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_core.documents import Document
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from lctl.integrations.langchain import LCTLCallbackHandler
+
+# Create knowledge base
+docs = [
+    Document(page_content="Python was created by Guido van Rossum in 1991."),
+    Document(page_content="Python emphasizes code readability with significant indentation."),
+    Document(page_content="Python supports multiple paradigms: procedural, OOP, functional."),
+]
+
+embeddings = OpenAIEmbeddings()
+vectorstore = FAISS.from_documents(docs, embeddings)
+retriever = vectorstore.as_retriever()
+
+# Conversational prompt with history
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "Answer based on context. Context: {context}"),
+    MessagesPlaceholder(variable_name="history"),
+    ("human", "{question}"),
+])
+
+llm = ChatOpenAI(model="gpt-3.5-turbo")
+
+def format_docs(docs):
+    return "\n".join(doc.page_content for doc in docs)
+
+# Build chain
+rag_chain = (
+    {
+        "context": lambda x: format_docs(retriever.invoke(x["question"])),
+        "question": lambda x: x["question"],
+        "history": lambda x: x["history"],
+    }
+    | prompt
+    | llm
+    | StrOutputParser()
+)
+
+# Trace conversation
+handler = LCTLCallbackHandler(chain_id="conversational-rag")
+history = []
+
+# Multi-turn conversation
+turns = [
+    "Who created Python?",
+    "What year was that?",
+    "What paradigms does it support?",
+]
+
+for question in turns:
+    result = rag_chain.invoke(
+        {"question": question, "history": history},
+        config={"callbacks": [handler]}
+    )
+    print(f"User: {question}")
+    print(f"Assistant: {result}\n")
+
+    # Update history
+    history.append(HumanMessage(content=question))
+    history.append(AIMessage(content=result))
+
+# Export trace with full conversation flow
+handler.export("conversational_rag_trace.lctl.json")
+```
+
 ## How to View Traces in the Dashboard
 
 After exporting your traces, you can analyze them using LCTL's CLI tools:
@@ -438,6 +648,52 @@ result = await traced.ainvoke(input)  # Correct
 result = await chain.ainvoke(input)   # Wrong - bypasses tracing
 ```
 
+### Issue: Retriever Events Not Captured
+
+**Problem**: RAG pipeline traces don't show retriever operations.
+
+**Solutions**:
+
+1. Ensure you're passing callbacks through the entire chain:
+   ```python
+   # Correct - callbacks propagate to retriever
+   rag_chain.invoke(input, config={"callbacks": [handler]})
+   ```
+
+2. If using custom retriever wrappers, ensure they inherit from `BaseRetriever`:
+   ```python
+   from langchain_core.retrievers import BaseRetriever
+
+   class MyRetriever(BaseRetriever):
+       # Callbacks will work automatically
+       ...
+   ```
+
+3. For direct retriever calls, pass callbacks explicitly:
+   ```python
+   docs = retriever.invoke(query, config={"callbacks": [handler]})
+   ```
+
+### Issue: RAG Shows 0 Documents Retrieved
+
+**Problem**: Retriever traces show "Retrieved 0 documents".
+
+**Solutions**:
+
+1. Verify your vector store has documents:
+   ```python
+   print(f"Documents in store: {vectorstore.index.ntotal}")
+   ```
+
+2. Check embedding compatibility - ensure query embeddings match document embeddings
+
+3. Adjust retriever search parameters:
+   ```python
+   retriever = vectorstore.as_retriever(
+       search_kwargs={"k": 5, "score_threshold": 0.5}
+   )
+   ```
+
 ## What LCTL Captures
 
 The LangChain integration automatically captures:
@@ -447,8 +703,19 @@ The LangChain integration automatically captures:
 | `step_start` | LLM/chain/tool execution begins |
 | `step_end` | Execution completes with outcome and duration |
 | `tool_call` | Tool invocation with input/output |
+| `tool_call` | Retriever queries with document counts |
 | `fact_added` | Agent actions and decisions |
 | `error` | Exceptions with context |
+
+### RAG-Specific Events
+
+When using retrievers, LCTL captures:
+
+| Event | Data Captured |
+|-------|---------------|
+| Retriever start | Query text, retriever name |
+| Retriever end | Number of documents retrieved, duration |
+| Retriever error | Error type, message, query that failed |
 
 ## Next Steps
 
