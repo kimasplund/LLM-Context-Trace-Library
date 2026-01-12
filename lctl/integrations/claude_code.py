@@ -107,6 +107,10 @@ class LCTLClaudeCodeTracer:
         self.agent_stack: List[Dict[str, Any]] = []
         self.tool_counts: Dict[str, int] = {}
         self._start_times: Dict[str, float] = {}
+        self._background_tasks: Dict[str, Dict[str, Any]] = {}  # task_id -> info
+        self._agent_ids: Dict[str, str] = {}  # agent_type -> last agent_id
+        self._parallel_group: Optional[str] = None  # Current parallel execution group
+        self._file_changes: List[Dict[str, Any]] = []  # Track file modifications
 
     @classmethod
     def get_or_create(
@@ -152,6 +156,10 @@ class LCTLClaudeCodeTracer:
                     _tracer_instance.agent_stack = state.get("agent_stack", [])
                     _tracer_instance.tool_counts = state.get("tool_counts", {})
                     _tracer_instance._start_times = state.get("start_times", {})
+                    _tracer_instance._background_tasks = state.get("background_tasks", {})
+                    _tracer_instance._agent_ids = state.get("agent_ids", {})
+                    _tracer_instance._parallel_group = state.get("parallel_group")
+                    _tracer_instance._file_changes = state.get("file_changes", [])
                     _tracer_file = state_path
                     return _tracer_instance
             except Exception:
@@ -181,6 +189,10 @@ class LCTLClaudeCodeTracer:
             "agent_stack": self.agent_stack,
             "tool_counts": self.tool_counts,
             "start_times": self._start_times,
+            "background_tasks": self._background_tasks,
+            "agent_ids": self._agent_ids,
+            "parallel_group": self._parallel_group,
+            "file_changes": self._file_changes,
         }
         with open(_tracer_file, "w") as f:
             json.dump(state, f)
@@ -191,6 +203,9 @@ class LCTLClaudeCodeTracer:
         description: str,
         prompt: str = "",
         model: Optional[str] = None,
+        run_in_background: bool = False,
+        resume_agent_id: Optional[str] = None,
+        parallel_group: Optional[str] = None,
     ) -> None:
         """Record a Task tool invocation (agent spawn).
 
@@ -199,26 +214,54 @@ class LCTLClaudeCodeTracer:
             description: The task description
             prompt: The full prompt sent to the agent
             model: Optional model override
+            run_in_background: Whether this is a background task
+            resume_agent_id: Agent ID if resuming a previous agent
+            parallel_group: Group ID if part of parallel execution
         """
         self._start_times[agent_type] = time.time()
 
+        # Track parallel execution
+        if parallel_group:
+            self._parallel_group = parallel_group
+
         # Track nested agents
-        self.agent_stack.append({
+        agent_info = {
             "agent_type": agent_type,
             "description": description,
             "start_time": self._start_times[agent_type],
-        })
+            "background": run_in_background,
+            "resume_from": resume_agent_id,
+            "parallel_group": parallel_group,
+        }
+        self.agent_stack.append(agent_info)
+
+        # Build input summary with context
+        input_parts = []
+        if resume_agent_id:
+            input_parts.append(f"[RESUME:{resume_agent_id}]")
+        if run_in_background:
+            input_parts.append("[BACKGROUND]")
+        if parallel_group:
+            input_parts.append(f"[PARALLEL:{parallel_group}]")
+        input_parts.append(prompt[:400] if prompt else description)
+        input_summary = " ".join(input_parts)
 
         self.session.step_start(
             agent=agent_type,
             intent=description[:100],
-            input_summary=prompt[:500] if prompt else description,
+            input_summary=input_summary,
         )
 
         # Add fact about agent spawn
+        spawn_text = f"Spawned {agent_type}: {description}"
+        if resume_agent_id:
+            spawn_text += f" (resuming {resume_agent_id})"
+        if run_in_background:
+            spawn_text += " [background]"
+
         self.session.add_fact(
             fact_id=f"spawn-{agent_type}-{len(self.session.chain.events)}",
-            text=f"Spawned {agent_type}: {description}",
+            text=spawn_text,
             confidence=1.0,
             source="claude-code",
         )
@@ -240,6 +283,9 @@ class LCTLClaudeCodeTracer:
         result: str = "",
         success: bool = True,
         error_message: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        tokens_in: int = 0,
+        tokens_out: int = 0,
     ) -> None:
         """Record a Task tool completion.
 
@@ -249,11 +295,18 @@ class LCTLClaudeCodeTracer:
             result: Result summary from the agent
             success: Whether the agent succeeded
             error_message: Error message if failed
+            agent_id: The agent ID returned (for resume capability)
+            tokens_in: Input tokens used
+            tokens_out: Output tokens generated
         """
         duration_ms = 0
         if agent_type in self._start_times:
             duration_ms = int((time.time() - self._start_times[agent_type]) * 1000)
             del self._start_times[agent_type]
+
+        # Store agent_id for potential resume tracking
+        if agent_id:
+            self._agent_ids[agent_type] = agent_id
 
         # Pop from agent stack
         if self.agent_stack and self.agent_stack[-1]["agent_type"] == agent_type:
@@ -265,13 +318,19 @@ class LCTLClaudeCodeTracer:
             agent=agent_type,
             outcome=outcome,
             duration_ms=duration_ms,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
         )
 
         # Add fact about result
         if result:
+            result_text = f"{agent_type} result: {result[:500]}"
+            if agent_id:
+                result_text += f" [agent_id: {agent_id}]"
+
             self.session.add_fact(
                 fact_id=f"result-{agent_type}-{len(self.session.chain.events)}",
-                text=f"{agent_type} result: {result[:500]}",
+                text=result_text,
                 confidence=0.9 if success else 0.5,
                 source=agent_type,
             )
@@ -379,6 +438,205 @@ class LCTLClaudeCodeTracer:
         )
         self._save_state()
 
+    def on_user_interaction(
+        self,
+        question: str,
+        response: str,
+        options: Optional[List[str]] = None,
+        agent: Optional[str] = None,
+    ) -> None:
+        """Record a human-in-the-loop interaction (AskUserQuestion).
+
+        Args:
+            question: The question asked to user
+            response: User's response
+            options: Available options presented
+            agent: Agent that asked (inferred from stack if not provided)
+        """
+        source = agent
+        if source is None and self.agent_stack:
+            source = self.agent_stack[-1]["agent_type"]
+
+        # Record as tool call
+        self.session.tool_call(
+            tool="AskUserQuestion",
+            input_data={
+                "question": question[:500],
+                "options": options or [],
+            },
+            output_data={"response": response[:500]},
+            duration_ms=0,  # User think time not tracked
+        )
+
+        # Add fact about user decision
+        self.session.add_fact(
+            fact_id=f"user-decision-{len(self.session.chain.events)}",
+            text=f"User responded to '{question[:100]}': {response[:200]}",
+            confidence=1.0,  # User decisions are ground truth
+            source="human",
+        )
+
+        self._save_state()
+
+    def on_file_change(
+        self,
+        file_path: str,
+        change_type: str,  # "create", "edit", "delete"
+        agent: Optional[str] = None,
+        lines_added: int = 0,
+        lines_removed: int = 0,
+    ) -> None:
+        """Record a file modification.
+
+        Args:
+            file_path: Path to the modified file
+            change_type: Type of change (create, edit, delete)
+            agent: Agent that made the change
+            lines_added: Lines added
+            lines_removed: Lines removed
+        """
+        source = agent
+        if source is None and self.agent_stack:
+            source = self.agent_stack[-1]["agent_type"]
+
+        # Track file change
+        change_info = {
+            "file_path": file_path,
+            "change_type": change_type,
+            "agent": source,
+            "lines_added": lines_added,
+            "lines_removed": lines_removed,
+            "timestamp": time.time(),
+        }
+        self._file_changes.append(change_info)
+
+        # Add fact about file change
+        change_text = f"File {change_type}: {file_path}"
+        if lines_added or lines_removed:
+            change_text += f" (+{lines_added}/-{lines_removed})"
+
+        self.session.add_fact(
+            fact_id=f"file-{change_type}-{len(self.session.chain.events)}",
+            text=change_text,
+            confidence=1.0,
+            source=source or "claude-code",
+        )
+
+        self._save_state()
+
+    def on_web_fetch(
+        self,
+        url: str,
+        prompt: str,
+        result_summary: str,
+        agent: Optional[str] = None,
+        duration_ms: int = 0,
+    ) -> None:
+        """Record a web fetch operation.
+
+        Args:
+            url: URL fetched
+            prompt: Prompt used for extraction
+            result_summary: Summary of fetched content
+            agent: Agent that made the request
+            duration_ms: Request duration
+        """
+        source = agent
+        if source is None and self.agent_stack:
+            source = self.agent_stack[-1]["agent_type"]
+
+        self.session.tool_call(
+            tool="WebFetch",
+            input_data={"url": url, "prompt": prompt[:200]},
+            output_data={"summary": result_summary[:500]},
+            duration_ms=duration_ms,
+        )
+
+        # Add fact about external data
+        self.session.add_fact(
+            fact_id=f"web-{len(self.session.chain.events)}",
+            text=f"Fetched from {url}: {result_summary[:200]}",
+            confidence=0.7,  # External data has lower confidence
+            source=source or "web",
+        )
+
+        self._save_state()
+
+    def on_web_search(
+        self,
+        query: str,
+        results_count: int,
+        top_result: str = "",
+        agent: Optional[str] = None,
+    ) -> None:
+        """Record a web search operation.
+
+        Args:
+            query: Search query
+            results_count: Number of results returned
+            top_result: Summary of top result
+            agent: Agent that made the search
+        """
+        source = agent
+        if source is None and self.agent_stack:
+            source = self.agent_stack[-1]["agent_type"]
+
+        self.session.tool_call(
+            tool="WebSearch",
+            input_data={"query": query},
+            output_data={"results_count": results_count, "top": top_result[:200]},
+            duration_ms=0,
+        )
+
+        self.session.add_fact(
+            fact_id=f"search-{len(self.session.chain.events)}",
+            text=f"Searched '{query}': {results_count} results. Top: {top_result[:150]}",
+            confidence=0.75,
+            source=source or "web",
+        )
+
+        self._save_state()
+
+    def start_parallel_group(self, group_id: Optional[str] = None) -> str:
+        """Start a parallel execution group.
+
+        Args:
+            group_id: Optional group identifier
+
+        Returns:
+            The group ID
+        """
+        self._parallel_group = group_id or f"parallel-{len(self.session.chain.events)}"
+        return self._parallel_group
+
+    def end_parallel_group(self) -> None:
+        """End the current parallel execution group."""
+        if self._parallel_group:
+            self.session.add_fact(
+                fact_id=f"parallel-end-{self._parallel_group}",
+                text=f"Parallel group {self._parallel_group} completed",
+                confidence=1.0,
+                source="claude-code",
+            )
+            self._parallel_group = None
+            self._save_state()
+
+    def get_file_changes(self) -> List[Dict[str, Any]]:
+        """Get list of file changes made during the workflow.
+
+        Returns:
+            List of file change records
+        """
+        return self._file_changes.copy()
+
+    def get_agent_ids(self) -> Dict[str, str]:
+        """Get mapping of agent types to their last agent IDs.
+
+        Returns:
+            Dict mapping agent_type to agent_id (for resume)
+        """
+        return self._agent_ids.copy()
+
     def checkpoint(self, description: str = "") -> None:
         """Create a checkpoint for fast replay.
 
@@ -421,9 +679,16 @@ class LCTLClaudeCodeTracer:
         for step in trace:
             agent = step["agent"]
             if agent not in agent_stats:
-                agent_stats[agent] = {"steps": 0, "duration_ms": 0}
+                agent_stats[agent] = {"steps": 0, "duration_ms": 0, "tokens": 0}
             agent_stats[agent]["steps"] += 1
             agent_stats[agent]["duration_ms"] += step.get("duration_ms", 0)
+            agent_stats[agent]["tokens"] += step.get("tokens_in", 0) + step.get("tokens_out", 0)
+
+        # Count user interactions
+        user_interactions = sum(
+            1 for e in self.session.chain.events
+            if e.type.value == "tool_call" and e.data.get("tool") == "AskUserQuestion"
+        )
 
         return {
             "chain_id": self.session.chain.id,
@@ -433,6 +698,11 @@ class LCTLClaudeCodeTracer:
             "fact_count": len(state.facts),
             "error_count": len(state.errors),
             "total_duration_ms": state.metrics.get("total_duration_ms", 0),
+            "total_tokens_in": state.metrics.get("total_tokens_in", 0),
+            "total_tokens_out": state.metrics.get("total_tokens_out", 0),
+            "file_changes": len(self._file_changes),
+            "user_interactions": user_interactions,
+            "agent_ids": self._agent_ids,
         }
 
     def reset(self) -> None:
@@ -445,6 +715,10 @@ class LCTLClaudeCodeTracer:
         self.agent_stack = []
         self.tool_counts = {}
         self._start_times = {}
+        self._background_tasks = {}
+        self._agent_ids = {}
+        self._parallel_group = None
+        self._file_changes = []
 
         # Clear state file
         if _tracer_file and _tracer_file.exists():
