@@ -852,25 +852,27 @@ def claude_init(hooks_dir: str, force: bool, chain_id: str):
         hooks = generate_hooks(hooks_dir, chain_id=chain_id)
 
         # Generate settings.json with hook configuration
+        # Use absolute path via $PWD to ensure hooks work from any subdirectory
         settings_path = Path(".claude/settings.json")
+        project_root = Path.cwd().resolve()
         settings = {
             "hooks": {
                 "PreToolUse": [
                     {
                         "matcher": "Task",
-                        "hooks": [{"type": "command", "command": f"bash {hooks_dir}/PreToolUse.sh"}]
+                        "hooks": [{"type": "command", "command": f"cd {project_root} && bash {hooks_dir}/PreToolUse.sh"}]
                     }
                 ],
                 "PostToolUse": [
                     {
                         "matcher": "*",
-                        "hooks": [{"type": "command", "command": f"bash {hooks_dir}/PostToolUse.sh"}]
+                        "hooks": [{"type": "command", "command": f"cd {project_root} && bash {hooks_dir}/PostToolUse.sh"}]
                     }
                 ],
                 "Stop": [
                     {
                         "matcher": "",
-                        "hooks": [{"type": "command", "command": f"bash {hooks_dir}/Stop.sh"}]
+                        "hooks": [{"type": "command", "command": f"cd {project_root} && bash {hooks_dir}/Stop.sh"}]
                     }
                 ]
             }
