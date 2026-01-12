@@ -363,12 +363,15 @@ class LCTLClaudeCodeTracer:
             duration_ms: Tool execution time
             agent: Agent that made the call (inferred from stack if not provided)
         """
-        # Infer agent from stack
-        if agent is None and self.agent_stack:
-            agent = self.agent_stack[-1]["agent_type"]
+        # Infer agent from stack (default to claude-code for main session)
+        if agent is None:
+            if self.agent_stack:
+                agent = self.agent_stack[-1]["agent_type"]
+            else:
+                agent = "claude-code"
 
         # Track tool counts
-        key = f"{agent or 'main'}:{tool_name}"
+        key = f"{agent}:{tool_name}"
         self.tool_counts[key] = self.tool_counts.get(key, 0) + 1
 
         # Truncate large data
@@ -384,6 +387,7 @@ class LCTLClaudeCodeTracer:
             input_data=truncate(input_data),
             output_data=truncate(output_data or {}),
             duration_ms=duration_ms,
+            agent=agent,
         )
 
         self._save_state()
@@ -404,14 +408,17 @@ class LCTLClaudeCodeTracer:
             agent: Agent that discovered the fact
         """
         source = agent
-        if source is None and self.agent_stack:
-            source = self.agent_stack[-1]["agent_type"]
+        if source is None:
+            if self.agent_stack:
+                source = self.agent_stack[-1]["agent_type"]
+            else:
+                source = "claude-code"
 
         self.session.add_fact(
             fact_id=fact_id,
             text=text,
             confidence=confidence,
-            source=source or "claude-code",
+            source=source,
         )
         self._save_state()
 
@@ -454,8 +461,11 @@ class LCTLClaudeCodeTracer:
             agent: Agent that asked (inferred from stack if not provided)
         """
         source = agent
-        if source is None and self.agent_stack:
-            source = self.agent_stack[-1]["agent_type"]
+        if source is None:
+            if self.agent_stack:
+                source = self.agent_stack[-1]["agent_type"]
+            else:
+                source = "claude-code"
 
         # Record as tool call
         self.session.tool_call(
@@ -466,6 +476,7 @@ class LCTLClaudeCodeTracer:
             },
             output_data={"response": response[:500]},
             duration_ms=0,  # User think time not tracked
+            agent=source,
         )
 
         # Add fact about user decision
@@ -496,8 +507,11 @@ class LCTLClaudeCodeTracer:
             lines_removed: Lines removed
         """
         source = agent
-        if source is None and self.agent_stack:
-            source = self.agent_stack[-1]["agent_type"]
+        if source is None:
+            if self.agent_stack:
+                source = self.agent_stack[-1]["agent_type"]
+            else:
+                source = "claude-code"
 
         # Track file change
         change_info = {
@@ -519,7 +533,7 @@ class LCTLClaudeCodeTracer:
             fact_id=f"file-{change_type}-{len(self.session.chain.events)}",
             text=change_text,
             confidence=1.0,
-            source=source or "claude-code",
+            source=source,
         )
 
         self._save_state()
@@ -542,14 +556,18 @@ class LCTLClaudeCodeTracer:
             duration_ms: Request duration
         """
         source = agent
-        if source is None and self.agent_stack:
-            source = self.agent_stack[-1]["agent_type"]
+        if source is None:
+            if self.agent_stack:
+                source = self.agent_stack[-1]["agent_type"]
+            else:
+                source = "claude-code"
 
         self.session.tool_call(
             tool="WebFetch",
             input_data={"url": url, "prompt": prompt[:200]},
             output_data={"summary": result_summary[:500]},
             duration_ms=duration_ms,
+            agent=source,
         )
 
         # Add fact about external data
@@ -557,7 +575,7 @@ class LCTLClaudeCodeTracer:
             fact_id=f"web-{len(self.session.chain.events)}",
             text=f"Fetched from {url}: {result_summary[:200]}",
             confidence=0.7,  # External data has lower confidence
-            source=source or "web",
+            source=source,
         )
 
         self._save_state()
@@ -578,21 +596,25 @@ class LCTLClaudeCodeTracer:
             agent: Agent that made the search
         """
         source = agent
-        if source is None and self.agent_stack:
-            source = self.agent_stack[-1]["agent_type"]
+        if source is None:
+            if self.agent_stack:
+                source = self.agent_stack[-1]["agent_type"]
+            else:
+                source = "claude-code"
 
         self.session.tool_call(
             tool="WebSearch",
             input_data={"query": query},
             output_data={"results_count": results_count, "top": top_result[:200]},
             duration_ms=0,
+            agent=source,
         )
 
         self.session.add_fact(
             fact_id=f"search-{len(self.session.chain.events)}",
             text=f"Searched '{query}': {results_count} results. Top: {top_result[:150]}",
             confidence=0.75,
-            source=source or "web",
+            source=source,
         )
 
         self._save_state()
@@ -635,8 +657,11 @@ class LCTLClaudeCodeTracer:
             agent: Agent that made the change
         """
         source = agent
-        if source is None and self.agent_stack:
-            source = self.agent_stack[-1]["agent_type"]
+        if source is None:
+            if self.agent_stack:
+                source = self.agent_stack[-1]["agent_type"]
+            else:
+                source = "claude-code"
 
         # Analyze todo changes
         completed = 0
@@ -661,6 +686,7 @@ class LCTLClaudeCodeTracer:
             },
             output_data={"todos": [t.get("content", "")[:50] for t in todos[:5]]},
             duration_ms=0,
+            agent=source,
         )
 
         # Add fact about task progress
@@ -668,7 +694,7 @@ class LCTLClaudeCodeTracer:
             fact_id=f"todo-{len(self.session.chain.events)}",
             text=f"Task list: {completed} done, {in_progress} active, {pending} pending",
             confidence=1.0,
-            source=source or "claude-code",
+            source=source,
         )
 
         self._save_state()
@@ -691,14 +717,18 @@ class LCTLClaudeCodeTracer:
             duration_ms: Skill execution time
         """
         source = agent
-        if source is None and self.agent_stack:
-            source = self.agent_stack[-1]["agent_type"]
+        if source is None:
+            if self.agent_stack:
+                source = self.agent_stack[-1]["agent_type"]
+            else:
+                source = "claude-code"
 
         self.session.tool_call(
             tool="Skill",
             input_data={"skill": skill_name, "args": args or ""},
             output_data={"summary": result_summary[:500]},
             duration_ms=duration_ms,
+            agent=source,
         )
 
         # Skills are important workflow events
@@ -706,7 +736,7 @@ class LCTLClaudeCodeTracer:
             fact_id=f"skill-{skill_name}-{len(self.session.chain.events)}",
             text=f"Invoked skill '{skill_name}': {result_summary[:200]}",
             confidence=0.9,
-            source=source or "skill",
+            source=source,
         )
 
         self._save_state()
@@ -731,13 +761,16 @@ class LCTLClaudeCodeTracer:
             duration_ms: Tool execution time
         """
         source = agent
-        if source is None and self.agent_stack:
-            source = self.agent_stack[-1]["agent_type"]
+        if source is None:
+            if self.agent_stack:
+                source = self.agent_stack[-1]["agent_type"]
+            else:
+                source = "claude-code"
 
         full_tool_name = f"mcp__{server_name}__{tool_name}"
 
         # Track tool counts
-        key = f"{source or 'main'}:{full_tool_name}"
+        key = f"{source}:{full_tool_name}"
         self.tool_counts[key] = self.tool_counts.get(key, 0) + 1
 
         # Truncate large data
@@ -753,6 +786,7 @@ class LCTLClaudeCodeTracer:
             input_data=truncate(input_data),
             output_data=truncate(output_data or {}),
             duration_ms=duration_ms,
+            agent=source,
         )
 
         # MCP tools often return important data
@@ -760,7 +794,7 @@ class LCTLClaudeCodeTracer:
             fact_id=f"mcp-{server_name}-{len(self.session.chain.events)}",
             text=f"MCP {server_name}.{tool_name}: {str(output_data)[:150]}",
             confidence=0.85,
-            source=source or f"mcp-{server_name}",
+            source=source,
         )
 
         self._save_state()
@@ -785,8 +819,11 @@ class LCTLClaudeCodeTracer:
             agent: Agent that created the commit
         """
         source = agent
-        if source is None and self.agent_stack:
-            source = self.agent_stack[-1]["agent_type"]
+        if source is None:
+            if self.agent_stack:
+                source = self.agent_stack[-1]["agent_type"]
+            else:
+                source = "claude-code"
 
         # Record as tool call
         self.session.tool_call(
@@ -799,6 +836,7 @@ class LCTLClaudeCodeTracer:
                 "deletions": deletions,
             },
             duration_ms=0,
+            agent=source,
         )
 
         # Commit facts are high confidence anchors
@@ -806,7 +844,7 @@ class LCTLClaudeCodeTracer:
             fact_id=f"commit-{commit_hash[:8]}",
             text=f"Git commit {commit_hash[:8]}: {message[:100]} (+{insertions}/-{deletions})",
             confidence=1.0,  # Commits are ground truth
-            source=source or "git",
+            source=source,
         )
 
         # Create checkpoint at commit for fast replay
@@ -1002,27 +1040,51 @@ else
     PYTHON="python3"
 fi
 
-if [ "$CLAUDE_TOOL_NAME" = "Task" ]; then
-    $PYTHON -c "
+# Capture stdin to temp file and encode as base64
+TMPFILE=$(mktemp)
+cat > "$TMPFILE"
+INPUT_B64=$(base64 -w0 "$TMPFILE")
+rm -f "$TMPFILE"
+
+# Run Python with base64-encoded input
+HOOK_INPUT_B64="$INPUT_B64" $PYTHON << 'PYTHON_EOF'
 import os
 import sys
+import json
+import base64
 sys.path.insert(0, '.')
 
 try:
     from lctl.integrations.claude_code import LCTLClaudeCodeTracer
 
-    tracer = LCTLClaudeCodeTracer.get_or_create()
-    tracer.on_task_start(
-        agent_type=os.environ.get('CLAUDE_TOOL_INPUT_subagent_type', 'unknown'),
-        description=os.environ.get('CLAUDE_TOOL_INPUT_description', ''),
-        prompt=os.environ.get('CLAUDE_TOOL_INPUT_prompt', ''),
-        model=os.environ.get('CLAUDE_TOOL_INPUT_model'),
-    )
+    # Decode JSON from base64
+    input_b64 = os.environ.get('HOOK_INPUT_B64', '')
+    if not input_b64:
+        sys.exit(0)
+
+    hook_input = json.loads(base64.b64decode(input_b64).decode('utf-8'))
+    tool_name = hook_input.get('tool_name', '')
+
+    # Only trace Task tool starts
+    if tool_name == 'Task':
+        tracer = LCTLClaudeCodeTracer.get_or_create()
+        tool_input = hook_input.get('tool_input', {})
+
+        tracer.on_task_start(
+            agent_type=tool_input.get('subagent_type', 'unknown'),
+            description=tool_input.get('description', ''),
+            prompt=tool_input.get('prompt', ''),
+            model=tool_input.get('model'),
+            run_in_background=tool_input.get('run_in_background', False),
+            resume_agent_id=tool_input.get('resume'),
+        )
+
 except Exception as e:
     # Don't break Claude Code if tracing fails
-    print(f'LCTL trace warning: {e}', file=sys.stderr)
-"
-fi
+    import traceback
+    with open('/tmp/lctl-hook-error.log', 'a') as f:
+        f.write(f'PreToolUse: {e}\\n{traceback.format_exc()}\\n---\\n')
+PYTHON_EOF
 '''
 
     pre_hook_path = hooks_dir / "PreToolUse.sh"
@@ -1046,44 +1108,69 @@ else
     PYTHON="python3"
 fi
 
-TOOL="$CLAUDE_TOOL_NAME"
+# Capture stdin to temp file and encode as base64
+TMPFILE=$(mktemp)
+cat > "$TMPFILE"
+INPUT_B64=$(base64 -w0 "$TMPFILE")
+rm -f "$TMPFILE"
 
-$PYTHON -c "
+# Run Python with base64-encoded input
+HOOK_INPUT_B64="$INPUT_B64" $PYTHON << 'PYTHON_EOF'
 import os
 import sys
 import json
+import base64
 sys.path.insert(0, '.')
 
 try:
     from lctl.integrations.claude_code import LCTLClaudeCodeTracer
 
+    # Decode JSON from base64
+    input_b64 = os.environ.get('HOOK_INPUT_B64', '')
+    if not input_b64:
+        sys.exit(0)
+
+    hook_input = json.loads(base64.b64decode(input_b64).decode('utf-8'))
+
     tracer = LCTLClaudeCodeTracer.get_or_create()
-    tool_name = os.environ.get('CLAUDE_TOOL_NAME', 'unknown')
-    result = os.environ.get('CLAUDE_TOOL_RESULT', '')
+    tool_name = hook_input.get('tool_name', 'unknown')
+    tool_input = hook_input.get('tool_input', {})
+    tool_response = hook_input.get('tool_response', {})
+
+    # Convert tool_response to string for result
+    if isinstance(tool_response, dict):
+        result = json.dumps(tool_response)
+    else:
+        result = str(tool_response)
 
     # Task tool - agent completions
     if tool_name == 'Task':
-        success = 'error' not in result.lower()[:100]
+        success = tool_response.get('status') == 'completed'
+        content = tool_response.get('content', [])
+        result_text = ''
+        if content and isinstance(content, list):
+            for c in content:
+                if isinstance(c, dict) and c.get('type') == 'text':
+                    result_text += c.get('text', '')
+
         tracer.on_task_complete(
-            agent_type=os.environ.get('CLAUDE_TOOL_INPUT_subagent_type', 'unknown'),
-            description=os.environ.get('CLAUDE_TOOL_INPUT_description', ''),
-            result=result[:2000],
+            agent_type=tool_input.get('subagent_type', 'unknown'),
+            description=tool_input.get('description', ''),
+            result=result_text[:2000] if result_text else result[:2000],
             success=success,
+            tokens_in=tool_response.get('usage', {}).get('input_tokens', 0),
+            tokens_out=tool_response.get('usage', {}).get('output_tokens', 0),
         )
 
     # TodoWrite - task list updates
     elif tool_name == 'TodoWrite':
-        try:
-            todos_str = os.environ.get('CLAUDE_TOOL_INPUT_todos', '[]')
-            todos = json.loads(todos_str) if todos_str else []
-            tracer.on_todo_write(todos=todos)
-        except:
-            tracer.on_todo_write(todos=[])
+        todos = tool_input.get('todos', [])
+        tracer.on_todo_write(todos=todos)
 
     # Skill invocations
     elif tool_name == 'Skill':
-        skill_name = os.environ.get('CLAUDE_TOOL_INPUT_skill', 'unknown')
-        args = os.environ.get('CLAUDE_TOOL_INPUT_args', '')
+        skill_name = tool_input.get('skill', 'unknown')
+        args = tool_input.get('args', '')
         tracer.on_skill_invoke(
             skill_name=skill_name,
             args=args,
@@ -1096,37 +1183,25 @@ try:
         if len(parts) >= 3:
             server_name = parts[1]
             mcp_tool = '__'.join(parts[2:])
-            try:
-                input_str = os.environ.get('CLAUDE_TOOL_INPUT', '{}')
-                input_data = json.loads(input_str) if input_str else {}
-            except:
-                input_data = {'raw': input_str[:300]}
-            try:
-                output_data = json.loads(result) if result else {}
-            except:
-                output_data = {'raw': result[:300]}
             tracer.on_mcp_tool_call(
                 server_name=server_name,
                 tool_name=mcp_tool,
-                input_data=input_data,
-                output_data=output_data,
+                input_data=tool_input,
+                output_data=tool_response,
             )
 
     # Bash tool - detect git commits
     elif tool_name == 'Bash':
-        cmd = os.environ.get('CLAUDE_TOOL_INPUT_command', '')
-        if 'git commit' in cmd and 'Successfully' not in result:
-            # Try to extract commit info from result
+        cmd = tool_input.get('command', '')
+        stdout = tool_response.get('stdout', '') if isinstance(tool_response, dict) else str(tool_response)
+        if 'git commit' in cmd:
             import re
-            # Use \\x27 for single quotes to avoid bash escaping issues
-            commit_match = re.search(r'\\[\\w+\\s+([a-f0-9]+)\\]', result)
+            commit_match = re.search(r'\\[\\w+\\s+([a-f0-9]+)\\]', stdout)
             if commit_match:
                 commit_hash = commit_match.group(1)
-                # Extract message from command (use hex escapes for quotes)
-                msg_match = re.search(r'-m\\s+[\\x22\\x27]([^\\x22\\x27]+)[\\x22\\x27]', cmd)
+                msg_match = re.search(r'-m\\s+[\"\\x27]([^\"\\x27]+)[\"\\x27]', cmd)
                 message = msg_match.group(1) if msg_match else 'Commit'
-                # Extract stats
-                stats_match = re.search(r'(\\d+)\\s+file.*?(\\d+)\\s+insertion.*?(\\d+)\\s+deletion', result)
+                stats_match = re.search(r'(\\d+)\\s+file.*?(\\d+)\\s+insertion.*?(\\d+)\\s+deletion', stdout)
                 files = int(stats_match.group(1)) if stats_match else 0
                 insertions = int(stats_match.group(2)) if stats_match else 0
                 deletions = int(stats_match.group(3)) if stats_match else 0
@@ -1140,37 +1215,40 @@ try:
 
     # File changes - Write, Edit, MultiEdit
     elif tool_name in ('Write', 'Edit', 'MultiEdit'):
-        file_path = os.environ.get('CLAUDE_TOOL_INPUT_file_path', '')
+        file_path = tool_input.get('file_path', '')
         change_type = 'create' if tool_name == 'Write' else 'edit'
         tracer.on_file_change(file_path=file_path, change_type=change_type)
 
     # User interaction
     elif tool_name == 'AskUserQuestion':
-        question = os.environ.get('CLAUDE_TOOL_INPUT_question', '')
+        questions = tool_input.get('questions', [])
+        question = questions[0].get('question', '') if questions else ''
         tracer.on_user_interaction(question=question, response=result[:500])
 
     # Web fetch/search
     elif tool_name == 'WebFetch':
-        url = os.environ.get('CLAUDE_TOOL_INPUT_url', '')
-        prompt = os.environ.get('CLAUDE_TOOL_INPUT_prompt', '')
+        url = tool_input.get('url', '')
+        prompt = tool_input.get('prompt', '')
         tracer.on_web_fetch(url=url, prompt=prompt, result_summary=result[:500])
 
     elif tool_name == 'WebSearch':
-        query = os.environ.get('CLAUDE_TOOL_INPUT_query', '')
+        query = tool_input.get('query', '')
         tracer.on_web_search(query=query, results_count=result.count('http'), top_result=result[:200])
 
     # Skip high-frequency read-only tools to reduce noise
     elif tool_name not in ('Read', 'Glob', 'Grep', 'LS', 'TaskOutput', 'KillShell'):
         tracer.on_tool_call(
             tool_name=tool_name,
-            input_data={'raw': os.environ.get('CLAUDE_TOOL_INPUT', '')[:500]},
-            output_data={'raw': result[:500]},
+            input_data=tool_input,
+            output_data=tool_response if isinstance(tool_response, dict) else {'raw': str(tool_response)[:500]},
         )
 
 except Exception as e:
     # Don't break Claude Code if tracing fails
-    pass
-"
+    import traceback
+    with open('/tmp/lctl-hook-error.log', 'a') as f:
+        f.write(f'{e}\\n{traceback.format_exc()}\\n---\\n')
+PYTHON_EOF
 '''
 
     post_hook_path = hooks_dir / "PostToolUse.sh"

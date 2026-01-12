@@ -318,7 +318,7 @@ class TestLCTLClaudeCodeTracer:
             duration_ms=150,
         )
 
-        assert "main:mcp__sql__execute-sql" in tracer.tool_counts
+        assert "claude-code:mcp__sql__execute-sql" in tracer.tool_counts
 
         events = tracer.session.chain.events
         tool_call = next(e for e in events if e.type == EventType.TOOL_CALL)

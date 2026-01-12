@@ -152,16 +152,35 @@ Claude Code hooks are shell scripts that execute at specific lifecycle points. L
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Environment Variables
+### Hook Input Format
 
-Hooks receive context via environment variables:
+Hooks receive context as JSON via **stdin** with the following structure:
 
-| Variable | Description |
-|----------|-------------|
-| `CLAUDE_TOOL_NAME` | Tool being invoked (Task, Bash, Write, etc.) |
-| `CLAUDE_TOOL_INPUT` | Raw input JSON |
-| `CLAUDE_TOOL_INPUT_*` | Parsed input fields (e.g., `CLAUDE_TOOL_INPUT_subagent_type`) |
-| `CLAUDE_TOOL_RESULT` | Tool output (in PostToolUse only) |
+```json
+{
+  "session_id": "abc123",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Task",
+  "tool_input": {
+    "subagent_type": "Explore",
+    "description": "Find files",
+    "prompt": "Search for...",
+    "model": "haiku"
+  },
+  "tool_response": {
+    "status": "completed",
+    "content": [...],
+    "usage": {"input_tokens": 100, "output_tokens": 50}
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `tool_name` | Tool being invoked (Task, Bash, Write, etc.) |
+| `tool_input` | Tool input parameters as object |
+| `tool_response` | Tool output (in PostToolUse only) |
+| `hook_event_name` | Hook type (PreToolUse, PostToolUse, Stop) |
 
 ### Hook Scripts Location
 

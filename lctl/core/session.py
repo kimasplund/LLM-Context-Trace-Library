@@ -204,10 +204,11 @@ class LCTLSession:
         tool: str,
         input_data: Any,
         output_data: Any,
-        duration_ms: int = 0
+        duration_ms: int = 0,
+        agent: Optional[str] = None
     ) -> int:
         """Record a tool invocation."""
-        agent = self._current_agent or "unknown"
+        agent = agent or self._current_agent or "unknown"
         event = self._add_event(EventType.TOOL_CALL, agent, {
             "tool": tool,
             "input": input_data,
