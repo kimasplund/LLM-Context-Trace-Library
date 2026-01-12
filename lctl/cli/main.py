@@ -850,11 +850,52 @@ def claude_init(hooks_dir: str, force: bool, chain_id: str):
 
     try:
         hooks = generate_hooks(hooks_dir, chain_id=chain_id)
+
+        # Generate settings.json with hook configuration
+        settings_path = Path(".claude/settings.json")
+        settings = {
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "Task",
+                        "hooks": [{"type": "command", "command": f"bash {hooks_dir}/PreToolUse.sh"}]
+                    }
+                ],
+                "PostToolUse": [
+                    {
+                        "matcher": "*",
+                        "hooks": [{"type": "command", "command": f"bash {hooks_dir}/PostToolUse.sh"}]
+                    }
+                ],
+                "Stop": [
+                    {
+                        "matcher": "",
+                        "hooks": [{"type": "command", "command": f"bash {hooks_dir}/Stop.sh"}]
+                    }
+                ]
+            }
+        }
+
+        # Merge with existing settings if present
+        if settings_path.exists() and not force:
+            import json
+            with open(settings_path) as f:
+                existing = json.load(f)
+            existing["hooks"] = settings["hooks"]
+            settings = existing
+
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        import json
+        with open(settings_path, "w") as f:
+            json.dump(settings, f, indent=2)
+
         click.echo(click.style("LCTL Claude Code tracing initialized!", fg="green"))
         click.echo()
         click.echo("Generated hooks:")
         for name, path in hooks.items():
             click.echo(f"  {name}: {path}")
+        click.echo()
+        click.echo(f"Settings: {settings_path}")
         click.echo()
         if chain_id:
             click.echo(f"Tracing session: {chain_id}")
@@ -866,6 +907,8 @@ def claude_init(hooks_dir: str, force: bool, chain_id: str):
         click.echo("  - Session export on exit")
         click.echo()
         click.echo("Traces will be saved to: .claude/traces/")
+        click.echo()
+        click.echo(click.style("Restart Claude Code to activate hooks.", fg="yellow"))
     except Exception as e:
         click.echo(click.style(f"Error generating hooks: {e}", fg="red"), err=True)
         sys.exit(1)

@@ -60,10 +60,14 @@ lctl claude init
 lctl claude init --hooks-dir /path/to/.claude/hooks
 ```
 
-This creates three hook scripts:
-- `PreToolUse.sh` - Captures `Task` tool invocations (agent spawning)
-- `PostToolUse.sh` - Captures tool completions, file changes, git commits
-- `Stop.sh` - Exports final trace when session ends
+This creates:
+- **Hook scripts:**
+  - `PreToolUse.sh` - Captures `Task` tool invocations (agent spawning)
+  - `PostToolUse.sh` - Captures tool completions, file changes, git commits
+  - `Stop.sh` - Exports final trace when session ends
+- **Settings file:** `.claude/settings.json` - Registers hooks with Claude Code
+
+> **Important:** After running `lctl claude init`, restart Claude Code for hooks to activate.
 
 ### 2. Verify Installation
 
