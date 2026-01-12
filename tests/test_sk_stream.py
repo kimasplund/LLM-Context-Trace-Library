@@ -2,7 +2,10 @@
 import pytest
 import asyncio
 from unittest.mock import MagicMock
-from semantic_kernel import Kernel
+
+# Skip entire module if semantic_kernel not installed
+semantic_kernel = pytest.importorskip("semantic_kernel")
+Kernel = semantic_kernel.Kernel
 from semantic_kernel.functions import kernel_function
 from semantic_kernel.filters import FilterTypes
 
