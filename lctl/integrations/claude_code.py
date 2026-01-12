@@ -621,6 +621,242 @@ class LCTLClaudeCodeTracer:
             self._parallel_group = None
             self._save_state()
 
+    def on_todo_write(
+        self,
+        todos: List[Dict[str, Any]],
+        previous_todos: Optional[List[Dict[str, Any]]] = None,
+        agent: Optional[str] = None,
+    ) -> None:
+        """Record a TodoWrite tool call (task list update).
+
+        Args:
+            todos: Current todo list
+            previous_todos: Previous todo list (for diff)
+            agent: Agent that made the change
+        """
+        source = agent
+        if source is None and self.agent_stack:
+            source = self.agent_stack[-1]["agent_type"]
+
+        # Analyze todo changes
+        completed = 0
+        in_progress = 0
+        pending = 0
+        for todo in todos:
+            status = todo.get("status", "pending")
+            if status == "completed":
+                completed += 1
+            elif status == "in_progress":
+                in_progress += 1
+            else:
+                pending += 1
+
+        self.session.tool_call(
+            tool="TodoWrite",
+            input_data={
+                "todo_count": len(todos),
+                "completed": completed,
+                "in_progress": in_progress,
+                "pending": pending,
+            },
+            output_data={"todos": [t.get("content", "")[:50] for t in todos[:5]]},
+            duration_ms=0,
+        )
+
+        # Add fact about task progress
+        self.session.add_fact(
+            fact_id=f"todo-{len(self.session.chain.events)}",
+            text=f"Task list: {completed} done, {in_progress} active, {pending} pending",
+            confidence=1.0,
+            source=source or "claude-code",
+        )
+
+        self._save_state()
+
+    def on_skill_invoke(
+        self,
+        skill_name: str,
+        args: Optional[str] = None,
+        result_summary: str = "",
+        agent: Optional[str] = None,
+        duration_ms: int = 0,
+    ) -> None:
+        """Record a Skill tool invocation.
+
+        Args:
+            skill_name: Name of the invoked skill
+            args: Arguments passed to the skill
+            result_summary: Summary of skill result
+            agent: Agent that invoked the skill
+            duration_ms: Skill execution time
+        """
+        source = agent
+        if source is None and self.agent_stack:
+            source = self.agent_stack[-1]["agent_type"]
+
+        self.session.tool_call(
+            tool="Skill",
+            input_data={"skill": skill_name, "args": args or ""},
+            output_data={"summary": result_summary[:500]},
+            duration_ms=duration_ms,
+        )
+
+        # Skills are important workflow events
+        self.session.add_fact(
+            fact_id=f"skill-{skill_name}-{len(self.session.chain.events)}",
+            text=f"Invoked skill '{skill_name}': {result_summary[:200]}",
+            confidence=0.9,
+            source=source or "skill",
+        )
+
+        self._save_state()
+
+    def on_mcp_tool_call(
+        self,
+        server_name: str,
+        tool_name: str,
+        input_data: Dict[str, Any],
+        output_data: Optional[Dict[str, Any]] = None,
+        agent: Optional[str] = None,
+        duration_ms: int = 0,
+    ) -> None:
+        """Record an MCP (Model Context Protocol) tool call.
+
+        Args:
+            server_name: Name of the MCP server (e.g., "sql", "chroma")
+            tool_name: Specific tool within the server
+            input_data: Tool input parameters
+            output_data: Tool output
+            agent: Agent that made the call
+            duration_ms: Tool execution time
+        """
+        source = agent
+        if source is None and self.agent_stack:
+            source = self.agent_stack[-1]["agent_type"]
+
+        full_tool_name = f"mcp__{server_name}__{tool_name}"
+
+        # Track tool counts
+        key = f"{source or 'main'}:{full_tool_name}"
+        self.tool_counts[key] = self.tool_counts.get(key, 0) + 1
+
+        # Truncate large data
+        def truncate(data: Any, max_len: int = 300) -> Any:
+            if isinstance(data, str):
+                return data[:max_len] + "..." if len(data) > max_len else data
+            elif isinstance(data, dict):
+                return {k: truncate(v, max_len) for k, v in list(data.items())[:8]}
+            return data
+
+        self.session.tool_call(
+            tool=full_tool_name,
+            input_data=truncate(input_data),
+            output_data=truncate(output_data or {}),
+            duration_ms=duration_ms,
+        )
+
+        # MCP tools often return important data
+        self.session.add_fact(
+            fact_id=f"mcp-{server_name}-{len(self.session.chain.events)}",
+            text=f"MCP {server_name}.{tool_name}: {str(output_data)[:150]}",
+            confidence=0.85,
+            source=source or f"mcp-{server_name}",
+        )
+
+        self._save_state()
+
+    def on_git_commit(
+        self,
+        commit_hash: str,
+        message: str,
+        files_changed: int = 0,
+        insertions: int = 0,
+        deletions: int = 0,
+        agent: Optional[str] = None,
+    ) -> None:
+        """Record a git commit linked to the current workflow.
+
+        Args:
+            commit_hash: Git commit hash (short or full)
+            message: Commit message
+            files_changed: Number of files changed
+            insertions: Lines added
+            deletions: Lines removed
+            agent: Agent that created the commit
+        """
+        source = agent
+        if source is None and self.agent_stack:
+            source = self.agent_stack[-1]["agent_type"]
+
+        # Record as tool call
+        self.session.tool_call(
+            tool="GitCommit",
+            input_data={"message": message[:200]},
+            output_data={
+                "commit": commit_hash[:12],
+                "files": files_changed,
+                "insertions": insertions,
+                "deletions": deletions,
+            },
+            duration_ms=0,
+        )
+
+        # Commit facts are high confidence anchors
+        self.session.add_fact(
+            fact_id=f"commit-{commit_hash[:8]}",
+            text=f"Git commit {commit_hash[:8]}: {message[:100]} (+{insertions}/-{deletions})",
+            confidence=1.0,  # Commits are ground truth
+            source=source or "git",
+        )
+
+        # Create checkpoint at commit for fast replay
+        self.checkpoint(description=f"After commit {commit_hash[:8]}")
+
+        self._save_state()
+
+    def link_to_git_history(self, repo_path: str = ".") -> Dict[str, Any]:
+        """Link workflow file changes to git history.
+
+        Args:
+            repo_path: Path to git repository
+
+        Returns:
+            Dict with git linkage info
+        """
+        import subprocess
+
+        result = {"commits": [], "uncommitted_changes": []}
+
+        try:
+            # Get recent commits during workflow
+            cmd = ["git", "-C", repo_path, "log", "--oneline", "-20"]
+            output = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if output.returncode == 0:
+                for line in output.stdout.strip().split("\n")[:10]:
+                    if line:
+                        parts = line.split(" ", 1)
+                        if len(parts) == 2:
+                            result["commits"].append({
+                                "hash": parts[0],
+                                "message": parts[1][:80],
+                            })
+
+            # Check for uncommitted changes in tracked files
+            for fc in self._file_changes:
+                file_path = fc.get("file_path", "")
+                cmd = ["git", "-C", repo_path, "status", "--porcelain", file_path]
+                output = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
+                if output.stdout.strip():
+                    result["uncommitted_changes"].append({
+                        "file": file_path,
+                        "status": output.stdout.strip()[:50],
+                    })
+
+        except Exception:
+            pass  # Git operations are optional
+
+        return result
+
     def get_file_changes(self) -> List[Dict[str, Any]]:
         """Get list of file changes made during the workflow.
 
@@ -641,9 +877,17 @@ class LCTLClaudeCodeTracer:
         """Create a checkpoint for fast replay.
 
         Args:
-            description: Checkpoint description
+            description: Checkpoint description (stored as fact)
         """
-        self.session.checkpoint(description=description)
+        # Add description as a fact before checkpoint
+        if description:
+            self.session.add_fact(
+                fact_id=f"checkpoint-{len(self.session.chain.events)}",
+                text=f"Checkpoint: {description}",
+                confidence=1.0,
+                source="system",
+            )
+        self.session.checkpoint()
         self._save_state()
 
     def export(self, path: Optional[str] = None) -> str:
@@ -774,40 +1018,14 @@ fi
     pre_hook_path.chmod(0o755)
     hooks["PreToolUse"] = str(pre_hook_path)
 
-    # PostToolUse hook for Task tool
+    # PostToolUse hook for Task tool and other tracked tools
     post_tool_hook = '''#!/bin/bash
 # LCTL Tracing Hook - Post Tool Use
-# Records Task tool completions as STEP_END events
+# Records tool completions including Task, TodoWrite, Skill, MCP tools, and Git
 
-if [ "$CLAUDE_TOOL_NAME" = "Task" ]; then
-    python3 -c "
-import os
-import sys
-sys.path.insert(0, '.')
+TOOL="$CLAUDE_TOOL_NAME"
 
-try:
-    from lctl.integrations.claude_code import LCTLClaudeCodeTracer
-
-    tracer = LCTLClaudeCodeTracer.get_or_create()
-
-    # Check for error in result
-    result = os.environ.get('CLAUDE_TOOL_RESULT', '')
-    success = 'error' not in result.lower()[:100]
-
-    tracer.on_task_complete(
-        agent_type=os.environ.get('CLAUDE_TOOL_INPUT_subagent_type', 'unknown'),
-        description=os.environ.get('CLAUDE_TOOL_INPUT_description', ''),
-        result=result[:2000],
-        success=success,
-    )
-except Exception as e:
-    print(f'LCTL trace warning: {e}', file=sys.stderr)
-"
-fi
-
-# Also trace other tool calls
-if [ "$CLAUDE_TOOL_NAME" != "Task" ]; then
-    python3 -c "
+python3 -c "
 import os
 import sys
 import json
@@ -817,21 +1035,118 @@ try:
     from lctl.integrations.claude_code import LCTLClaudeCodeTracer
 
     tracer = LCTLClaudeCodeTracer.get_or_create()
-
-    # Get tool input (simplified - full parsing would need more logic)
     tool_name = os.environ.get('CLAUDE_TOOL_NAME', 'unknown')
+    result = os.environ.get('CLAUDE_TOOL_RESULT', '')
+
+    # Task tool - agent completions
+    if tool_name == 'Task':
+        success = 'error' not in result.lower()[:100]
+        tracer.on_task_complete(
+            agent_type=os.environ.get('CLAUDE_TOOL_INPUT_subagent_type', 'unknown'),
+            description=os.environ.get('CLAUDE_TOOL_INPUT_description', ''),
+            result=result[:2000],
+            success=success,
+        )
+
+    # TodoWrite - task list updates
+    elif tool_name == 'TodoWrite':
+        try:
+            todos_str = os.environ.get('CLAUDE_TOOL_INPUT_todos', '[]')
+            todos = json.loads(todos_str) if todos_str else []
+            tracer.on_todo_write(todos=todos)
+        except:
+            tracer.on_todo_write(todos=[])
+
+    # Skill invocations
+    elif tool_name == 'Skill':
+        skill_name = os.environ.get('CLAUDE_TOOL_INPUT_skill', 'unknown')
+        args = os.environ.get('CLAUDE_TOOL_INPUT_args', '')
+        tracer.on_skill_invoke(
+            skill_name=skill_name,
+            args=args,
+            result_summary=result[:500],
+        )
+
+    # MCP tool calls (mcp__server__tool pattern)
+    elif tool_name.startswith('mcp__'):
+        parts = tool_name.split('__')
+        if len(parts) >= 3:
+            server_name = parts[1]
+            mcp_tool = '__'.join(parts[2:])
+            try:
+                input_str = os.environ.get('CLAUDE_TOOL_INPUT', '{}')
+                input_data = json.loads(input_str) if input_str else {}
+            except:
+                input_data = {'raw': input_str[:300]}
+            try:
+                output_data = json.loads(result) if result else {}
+            except:
+                output_data = {'raw': result[:300]}
+            tracer.on_mcp_tool_call(
+                server_name=server_name,
+                tool_name=mcp_tool,
+                input_data=input_data,
+                output_data=output_data,
+            )
+
+    # Bash tool - detect git commits
+    elif tool_name == 'Bash':
+        cmd = os.environ.get('CLAUDE_TOOL_INPUT_command', '')
+        if 'git commit' in cmd and 'Successfully' not in result:
+            # Try to extract commit info from result
+            import re
+            commit_match = re.search(r'\\[\\w+\\s+([a-f0-9]+)\\]', result)
+            if commit_match:
+                commit_hash = commit_match.group(1)
+                # Extract message from command
+                msg_match = re.search(r'-m\\s+[\"\\']([^\"\\']+)[\"\\']', cmd)
+                message = msg_match.group(1) if msg_match else 'Commit'
+                # Extract stats
+                stats_match = re.search(r'(\\d+)\\s+file.*?(\\d+)\\s+insertion.*?(\\d+)\\s+deletion', result)
+                files = int(stats_match.group(1)) if stats_match else 0
+                insertions = int(stats_match.group(2)) if stats_match else 0
+                deletions = int(stats_match.group(3)) if stats_match else 0
+                tracer.on_git_commit(
+                    commit_hash=commit_hash,
+                    message=message,
+                    files_changed=files,
+                    insertions=insertions,
+                    deletions=deletions,
+                )
+
+    # File changes - Write, Edit, MultiEdit
+    elif tool_name in ('Write', 'Edit', 'MultiEdit'):
+        file_path = os.environ.get('CLAUDE_TOOL_INPUT_file_path', '')
+        change_type = 'create' if tool_name == 'Write' else 'edit'
+        tracer.on_file_change(file_path=file_path, change_type=change_type)
+
+    # User interaction
+    elif tool_name == 'AskUserQuestion':
+        question = os.environ.get('CLAUDE_TOOL_INPUT_question', '')
+        tracer.on_user_interaction(question=question, response=result[:500])
+
+    # Web fetch/search
+    elif tool_name == 'WebFetch':
+        url = os.environ.get('CLAUDE_TOOL_INPUT_url', '')
+        prompt = os.environ.get('CLAUDE_TOOL_INPUT_prompt', '')
+        tracer.on_web_fetch(url=url, prompt=prompt, result_summary=result[:500])
+
+    elif tool_name == 'WebSearch':
+        query = os.environ.get('CLAUDE_TOOL_INPUT_query', '')
+        tracer.on_web_search(query=query, results_count=result.count('http'), top_result=result[:200])
 
     # Skip high-frequency read-only tools to reduce noise
-    if tool_name not in ('Read', 'Glob', 'Grep', 'LS'):
+    elif tool_name not in ('Read', 'Glob', 'Grep', 'LS', 'TaskOutput', 'KillShell'):
         tracer.on_tool_call(
             tool_name=tool_name,
             input_data={'raw': os.environ.get('CLAUDE_TOOL_INPUT', '')[:500]},
-            output_data={'raw': os.environ.get('CLAUDE_TOOL_RESULT', '')[:500]},
+            output_data={'raw': result[:500]},
         )
+
 except Exception as e:
-    pass  # Silent fail for non-Task tools
+    # Don't break Claude Code if tracing fails
+    pass
 "
-fi
 '''
 
     post_hook_path = hooks_dir / "PostToolUse.sh"
@@ -887,8 +1202,347 @@ def is_available() -> bool:
     return True
 
 
+def validate_hooks(hooks_dir: str = ".claude/hooks") -> Dict[str, Any]:
+    """Validate Claude Code hook installation.
+
+    Args:
+        hooks_dir: Directory containing hooks
+
+    Returns:
+        Validation result dict with 'valid', 'hooks', and 'warnings' keys
+    """
+    import stat
+
+    hooks_path = Path(hooks_dir)
+    result = {
+        "valid": True,
+        "hooks": {},
+        "warnings": [],
+    }
+
+    expected_hooks = ["PreToolUse.sh", "PostToolUse.sh", "Stop.sh"]
+
+    for hook_name in expected_hooks:
+        hook_path = hooks_path / hook_name
+        hook_status = {
+            "exists": hook_path.exists(),
+            "executable": False,
+            "contains_lctl": False,
+        }
+
+        if hook_path.exists():
+            # Check if executable
+            mode = hook_path.stat().st_mode
+            hook_status["executable"] = bool(mode & stat.S_IXUSR)
+
+            # Check if it references LCTL
+            content = hook_path.read_text()
+            hook_status["contains_lctl"] = "lctl" in content.lower() or "LCTL" in content
+
+            if not hook_status["executable"]:
+                result["valid"] = False
+                result["warnings"].append(f"{hook_name} is not executable")
+
+            if not hook_status["contains_lctl"]:
+                result["warnings"].append(f"{hook_name} may not be an LCTL hook")
+        else:
+            result["valid"] = False
+
+        result["hooks"][hook_name.replace(".sh", "")] = hook_status
+
+    # Check for traces directory
+    traces_dir = Path(".claude/traces")
+    if not traces_dir.exists():
+        result["warnings"].append("Traces directory does not exist (will be created on first trace)")
+
+    return result
+
+
+def generate_html_report(chain: Any, output_path: str) -> str:
+    """Generate an HTML report for a Claude Code trace.
+
+    Args:
+        chain: LCTL Chain object
+        output_path: Path to write HTML report
+
+    Returns:
+        Path to generated report
+    """
+    from ..core.events import ReplayEngine
+
+    engine = ReplayEngine(chain)
+    state = engine.replay_all()
+    trace = engine.get_trace()
+    bottlenecks = engine.find_bottlenecks()
+
+    # Calculate metrics
+    total_duration = state.metrics.get("total_duration_ms", 0)
+    total_tokens_in = state.metrics.get("total_tokens_in", 0)
+    total_tokens_out = state.metrics.get("total_tokens_out", 0)
+
+    # Estimate cost (Claude pricing)
+    cost_estimate = (total_tokens_in / 1_000_000) * 3 + (total_tokens_out / 1_000_000) * 15
+
+    # Build agent timeline data
+    agents = {}
+    for step in trace:
+        agent = step["agent"]
+        if agent not in agents:
+            agents[agent] = {"steps": 0, "duration_ms": 0, "tokens": 0}
+        agents[agent]["steps"] += 1
+        agents[agent]["duration_ms"] += step.get("duration_ms", 0)
+
+    # Build events list for timeline
+    events_data = []
+    for event in chain.events:
+        events_data.append({
+            "seq": event.seq,
+            "type": event.type.value,
+            "agent": event.agent or "system",
+            "timestamp": event.timestamp.isoformat() if event.timestamp else "",
+            "data": str(event.data)[:200],
+        })
+
+    # Generate HTML
+    html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LCTL Report - {chain.id}</title>
+    <style>
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; line-height: 1.6; }}
+        .container {{ max-width: 1200px; margin: 0 auto; padding: 20px; }}
+        header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; margin-bottom: 20px; }}
+        h1 {{ font-size: 2em; margin-bottom: 10px; }}
+        .subtitle {{ opacity: 0.9; }}
+        .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 20px; }}
+        .card {{ background: white; border-radius: 10px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+        .card h3 {{ color: #667eea; margin-bottom: 15px; font-size: 1.1em; }}
+        .metric {{ font-size: 2em; font-weight: bold; color: #333; }}
+        .metric-label {{ color: #666; font-size: 0.9em; }}
+        .timeline {{ background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px; }}
+        .event {{ display: flex; padding: 10px; border-left: 3px solid #667eea; margin-left: 20px; margin-bottom: 10px; background: #f9f9f9; border-radius: 0 5px 5px 0; }}
+        .event-seq {{ width: 40px; font-weight: bold; color: #667eea; }}
+        .event-type {{ width: 120px; font-size: 0.85em; padding: 2px 8px; border-radius: 3px; background: #e0e7ff; color: #4338ca; }}
+        .event-type.step_start {{ background: #dcfce7; color: #166534; }}
+        .event-type.step_end {{ background: #fef3c7; color: #92400e; }}
+        .event-type.fact_added {{ background: #dbeafe; color: #1e40af; }}
+        .event-type.error {{ background: #fee2e2; color: #991b1b; }}
+        .event-agent {{ width: 120px; font-weight: 500; }}
+        .event-data {{ flex: 1; color: #666; font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+        .agents {{ display: flex; flex-wrap: wrap; gap: 10px; }}
+        .agent-chip {{ padding: 8px 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 20px; font-size: 0.9em; }}
+        .bottleneck {{ display: flex; align-items: center; margin-bottom: 10px; }}
+        .bottleneck-bar {{ height: 20px; background: linear-gradient(90deg, #667eea, #764ba2); border-radius: 3px; margin-right: 10px; }}
+        .bottleneck-label {{ min-width: 100px; }}
+        .facts {{ max-height: 300px; overflow-y: auto; }}
+        .fact {{ padding: 10px; border-bottom: 1px solid #eee; }}
+        .fact-id {{ font-weight: bold; color: #667eea; }}
+        .fact-conf {{ float: right; padding: 2px 8px; background: #e0e7ff; border-radius: 10px; font-size: 0.8em; }}
+        footer {{ text-align: center; padding: 20px; color: #666; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>LCTL Workflow Report</h1>
+            <p class="subtitle">Chain: {chain.id} | Version: {chain.version}</p>
+        </header>
+
+        <div class="grid">
+            <div class="card">
+                <h3>Events</h3>
+                <div class="metric">{len(chain.events)}</div>
+                <div class="metric-label">Total events recorded</div>
+            </div>
+            <div class="card">
+                <h3>Duration</h3>
+                <div class="metric">{total_duration / 1000:.1f}s</div>
+                <div class="metric-label">Total execution time</div>
+            </div>
+            <div class="card">
+                <h3>Tokens</h3>
+                <div class="metric">{(total_tokens_in + total_tokens_out):,}</div>
+                <div class="metric-label">In: {total_tokens_in:,} | Out: {total_tokens_out:,}</div>
+            </div>
+            <div class="card">
+                <h3>Est. Cost</h3>
+                <div class="metric">${cost_estimate:.4f}</div>
+                <div class="metric-label">Based on Claude pricing</div>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h3>Agents ({len(agents)})</h3>
+                <div class="agents">
+                    {"".join(f'<span class="agent-chip">{a} ({s["steps"]} steps)</span>' for a, s in agents.items())}
+                </div>
+            </div>
+            <div class="card">
+                <h3>Facts ({len(state.facts)})</h3>
+                <div class="facts">
+                    {"".join(f'<div class="fact"><span class="fact-id">{fid}</span><span class="fact-conf">{f.get("confidence", 1.0):.0%}</span><br>{f.get("text", "")[:100]}</div>' for fid, f in list(state.facts.items())[:10])}
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Bottleneck Analysis</h3>
+            {"".join(f'<div class="bottleneck"><span class="bottleneck-label">{b["agent"]}</span><div class="bottleneck-bar" style="width: {b.get("percentage", 0)}%"></div>{b.get("percentage", 0):.1f}% ({b["duration_ms"]}ms)</div>' for b in bottlenecks[:5])}
+        </div>
+
+        <div class="timeline card">
+            <h3>Event Timeline (first 50)</h3>
+            {"".join(f'<div class="event"><span class="event-seq">{e["seq"]}</span><span class="event-type {e["type"]}">{e["type"]}</span><span class="event-agent">{e["agent"]}</span><span class="event-data">{e["data"]}</span></div>' for e in events_data[:50])}
+        </div>
+
+        <footer>
+            <p>Generated by LCTL (LLM Context Transfer Language) | <a href="https://github.com/kimasplund/LLM-Context-Transfer-Language">GitHub</a></p>
+        </footer>
+    </div>
+</body>
+</html>'''
+
+    Path(output_path).write_text(html)
+    return output_path
+
+
+def get_session_metadata() -> Dict[str, Any]:
+    """Get metadata about the current session environment.
+
+    Returns:
+        Dict with working_dir, git_branch, git_commit, project_name, etc.
+    """
+    import subprocess
+
+    metadata = {
+        "working_dir": str(Path.cwd()),
+        "project_name": Path.cwd().name,
+        "git_branch": None,
+        "git_commit": None,
+        "git_dirty": False,
+        "python_version": None,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+    # Get Python version
+    import sys
+    metadata["python_version"] = sys.version.split()[0]
+
+    # Get git info
+    try:
+        result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            metadata["git_branch"] = result.stdout.strip()
+
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            metadata["git_commit"] = result.stdout.strip()
+
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            metadata["git_dirty"] = bool(result.stdout.strip())
+    except Exception:
+        pass  # Git not available
+
+    return metadata
+
+
+# Model pricing for cost estimation (per 1M tokens)
+# Source: https://platform.claude.com/docs/en/about-claude/pricing
+MODEL_PRICING = {
+    # Claude 4.5 series
+    "claude-opus-4-5-20251101": {"input": 5.0, "output": 25.0},
+    "claude-opus-4.5": {"input": 5.0, "output": 25.0},
+    "opus-4.5": {"input": 5.0, "output": 25.0},
+    "opus": {"input": 5.0, "output": 25.0},  # Default opus to latest
+    "claude-sonnet-4-5-20241022": {"input": 3.0, "output": 15.0},
+    "claude-sonnet-4.5": {"input": 3.0, "output": 15.0},
+    "sonnet-4.5": {"input": 3.0, "output": 15.0},
+    "claude-haiku-4-5-20241022": {"input": 1.0, "output": 5.0},
+    "claude-haiku-4.5": {"input": 1.0, "output": 5.0},
+    "haiku-4.5": {"input": 1.0, "output": 5.0},
+    # Claude 4.1 series
+    "claude-opus-4-1-20250414": {"input": 15.0, "output": 75.0},
+    "claude-opus-4.1": {"input": 15.0, "output": 75.0},
+    "opus-4.1": {"input": 15.0, "output": 75.0},
+    # Claude 4 series
+    "claude-opus-4-20250514": {"input": 15.0, "output": 75.0},
+    "claude-opus-4": {"input": 15.0, "output": 75.0},
+    "opus-4": {"input": 15.0, "output": 75.0},
+    "claude-sonnet-4-20250514": {"input": 3.0, "output": 15.0},
+    "claude-sonnet-4": {"input": 3.0, "output": 15.0},
+    "sonnet-4": {"input": 3.0, "output": 15.0},
+    "sonnet": {"input": 3.0, "output": 15.0},  # Default sonnet to latest
+    # Claude 3.7 series (deprecated but still used)
+    "claude-3-7-sonnet-20250219": {"input": 3.0, "output": 15.0},
+    "claude-sonnet-3.7": {"input": 3.0, "output": 15.0},
+    # Claude 3.5 series
+    "claude-3-5-sonnet-20241022": {"input": 3.0, "output": 15.0},
+    "claude-3.5-sonnet": {"input": 3.0, "output": 15.0},
+    "claude-3-5-haiku-20241022": {"input": 0.80, "output": 4.0},
+    "claude-3.5-haiku": {"input": 0.80, "output": 4.0},
+    # Claude 3 series (some deprecated)
+    "claude-3-opus-20240229": {"input": 15.0, "output": 75.0},
+    "claude-3-opus": {"input": 15.0, "output": 75.0},
+    "claude-3-sonnet-20240229": {"input": 3.0, "output": 15.0},
+    "claude-3-sonnet": {"input": 3.0, "output": 15.0},
+    "claude-3-haiku-20240307": {"input": 0.25, "output": 1.25},
+    "claude-3-haiku": {"input": 0.25, "output": 1.25},
+    "haiku": {"input": 0.25, "output": 1.25},  # Default haiku to cheapest
+    # Default for unknown models (assume Sonnet pricing)
+    "default": {"input": 3.0, "output": 15.0},
+}
+
+
+def estimate_cost(
+    tokens_in: int,
+    tokens_out: int,
+    model: str = "default"
+) -> Dict[str, float]:
+    """Estimate cost based on token usage.
+
+    Args:
+        tokens_in: Input tokens
+        tokens_out: Output tokens
+        model: Model name for pricing
+
+    Returns:
+        Dict with input_cost, output_cost, total_cost
+    """
+    pricing = MODEL_PRICING.get(model, MODEL_PRICING["default"])
+
+    input_cost = (tokens_in / 1_000_000) * pricing["input"]
+    output_cost = (tokens_out / 1_000_000) * pricing["output"]
+
+    return {
+        "input_cost": input_cost,
+        "output_cost": output_cost,
+        "total_cost": input_cost + output_cost,
+        "model": model,
+        "pricing": pricing,
+    }
+
+
 __all__ = [
     "LCTLClaudeCodeTracer",
     "generate_hooks",
+    "validate_hooks",
+    "generate_html_report",
+    "get_session_metadata",
+    "estimate_cost",
+    "MODEL_PRICING",
     "is_available",
 ]

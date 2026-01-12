@@ -804,6 +804,234 @@ def _estimate_cost(tokens_in: int, tokens_out: int) -> float:
     return cost_in + cost_out
 
 
+# =============================================================================
+# Claude Code Integration Commands
+# =============================================================================
+
+
+@cli.group()
+def claude():
+    """Claude Code integration commands.
+
+    Setup and manage LCTL tracing for Claude Code multi-agent workflows.
+    """
+    pass
+
+
+@claude.command("init")
+@click.option("--hooks-dir", "-d", default=".claude/hooks", help="Hooks directory")
+@click.option("--force", "-f", is_flag=True, help="Overwrite existing hooks")
+def claude_init(hooks_dir: str, force: bool):
+    """Initialize LCTL tracing for Claude Code.
+
+    Generates hook scripts that automatically trace Task tool usage,
+    enabling time-travel debugging of multi-agent workflows.
+
+    Example:
+        lctl claude init
+        lctl claude init --hooks-dir /path/to/hooks
+    """
+    from ..integrations.claude_code import generate_hooks
+
+    hooks_path = Path(hooks_dir)
+
+    # Check for existing hooks
+    if hooks_path.exists() and not force:
+        existing = list(hooks_path.glob("*.sh"))
+        if existing:
+            click.echo(click.style(
+                f"Hooks directory already contains {len(existing)} scripts.",
+                fg="yellow"
+            ))
+            click.echo("Use --force to overwrite.")
+            sys.exit(1)
+
+    try:
+        hooks = generate_hooks(hooks_dir)
+        click.echo(click.style("LCTL Claude Code tracing initialized!", fg="green"))
+        click.echo()
+        click.echo("Generated hooks:")
+        for name, path in hooks.items():
+            click.echo(f"  {name}: {path}")
+        click.echo()
+        click.echo("Tracing will automatically capture:")
+        click.echo("  - Task tool invocations (agent spawning)")
+        click.echo("  - Agent completions with results")
+        click.echo("  - Tool calls within agents")
+        click.echo("  - Session export on exit")
+        click.echo()
+        click.echo("Traces will be saved to: .claude/traces/")
+    except Exception as e:
+        click.echo(click.style(f"Error generating hooks: {e}", fg="red"), err=True)
+        sys.exit(1)
+
+
+@claude.command("validate")
+@click.option("--hooks-dir", "-d", default=".claude/hooks", help="Hooks directory")
+def claude_validate(hooks_dir: str):
+    """Validate Claude Code hook installation.
+
+    Checks that hooks are correctly installed and configured.
+
+    Example:
+        lctl claude validate
+    """
+    from ..integrations.claude_code import validate_hooks
+
+    hooks_path = Path(hooks_dir)
+
+    if not hooks_path.exists():
+        click.echo(click.style(f"Hooks directory not found: {hooks_dir}", fg="red"))
+        click.echo("Run 'lctl claude init' to create hooks.")
+        sys.exit(1)
+
+    validation = validate_hooks(hooks_dir)
+
+    if validation["valid"]:
+        click.echo(click.style("All hooks valid!", fg="green"))
+    else:
+        click.echo(click.style("Hook validation failed:", fg="red"))
+
+    click.echo()
+    for hook_name, status in validation["hooks"].items():
+        if status["exists"]:
+            if status["executable"]:
+                click.echo(f"  {hook_name}: " + click.style("OK", fg="green"))
+            else:
+                click.echo(f"  {hook_name}: " + click.style("not executable", fg="yellow"))
+        else:
+            click.echo(f"  {hook_name}: " + click.style("missing", fg="red"))
+
+    if validation["warnings"]:
+        click.echo()
+        click.echo("Warnings:")
+        for warning in validation["warnings"]:
+            click.echo(f"  - {warning}")
+
+
+@claude.command("status")
+def claude_status():
+    """Show current Claude Code tracing status.
+
+    Displays active session info and recent traces.
+
+    Example:
+        lctl claude status
+    """
+    traces_dir = Path(".claude/traces")
+    state_file = traces_dir / ".lctl-state.json"
+
+    # Check for active session
+    if state_file.exists():
+        try:
+            import json
+            with open(state_file) as f:
+                state = json.load(f)
+            click.echo(click.style("Active tracing session:", fg="green"))
+            click.echo(f"  Chain: {Path(state.get('chain_path', 'unknown')).name}")
+            click.echo(f"  Agents in stack: {len(state.get('agent_stack', []))}")
+            click.echo(f"  Tool calls tracked: {sum(state.get('tool_counts', {}).values())}")
+        except Exception:
+            click.echo("Active session state corrupted.")
+    else:
+        click.echo("No active tracing session.")
+
+    click.echo()
+
+    # List recent traces
+    if traces_dir.exists():
+        traces = sorted(traces_dir.glob("*.lctl.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if traces:
+            click.echo("Recent traces:")
+            for trace in traces[:5]:
+                try:
+                    chain = Chain.load(trace)
+                    mtime = trace.stat().st_mtime
+                    from datetime import datetime
+                    dt = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+                    click.echo(f"  {trace.name}: {len(chain.events)} events ({dt})")
+                except Exception:
+                    click.echo(f"  {trace.name}: (corrupted)")
+        else:
+            click.echo("No traces found.")
+    else:
+        click.echo("Traces directory not found.")
+
+
+@claude.command("report")
+@click.argument("chain_file", type=click.Path(exists=True))
+@click.option("--output", "-o", help="Output HTML file (default: chain-report.html)")
+@click.option("--open", "open_browser", is_flag=True, help="Open in browser")
+def claude_report(chain_file: str, output: Optional[str], open_browser: bool):
+    """Generate HTML report for a Claude Code trace.
+
+    Creates a visual timeline and analysis of the multi-agent workflow.
+
+    Example:
+        lctl claude report trace.lctl.json
+        lctl claude report trace.lctl.json --open
+    """
+    from ..integrations.claude_code import generate_html_report
+
+    chain = _load_chain_safely(chain_file)
+    if chain is None:
+        sys.exit(1)
+
+    output_path = output or f"{Path(chain_file).stem}-report.html"
+
+    try:
+        report_path = generate_html_report(chain, output_path)
+        click.echo(click.style(f"Report generated: {report_path}", fg="green"))
+
+        if open_browser:
+            import webbrowser
+            webbrowser.open(f"file://{Path(report_path).absolute()}")
+    except Exception as e:
+        click.echo(click.style(f"Error generating report: {e}", fg="red"), err=True)
+        sys.exit(1)
+
+
+@claude.command("clean")
+@click.option("--traces-dir", "-d", default=".claude/traces", help="Traces directory")
+@click.option("--older-than", "-t", type=int, default=7, help="Delete traces older than N days")
+@click.option("--dry-run", is_flag=True, help="Show what would be deleted")
+def claude_clean(traces_dir: str, older_than: int, dry_run: bool):
+    """Clean up old Claude Code traces.
+
+    Example:
+        lctl claude clean --older-than 30
+        lctl claude clean --dry-run
+    """
+    traces_path = Path(traces_dir)
+
+    if not traces_path.exists():
+        click.echo("No traces directory found.")
+        return
+
+    import time
+    cutoff = time.time() - (older_than * 24 * 60 * 60)
+
+    traces = list(traces_path.glob("*.lctl.json"))
+    to_delete = [t for t in traces if t.stat().st_mtime < cutoff]
+
+    if not to_delete:
+        click.echo(f"No traces older than {older_than} days found.")
+        return
+
+    click.echo(f"Found {len(to_delete)} traces older than {older_than} days:")
+    for trace in to_delete:
+        click.echo(f"  {trace.name}")
+
+    if dry_run:
+        click.echo()
+        click.echo("(dry run - no files deleted)")
+    else:
+        for trace in to_delete:
+            trace.unlink()
+        click.echo()
+        click.echo(click.style(f"Deleted {len(to_delete)} traces.", fg="green"))
+
+
 def main():
     """Entry point."""
     cli()
