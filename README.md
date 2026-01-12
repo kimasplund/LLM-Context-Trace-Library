@@ -289,6 +289,54 @@ result = await Runner.run(
 traced.export("helper_trace.lctl.json")
 ```
 
+### Claude Code
+
+LCTL can trace Claude Code's own multi-agent workflows using hook-based architecture.
+
+```bash
+# Initialize LCTL hooks in your project
+lctl claude init
+
+# Validate installation
+lctl claude validate
+
+# View active session status
+lctl claude status
+
+# Generate HTML report
+lctl claude report .claude/traces/claude-code-*.lctl.json --open
+```
+
+**Automatic Tracing**: Once hooks are installed, LCTL automatically traces:
+- Agent spawning via `Task` tool (Plan, implementor, Explore, etc.)
+- Tool calls (Bash, Write, Edit, WebFetch, WebSearch)
+- TodoWrite updates, Skill invocations, MCP tool calls
+- Git commits linked to workflows
+- User interactions (AskUserQuestion)
+
+**Programmatic Usage**:
+
+```python
+from lctl.integrations.claude_code import LCTLClaudeCodeTracer
+
+tracer = LCTLClaudeCodeTracer(chain_id="my-workflow")
+
+# Record agent activity
+tracer.on_task_start(agent_type="implementor", description="Add auth", prompt="...")
+tracer.on_tool_call("Bash", {"command": "pytest"}, {"exit_code": 0})
+tracer.on_file_change("/src/auth.py", "create", lines_added=100)
+tracer.on_task_complete(agent_type="implementor", result="Done", success=True)
+
+# Export trace
+tracer.export("workflow.lctl.json")
+
+# Get summary with cost estimation
+summary = tracer.get_summary()
+print(f"Cost: ${summary['total_tokens_in'] * 3 / 1_000_000:.4f}")
+```
+
+See the [Claude Code Tutorial](docs/tutorials/claude-code-tutorial.md) for comprehensive documentation.
+
 ## CLI Reference
 
 LCTL provides a powerful CLI for analyzing and debugging agent traces.

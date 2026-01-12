@@ -30,16 +30,47 @@ lctl/
 │   ├── events.py        # Chain, Event, EventType, State, ReplayEngine
 │   └── session.py       # LCTLSession, traced_step context manager
 ├── cli/
-│   └── main.py          # Click CLI: replay, stats, bottleneck, diff, trace, debug
+│   └── main.py          # Click CLI: replay, stats, bottleneck, diff, trace, debug, claude
 ├── dashboard/
 │   └── app.py           # FastAPI web dashboard
 └── integrations/
     ├── __init__.py      # Integration exports
+    ├── claude_code.py   # LCTLClaudeCodeTracer, generate_hooks (SELF-TRACING!)
     ├── langchain.py     # LCTLCallbackHandler, LCTLChain, trace_chain
     ├── crewai.py        # LCTLCrew, LCTLAgent, LCTLTask, trace_crew
     ├── autogen.py       # LCTLAutogenCallback, trace_agent, trace_group_chat
     └── openai_agents.py # LCTLOpenAIAgentTracer, LCTLRunHooks, TracedAgent
 ```
+
+### Self-Tracing with Claude Code
+
+LCTL can trace its own multi-agent workflows when running in Claude Code. This enables time-travel debugging of Claude Code sessions themselves.
+
+**Setup**:
+```bash
+# Initialize LCTL hooks in your project
+lctl claude init
+
+# Validate installation
+lctl claude validate
+```
+
+**What's Captured**:
+- Task tool invocations (agent spawning)
+- Agent completions with tokens and duration
+- Tool calls (Bash, Write, Edit, WebFetch, etc.)
+- TodoWrite updates, Skill invocations
+- MCP tool calls, Git commits
+- User interactions (AskUserQuestion)
+
+**CLI Commands**:
+- `lctl claude init` - Generate hook scripts
+- `lctl claude validate` - Check hook installation
+- `lctl claude status` - Show active session
+- `lctl claude report` - Generate HTML report
+- `lctl claude clean` - Clean old traces
+
+See `docs/tutorials/claude-code-tutorial.md` for full documentation.
 
 ## Key Concepts
 

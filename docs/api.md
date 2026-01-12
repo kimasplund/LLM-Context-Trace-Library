@@ -20,9 +20,9 @@
   - [LCTLSession](#lctlsession)
   - [traced_step](#traced_step)
 - [Integrations (lctl.integrations)](#integrations-lctlintegrations)
+  - [Claude Code Integration](#claude-code-integration)
   - [LangChain Integration](#langchain-integration)
   - [CrewAI Integration](#crewai-integration)
-  - [AutoGen Integration](#autogen-integration)
   - [AutoGen Integration](#autogen-integration)
   - [OpenAI Agents Integration](#openai-agents-integration)
   - [PydanticAI Integration](#pydanticai-integration)
@@ -679,6 +679,214 @@ with traced_step(session, "analyzer", "analyze", "code.py"):
 ## Integrations (lctl.integrations)
 
 LCTL provides native integrations for popular multi-agent frameworks.
+
+---
+
+### Claude Code Integration
+
+Hook-based tracing for Claude Code's multi-agent workflows.
+
+```python
+from lctl.integrations.claude_code import (
+    LCTLClaudeCodeTracer,
+    generate_hooks,
+    validate_hooks,
+    generate_html_report,
+    get_session_metadata,
+    estimate_cost,
+    MODEL_PRICING,
+    is_available
+)
+```
+
+#### is_available() -> bool
+
+Check if Claude Code tracing is available (always returns True - no external dependencies).
+
+---
+
+#### LCTLClaudeCodeTracer
+
+Main tracer class for Claude Code multi-agent workflows.
+
+##### Constructor
+
+```python
+LCTLClaudeCodeTracer(
+    chain_id: Optional[str] = None,
+    session: Optional[LCTLSession] = None,
+    output_dir: Optional[str] = None
+)
+```
+
+**Parameters**:
+- `chain_id` (`Optional[str]`): Chain ID (auto-generated if not provided)
+- `session` (`Optional[LCTLSession]`): Existing LCTL session
+- `output_dir` (`Optional[str]`): Directory for trace output (default: `.claude/traces/`)
+
+##### Class Methods
+
+| Method | Description |
+|--------|-------------|
+| `get_or_create(chain_id, state_file)` | Get or create singleton instance (for hooks) |
+
+##### Instance Methods
+
+| Method | Description |
+|--------|-------------|
+| `on_task_start(agent_type, description, prompt, model, run_in_background, resume_agent_id, parallel_group)` | Record agent spawn |
+| `on_task_complete(agent_type, description, result, success, error_message, agent_id, tokens_in, tokens_out)` | Record agent completion |
+| `on_tool_call(tool_name, input_data, output_data, duration_ms, agent)` | Record tool call |
+| `on_fact_discovered(fact_id, text, confidence, agent)` | Record discovered fact |
+| `on_fact_updated(fact_id, confidence, text, reason)` | Update fact |
+| `on_user_interaction(question, response, options, agent)` | Record AskUserQuestion |
+| `on_file_change(file_path, change_type, agent, lines_added, lines_removed)` | Record file modification |
+| `on_web_fetch(url, prompt, result_summary, agent, duration_ms)` | Record web fetch |
+| `on_web_search(query, results_count, top_result, agent)` | Record web search |
+| `on_todo_write(todos, previous_todos, agent)` | Record todo list update |
+| `on_skill_invoke(skill_name, args, result_summary, agent, duration_ms)` | Record skill invocation |
+| `on_mcp_tool_call(server_name, tool_name, input_data, output_data, agent, duration_ms)` | Record MCP tool call |
+| `on_git_commit(commit_hash, message, files_changed, insertions, deletions, agent)` | Record git commit |
+| `start_parallel_group(group_id)` | Start parallel execution group |
+| `end_parallel_group()` | End parallel execution group |
+| `checkpoint(description)` | Create checkpoint |
+| `export(path)` | Export trace to file |
+| `get_summary()` | Get workflow summary |
+| `get_file_changes()` | Get list of file changes |
+| `get_agent_ids()` | Get agent ID mapping (for resume) |
+| `link_to_git_history(repo_path)` | Link workflow to git history |
+| `reset()` | Reset tracer for new workflow |
+
+##### Example
+
+```python
+from lctl.integrations.claude_code import LCTLClaudeCodeTracer
+
+tracer = LCTLClaudeCodeTracer(chain_id="feature-impl")
+
+# Record agent workflow
+tracer.on_task_start(
+    agent_type="implementor",
+    description="Add authentication",
+    prompt="Implement JWT auth..."
+)
+
+tracer.on_tool_call("Write", {"file_path": "/auth.py"}, {"success": True})
+tracer.on_file_change("/auth.py", "create", lines_added=100)
+
+tracer.on_task_complete(
+    agent_type="implementor",
+    result="Implemented JWT auth",
+    success=True,
+    tokens_in=5000,
+    tokens_out=2000
+)
+
+# Export
+tracer.export("feature.lctl.json")
+print(tracer.get_summary())
+```
+
+---
+
+#### generate_hooks(output_dir) -> Dict[str, str]
+
+Generate Claude Code hook scripts for automatic tracing.
+
+**Parameters**:
+- `output_dir` (`str`): Directory to write hook scripts (default: `.claude/hooks`)
+
+**Returns**: Dict mapping hook name to file path
+
+```python
+hooks = generate_hooks(".claude/hooks")
+# Returns: {"PreToolUse": "...", "PostToolUse": "...", "Stop": "..."}
+```
+
+---
+
+#### validate_hooks(hooks_dir) -> Dict[str, Any]
+
+Validate Claude Code hook installation.
+
+**Parameters**:
+- `hooks_dir` (`str`): Directory containing hooks
+
+**Returns**: Validation result with `valid`, `hooks`, and `warnings` keys
+
+```python
+result = validate_hooks(".claude/hooks")
+if result["valid"]:
+    print("Hooks installed correctly")
+else:
+    print(f"Issues: {result['warnings']}")
+```
+
+---
+
+#### generate_html_report(chain, output_path) -> str
+
+Generate visual HTML report from a trace.
+
+**Parameters**:
+- `chain` (`Chain`): LCTL Chain object
+- `output_path` (`str`): Output file path
+
+**Returns**: Path to generated report
+
+```python
+from lctl.core.events import Chain
+from lctl.integrations.claude_code import generate_html_report
+
+chain = Chain.load("trace.lctl.json")
+generate_html_report(chain, "report.html")
+```
+
+---
+
+#### get_session_metadata() -> Dict[str, Any]
+
+Get current session metadata (git, project, environment).
+
+**Returns**: Dict with `working_dir`, `project_name`, `git_branch`, `git_commit`, `python_version`, `timestamp`
+
+```python
+metadata = get_session_metadata()
+print(f"Branch: {metadata['git_branch']}")
+```
+
+---
+
+#### estimate_cost(tokens_in, tokens_out, model) -> Dict[str, float]
+
+Estimate API cost based on token usage.
+
+**Parameters**:
+- `tokens_in` (`int`): Input tokens
+- `tokens_out` (`int`): Output tokens
+- `model` (`str`): Model name (default: "default")
+
+**Returns**: Dict with `input_cost`, `output_cost`, `total_cost`, `model`, `pricing`
+
+```python
+cost = estimate_cost(50000, 15000, model="claude-sonnet-4")
+print(f"Total: ${cost['total_cost']:.4f}")
+```
+
+---
+
+#### MODEL_PRICING
+
+Dict mapping model names to pricing (per million tokens).
+
+```python
+MODEL_PRICING = {
+    "claude-opus-4.5": {"input": 5.0, "output": 25.0},
+    "claude-sonnet-4": {"input": 3.0, "output": 15.0},
+    "claude-haiku-4.5": {"input": 1.0, "output": 5.0},
+    # ... and more
+}
+```
 
 ---
 
