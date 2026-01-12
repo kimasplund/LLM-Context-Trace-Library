@@ -150,7 +150,14 @@
         "lctl.defaultPricing": {
           "type": "string",
           "default": "claude-sonnet-4",
-          "enum": ["claude-opus-4.5", "claude-sonnet-4", "claude-haiku-3", "gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"],
+          "enum": [
+            "claude-opus-4.5",
+            "claude-sonnet-4",
+            "claude-haiku-3",
+            "gpt-4",
+            "gpt-4-turbo",
+            "gpt-3.5-turbo"
+          ],
           "description": "Default model for cost estimation"
         }
       }
@@ -172,7 +179,7 @@
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",
-    "@vscode/test-cli": "^0.0.4",
+    "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.3.8",
     "@vscode/vsce": "^2.22.0",
     "eslint": "^8.56.0",
