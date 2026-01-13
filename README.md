@@ -45,7 +45,7 @@ Events diverged at seq 8:
 
 - **Time-Travel Replay** - Step back through agent execution to any point
 - **Event Sourcing** - Immutable audit log of every state change
-- **Zero-Config Integration** - Auto-instrumentation for popular frameworks (LangChain, CrewAI, AutoGen, OpenAI Agents, PydanticAI, Semantic Kernel)
+- **Zero-Config Integration** - Auto-instrumentation for popular frameworks (LangChain, CrewAI, AutoGen, OpenAI Agents, PydanticAI, Semantic Kernel, DSPy, LlamaIndex)
 - **Web Dashboard** - Visual debugger with timeline, swim lanes, and bottleneck analysis
 - **Confidence Tracking** - Monitor fact confidence decay and consensus
 - **Performance Analysis** - Find bottlenecks and optimize token usage
@@ -78,6 +78,12 @@ pip install "lctl[pydantic-ai] @ git+https://github.com/kimasplund/LLM-Context-T
 
 # Semantic Kernel integration
 pip install "lctl[semantic-kernel] @ git+https://github.com/kimasplund/LLM-Context-Trace-Library.git"
+
+# DSPy integration
+pip install "lctl[dspy] @ git+https://github.com/kimasplund/LLM-Context-Trace-Library.git"
+
+# LlamaIndex integration
+pip install "lctl[llamaindex] @ git+https://github.com/kimasplund/LLM-Context-Trace-Library.git"
 
 # Web dashboard
 pip install "lctl[dashboard] @ git+https://github.com/kimasplund/LLM-Context-Trace-Library.git"
@@ -287,6 +293,73 @@ result = await Runner.run(
     run_config=traced.run_config
 )
 traced.export("helper_trace.lctl.json")
+```
+
+### DSPy
+
+```python
+from lctl.integrations.dspy import LCTLDSPyCallback, trace_module
+import dspy
+
+# Configure DSPy
+lm = dspy.LM("openai/gpt-3.5-turbo")
+dspy.configure(lm=lm)
+
+# Create callback
+callback = LCTLDSPyCallback(chain_id="dspy-demo")
+
+# Define and trace a module
+class QAModule(dspy.Module):
+    def __init__(self):
+        super().__init__()
+        self.predictor = dspy.ChainOfThought("question -> answer")
+
+    def forward(self, question):
+        return self.predictor(question=question)
+
+qa = QAModule()
+traced_qa = trace_module(qa, callback)
+
+# Run
+result = traced_qa(question="What is time-travel debugging?")
+print(f"Answer: {result.answer}")
+
+# Export trace
+callback.export("dspy_trace.lctl.json")
+```
+
+### LlamaIndex
+
+```python
+from llama_index.core import VectorStoreIndex, Document, Settings
+from llama_index.llms.openai import OpenAI
+from lctl.integrations.llamaindex import LCTLLlamaIndexCallback, trace_query_engine
+
+# Configure LlamaIndex
+Settings.llm = OpenAI(model="gpt-3.5-turbo")
+
+# Create callback
+callback = LCTLLlamaIndexCallback(chain_id="llamaindex-demo")
+
+# Create index with tracing
+documents = [
+    Document(text="LCTL provides time-travel debugging for LLM workflows."),
+    Document(text="LCTL uses event sourcing to record agent execution."),
+]
+index = VectorStoreIndex.from_documents(
+    documents,
+    callback_manager=callback.get_callback_manager()
+)
+
+# Query with tracing
+query_engine = index.as_query_engine(
+    callback_manager=callback.get_callback_manager()
+)
+response = query_engine.query("What is LCTL?")
+print(f"Answer: {response}")
+
+# Export trace
+callback.export("llamaindex_trace.lctl.json")
 ```
 
 ### Claude Code
@@ -692,7 +765,7 @@ When reporting bugs, please include:
 
 GNU Affero General Public License v3.0 (AGPLv3)
 
-Copyright (c) 2024 LCTL Contributors
+Copyright (c) 2024-2026 LCTL Contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
