@@ -31,6 +31,35 @@ class CompareRequest(BaseModel):
     filename2: str
 
 
+class BatchMetricsRequest(BaseModel):
+    """Request model for batch metrics endpoint."""
+    filenames: list[str]
+
+
+class SearchRequest(BaseModel):
+    """Request model for cross-chain search."""
+    query: str
+    event_types: list[str] | None = None
+    agents: list[str] | None = None
+    limit: int = 100
+
+
+class WebhookRegistration(BaseModel):
+    """Request model for webhook registration."""
+    url: str
+    events: list[str] = ["error", "step_end"]
+    chain_id: str | None = None
+    secret: str | None = None
+
+
+class RpaEventSubmission(BaseModel):
+    """Request model for submitting RPA workflow events."""
+    chain_id: str
+    agent: str
+    event_type: str
+    data: dict | None = None
+
+
 def create_app(working_dir: Optional[Path] = None) -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -59,7 +88,7 @@ def create_app(working_dir: Optional[Path] = None) -> FastAPI:
             "http://127.0.0.1:8080",
         ],
         allow_credentials=False,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["*"],
     )
 
@@ -67,6 +96,8 @@ def create_app(working_dir: Optional[Path] = None) -> FastAPI:
     app.state.working_dir = working_dir or Path.cwd()
     app.state.engine_cache = {}  # Cache for ReplayEngine instances: (abs_path, mtime) -> engine
     app.state.emitter = EventEmitter(max_history=500)  # Global event emitter for streaming
+    app.state.webhooks: dict[str, WebhookRegistration] = {}  # Registered webhooks by ID
+    app.state.api_keys: set[str] = set()  # Valid API keys (loaded from env or config)
 
     # Get paths to static files and templates
     dashboard_dir = Path(__file__).parent
@@ -656,6 +687,382 @@ def create_app(working_dir: Optional[Path] = None) -> FastAPI:
             "event_count": emitter.event_count,
             "handler_count": emitter.handler_count(),
             "history_size": len(emitter.history)
+        }
+
+    # =========================================================================
+    # RPA / UiPath Integration Endpoints
+    # =========================================================================
+
+    @app.get("/api/rpa/summary/{filename}", response_class=JSONResponse)
+    async def rpa_summary(filename: str):
+        """Get minimal summary for quick RPA checks.
+
+        Returns flat structure optimized for UiPath DataTable mapping.
+        """
+        file_path = get_secure_path(filename)
+        engine = get_cached_engine(file_path)
+        chain = engine.chain
+        state = engine.replay_all()
+
+        error_count = state.metrics.get("error_count", 0)
+        has_errors = error_count > 0
+
+        return {
+            "chain_id": chain.id,
+            "filename": filename,
+            "event_count": len(chain.events),
+            "agent_count": len(set(e.agent for e in chain.events)),
+            "error_count": error_count,
+            "has_errors": has_errors,
+            "fact_count": len(state.facts),
+            "total_duration_ms": state.metrics.get("total_duration_ms", 0),
+            "total_tokens": state.metrics.get("total_tokens_in", 0) + state.metrics.get("total_tokens_out", 0),
+            "status": "error" if has_errors else "success",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+    @app.get("/api/rpa/events/{filename}", response_class=JSONResponse)
+    async def rpa_events(
+        filename: str,
+        event_type: Optional[str] = Query(None, description="Filter by event type"),
+        agent: Optional[str] = Query(None, description="Filter by agent"),
+        limit: int = Query(1000, description="Max events to return"),
+        offset: int = Query(0, description="Skip first N events")
+    ):
+        """Get flattened events list optimized for RPA DataTable.
+
+        Each event is a flat dictionary with no nested objects.
+        """
+        file_path = get_secure_path(filename)
+        engine = get_cached_engine(file_path)
+        chain = engine.chain
+
+        events = []
+        for e in chain.events:
+            # Apply filters
+            e_type = e.type.value if hasattr(e.type, 'value') else e.type
+            if event_type and e_type != event_type:
+                continue
+            if agent and e.agent != agent:
+                continue
+
+            # Flatten event data
+            flat_event = {
+                "seq": e.seq,
+                "type": e_type,
+                "timestamp": e.timestamp.isoformat(),
+                "agent": e.agent or "",
+                "chain_id": chain.id,
+            }
+
+            # Flatten common data fields
+            if e.data:
+                flat_event["intent"] = e.data.get("intent", "")
+                flat_event["outcome"] = e.data.get("outcome", "")
+                flat_event["duration_ms"] = e.data.get("duration_ms", 0)
+                flat_event["tokens_in"] = e.data.get("tokens_in", 0)
+                flat_event["tokens_out"] = e.data.get("tokens_out", 0)
+                flat_event["tool_name"] = e.data.get("tool_name", "")
+                flat_event["fact_id"] = e.data.get("fact_id", "")
+                flat_event["confidence"] = e.data.get("confidence", 0)
+                flat_event["error_type"] = e.data.get("type", "")
+                flat_event["error_message"] = e.data.get("message", "")
+                flat_event["input_summary"] = str(e.data.get("input_summary", ""))[:200]
+                flat_event["output_summary"] = str(e.data.get("output_summary", ""))[:200]
+
+            events.append(flat_event)
+
+        # Apply pagination
+        total = len(events)
+        events = events[offset:offset + limit]
+
+        return {
+            "events": events,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + len(events) < total
+        }
+
+    @app.get("/api/rpa/export/{filename}")
+    async def rpa_export(
+        filename: str,
+        format: str = Query("csv", description="Export format: csv, json"),
+        event_type: Optional[str] = Query(None, description="Filter by event type")
+    ):
+        """Export chain data in RPA-friendly formats (CSV or JSON).
+
+        CSV format is ideal for Excel/DataTable processing in UiPath.
+        """
+        file_path = get_secure_path(filename)
+        engine = get_cached_engine(file_path)
+        chain = engine.chain
+
+        events = []
+        for e in chain.events:
+            e_type = e.type.value if hasattr(e.type, 'value') else e.type
+            if event_type and e_type != event_type:
+                continue
+
+            flat_event = {
+                "seq": e.seq,
+                "type": e_type,
+                "timestamp": e.timestamp.isoformat(),
+                "agent": e.agent or "",
+                "intent": e.data.get("intent", "") if e.data else "",
+                "outcome": e.data.get("outcome", "") if e.data else "",
+                "duration_ms": e.data.get("duration_ms", 0) if e.data else 0,
+                "tokens_in": e.data.get("tokens_in", 0) if e.data else 0,
+                "tokens_out": e.data.get("tokens_out", 0) if e.data else 0,
+                "error_message": e.data.get("message", "") if e.data else "",
+            }
+            events.append(flat_event)
+
+        if format == "csv":
+            import csv
+            import io
+
+            output = io.StringIO()
+            if events:
+                writer = csv.DictWriter(output, fieldnames=events[0].keys())
+                writer.writeheader()
+                writer.writerows(events)
+
+            return StreamingResponse(
+                iter([output.getvalue()]),
+                media_type="text/csv",
+                headers={"Content-Disposition": f"attachment; filename={filename}.csv"}
+            )
+        else:
+            return JSONResponse({"events": events, "chain_id": chain.id})
+
+    @app.post("/api/rpa/batch/metrics", response_class=JSONResponse)
+    async def rpa_batch_metrics(request: BatchMetricsRequest):
+        """Get metrics for multiple chains in one request.
+
+        Reduces API calls for UiPath workflows processing multiple chains.
+        """
+        results = []
+        errors = []
+
+        for filename in request.filenames:
+            try:
+                file_path = get_secure_path(filename)
+                engine = get_cached_engine(file_path)
+                chain = engine.chain
+                state = engine.replay_all()
+
+                results.append({
+                    "filename": filename,
+                    "chain_id": chain.id,
+                    "event_count": len(chain.events),
+                    "error_count": state.metrics.get("error_count", 0),
+                    "duration_ms": state.metrics.get("total_duration_ms", 0),
+                    "tokens": state.metrics.get("total_tokens_in", 0) + state.metrics.get("total_tokens_out", 0),
+                    "fact_count": len(state.facts),
+                    "status": "success"
+                })
+            except Exception as e:
+                errors.append({
+                    "filename": filename,
+                    "error": str(e),
+                    "status": "error"
+                })
+
+        return {
+            "results": results,
+            "errors": errors,
+            "total_processed": len(results),
+            "total_errors": len(errors)
+        }
+
+    @app.post("/api/rpa/search", response_class=JSONResponse)
+    async def rpa_search(request: SearchRequest):
+        """Search across all chains for specific events or patterns.
+
+        Useful for finding errors, specific agents, or patterns across workflows.
+        """
+        working_dir = app.state.working_dir
+        results = []
+        query_lower = request.query.lower()
+
+        for pattern in ["*.lctl.json", "*.lctl.yaml", "*.lctl.yml"]:
+            for file_path in working_dir.glob(pattern):
+                try:
+                    chain = Chain.load(file_path)
+
+                    for event in chain.events:
+                        e_type = event.type.value if hasattr(event.type, 'value') else event.type
+
+                        # Apply type filter
+                        if request.event_types and e_type not in request.event_types:
+                            continue
+
+                        # Apply agent filter
+                        if request.agents and event.agent not in request.agents:
+                            continue
+
+                        # Search in event data
+                        match = False
+                        searchable = f"{event.agent} {e_type}"
+                        if event.data:
+                            searchable += f" {json.dumps(event.data)}"
+
+                        if query_lower in searchable.lower():
+                            match = True
+
+                        if match:
+                            results.append({
+                                "filename": file_path.name,
+                                "chain_id": chain.id,
+                                "seq": event.seq,
+                                "type": e_type,
+                                "agent": event.agent,
+                                "timestamp": event.timestamp.isoformat(),
+                                "preview": str(event.data)[:100] if event.data else ""
+                            })
+
+                            if len(results) >= request.limit:
+                                break
+
+                except Exception:
+                    continue
+
+                if len(results) >= request.limit:
+                    break
+
+        return {
+            "results": results,
+            "total": len(results),
+            "query": request.query,
+            "truncated": len(results) >= request.limit
+        }
+
+    @app.post("/api/rpa/webhooks", response_class=JSONResponse)
+    async def register_webhook(webhook: WebhookRegistration):
+        """Register a webhook for event notifications.
+
+        UiPath can receive callbacks when specific events occur.
+        """
+        webhook_id = str(uuid4())[:12]
+        app.state.webhooks[webhook_id] = webhook
+
+        return {
+            "webhook_id": webhook_id,
+            "url": webhook.url,
+            "events": webhook.events,
+            "status": "registered"
+        }
+
+    @app.get("/api/rpa/webhooks", response_class=JSONResponse)
+    async def list_webhooks():
+        """List all registered webhooks."""
+        webhooks = []
+        for wid, webhook in app.state.webhooks.items():
+            webhooks.append({
+                "webhook_id": wid,
+                "url": webhook.url,
+                "events": webhook.events,
+                "chain_id": webhook.chain_id
+            })
+        return {"webhooks": webhooks, "total": len(webhooks)}
+
+    @app.delete("/api/rpa/webhooks/{webhook_id}", response_class=JSONResponse)
+    async def delete_webhook(webhook_id: str):
+        """Unregister a webhook."""
+        if webhook_id in app.state.webhooks:
+            del app.state.webhooks[webhook_id]
+            return {"status": "deleted", "webhook_id": webhook_id}
+        raise HTTPException(status_code=404, detail="Webhook not found")
+
+    @app.post("/api/rpa/submit", response_class=JSONResponse)
+    async def rpa_submit_event(event: RpaEventSubmission):
+        """Submit an event from RPA workflow.
+
+        Allows UiPath to log its own workflow steps to LCTL.
+        """
+        streaming_event = StreamingEvent(
+            id=str(uuid4()),
+            type=StreamingEventType.EVENT,
+            timestamp=datetime.now(timezone.utc),
+            chain_id=event.chain_id,
+            payload={
+                "type": event.event_type,
+                "agent": event.agent,
+                "source": "rpa",
+                **(event.data or {})
+            }
+        )
+
+        app.state.emitter.emit(streaming_event)
+
+        return {
+            "status": "submitted",
+            "event_id": streaming_event.id,
+            "chain_id": event.chain_id,
+            "timestamp": streaming_event.timestamp.isoformat()
+        }
+
+    @app.get("/api/rpa/poll/{filename}", response_class=JSONResponse)
+    async def rpa_poll(
+        filename: str,
+        since_seq: int = Query(0, description="Return events after this sequence"),
+        timeout_ms: int = Query(0, description="Long-poll timeout (0 = immediate)")
+    ):
+        """Poll for new events (alternative to streaming for RPA).
+
+        Supports long-polling with timeout for efficient polling.
+        """
+        file_path = get_secure_path(filename)
+        engine = get_cached_engine(file_path)
+        chain = engine.chain
+
+        new_events = [
+            {
+                "seq": e.seq,
+                "type": e.type.value if hasattr(e.type, 'value') else e.type,
+                "timestamp": e.timestamp.isoformat(),
+                "agent": e.agent or "",
+            }
+            for e in chain.events if e.seq > since_seq
+        ]
+
+        return {
+            "events": new_events,
+            "count": len(new_events),
+            "last_seq": chain.events[-1].seq if chain.events else 0,
+            "has_new": len(new_events) > 0
+        }
+
+    @app.get("/api/rpa/errors/{filename}", response_class=JSONResponse)
+    async def rpa_errors(filename: str):
+        """Get all errors from a chain in flat format.
+
+        Quick endpoint to check if a workflow had any issues.
+        """
+        file_path = get_secure_path(filename)
+        engine = get_cached_engine(file_path)
+        chain = engine.chain
+
+        errors = []
+        for e in chain.events:
+            e_type = e.type.value if hasattr(e.type, 'value') else e.type
+            if e_type == "error":
+                errors.append({
+                    "seq": e.seq,
+                    "timestamp": e.timestamp.isoformat(),
+                    "agent": e.agent or "",
+                    "category": e.data.get("category", "unknown") if e.data else "unknown",
+                    "error_type": e.data.get("type", "unknown") if e.data else "unknown",
+                    "message": e.data.get("message", "") if e.data else "",
+                    "recoverable": e.data.get("recoverable", False) if e.data else False,
+                })
+
+        return {
+            "errors": errors,
+            "count": len(errors),
+            "has_errors": len(errors) > 0,
+            "chain_id": chain.id
         }
 
     return app
