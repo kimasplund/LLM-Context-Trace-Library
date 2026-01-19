@@ -72,6 +72,14 @@ from .semantic_kernel import (
 from .semantic_kernel import (
     is_available as semantic_kernel_available,
 )
+from .pydantic_ai import (
+    LCTLPydanticAITracer,
+    TracedAgent as PydanticAITracedAgent,
+    trace_agent as trace_pydantic_agent,
+)
+from .pydantic_ai import (
+    is_available as pydantic_ai_available,
+)
 
 __all__ = [
     # Claude Code integration
@@ -120,4 +128,9 @@ __all__ = [
     "LCTLSemanticKernelTracer",
     "trace_kernel",
     "semantic_kernel_available",
+    # PydanticAI integration
+    "LCTLPydanticAITracer",
+    "PydanticAITracedAgent",
+    "trace_pydantic_agent",
+    "pydantic_ai_available",
 ]

@@ -18,7 +18,7 @@ The protocol succeeds when developers never think about it. They use `lctl debug
 - **Chain Comparison**: Diff two workflow runs to find divergence
 - **Performance Analysis**: Identify bottlenecks and optimize workflows
 - **Confidence Tracking**: Monitor fact confidence as it evolves
-- **Framework Integrations**: LangChain, CrewAI, AutoGen, OpenAI Agents SDK
+- **Framework Integrations**: LangChain, CrewAI, AutoGen, OpenAI Agents SDK, PydanticAI, Semantic Kernel, DSPy, LlamaIndex
 - **Web Dashboard**: Visual debugger with timeline and swim lanes
 
 ## Architecture
@@ -39,7 +39,11 @@ lctl/
     ├── langchain.py     # LCTLCallbackHandler, LCTLChain, trace_chain
     ├── crewai.py        # LCTLCrew, LCTLAgent, LCTLTask, trace_crew
     ├── autogen.py       # LCTLAutogenCallback, trace_agent, trace_group_chat
-    └── openai_agents.py # LCTLOpenAIAgentTracer, LCTLRunHooks, TracedAgent
+    ├── openai_agents.py # LCTLOpenAIAgentTracer, LCTLRunHooks, TracedAgent
+    ├── pydantic_ai.py   # LCTLPydanticAITracer, TracedAgent, trace_agent
+    ├── semantic_kernel.py # LCTLSemanticKernelTracer, trace_kernel
+    ├── dspy.py          # LCTLDSPyCallback, TracedDSPyModule, trace_module
+    └── llamaindex.py    # LCTLLlamaIndexCallback, trace_query_engine
 ```
 
 ### Self-Tracing with Claude Code

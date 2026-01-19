@@ -362,6 +362,55 @@ print(f"Answer: {response}")
 callback.export("llamaindex_trace.lctl.json")
 ```
 
+### PydanticAI
+
+```python
+from pydantic_ai import Agent
+from lctl.integrations.pydantic_ai import LCTLPydanticAITracer, trace_agent
+
+# Create tracer
+tracer = LCTLPydanticAITracer(chain_id="pydantic-ai-demo")
+
+# Create agent
+agent = Agent(
+    "openai:gpt-4",
+    system_prompt="You are a helpful assistant."
+)
+
+# Option 1: Use tracer directly
+traced_agent = tracer.trace(agent)
+result = await traced_agent.run("What is LCTL?")
+tracer.export("pydantic_ai_trace.lctl.json")
+
+# Option 2: Use convenience function
+traced = trace_agent(agent, chain_id="helper-agent")
+result = await traced.run("Explain time-travel debugging")
+traced.export("helper_trace.lctl.json")
+```
+
+### Semantic Kernel
+
+```python
+import semantic_kernel as sk
+from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
+from lctl.integrations.semantic_kernel import LCTLSemanticKernelTracer, trace_kernel
+
+# Create kernel
+kernel = sk.Kernel()
+kernel.add_service(OpenAIChatCompletion(service_id="chat"))
+
+# Create tracer and attach to kernel
+tracer = LCTLSemanticKernelTracer(chain_id="semantic-kernel-demo")
+traced_kernel = trace_kernel(kernel, tracer)
+
+# Use kernel normally - all operations are traced
+result = await traced_kernel.invoke_prompt("What is LCTL?")
+print(result)
+
+# Export trace
+tracer.export("semantic_kernel_trace.lctl.json")
+```
+
 ### Claude Code
 
 LCTL can trace Claude Code's own multi-agent workflows using hook-based architecture.

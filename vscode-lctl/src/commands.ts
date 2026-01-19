@@ -273,10 +273,24 @@ export function registerCommands(
 }
 
 /**
+ * Escape HTML special characters to prevent XSS
+ */
+function escapeHtml(text: string): string {
+    const htmlEntities: Record<string, string> = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    };
+    return text.replace(/[&<>"']/g, char => htmlEntities[char] || char);
+}
+
+/**
  * Generate a standalone HTML report for a chain
  */
 function generateHtmlReport(chainData: LctlChainFile, filePath: string): string {
-    const chainId = chainData.chain?.id || 'Unknown Chain';
+    const chainId = escapeHtml(chainData.chain?.id || 'Unknown Chain');
     const events = chainData.events || [];
 
     // Compute stats
@@ -296,15 +310,20 @@ function generateHtmlReport(chainData: LctlChainFile, filePath: string): string 
         }
     }
 
+    // Valid event types for CSS class sanitization
+    const validEventTypes = ['step_start', 'step_end', 'fact_added', 'fact_modified', 'tool_call', 'error', 'checkpoint'];
+
     const eventRows = events.map(event => {
         const time = new Date(event.timestamp).toLocaleTimeString();
         const icon = getEventIcon(event.type);
-        const details = formatEventDetails(event);
+        const details = escapeHtml(formatEventDetails(event));
+        const safeType = validEventTypes.includes(event.type) ? event.type : 'unknown';
+        const safeAgent = escapeHtml(event.agent || '-');
         return `
-            <tr class="event-${event.type}">
+            <tr class="event-${safeType}">
                 <td>${event.seq}</td>
-                <td>${icon} ${event.type}</td>
-                <td>${event.agent || '-'}</td>
+                <td>${icon} ${escapeHtml(event.type)}</td>
+                <td>${safeAgent}</td>
                 <td>${time}</td>
                 <td><pre>${details}</pre></td>
             </tr>

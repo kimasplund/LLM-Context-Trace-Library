@@ -662,7 +662,7 @@ def _should_send_to_client(event: StreamingEvent, filters: Dict[str, Any]) -> bo
 
 
 def run_dashboard(
-    host: str = "0.0.0.0",
+    host: str = "127.0.0.1",
     port: int = 8080,
     working_dir: Optional[Path] = None,
     reload: bool = False
