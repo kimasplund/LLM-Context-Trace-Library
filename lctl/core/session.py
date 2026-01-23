@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
 from .events import Chain, Event, EventType
+from .redaction import get_redactor
 
 if TYPE_CHECKING:
     from ..streaming.emitter import EventEmitter
@@ -36,19 +37,22 @@ class LCTLSession:
     def __init__(
         self,
         chain_id: Optional[str] = None,
-        emitter: Optional["EventEmitter"] = None
+        emitter: Optional["EventEmitter"] = None,
+        redaction_enabled: bool = True
     ):
         """Initialize the session.
 
         Args:
             chain_id: Optional chain ID. Generated if not provided.
             emitter: Optional EventEmitter for real-time streaming.
+            redaction_enabled: Whether to redact sensitive data from events.
         """
         self.chain = Chain(id=chain_id or str(uuid4())[:8])
         self._seq = 0
         self._current_agent: Optional[str] = None
         self._emitter: Optional["EventEmitter"] = emitter
         self._event_listeners: list[Callable[[Event], None]] = []
+        self._redaction_enabled = redaction_enabled
 
         if self._emitter is not None:
             self._emitter.chain_id = self.chain.id
@@ -58,7 +62,7 @@ class LCTLSession:
             self._emitter.start_chain(self.chain.id)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, _exc_tb):
         if exc_type is not None:
             try:
                 self.error(
@@ -81,6 +85,10 @@ class LCTLSession:
         return datetime.now(timezone.utc)
 
     def _add_event(self, event_type: EventType, agent: str, data: Dict[str, Any]) -> Event:
+        if self._redaction_enabled:
+            redactor = get_redactor()
+            data = redactor.redact_event_data(data)
+
         event = Event(
             seq=self._next_seq(),
             type=event_type,
@@ -190,7 +198,7 @@ class LCTLSession:
     ) -> int:
         """Modify an existing fact."""
         agent = self._current_agent or "unknown"
-        data = {"id": fact_id, "reason": reason}
+        data: Dict[str, Any] = {"id": fact_id, "reason": reason}
         if text is not None:
             data["text"] = text
         if confidence is not None:
