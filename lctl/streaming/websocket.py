@@ -66,7 +66,7 @@ class WebSocketServer:
             await server.handle_connection(websocket)
 
         # Or run standalone:
-        await server.start(host="0.0.0.0", port=8081)
+        await server.start(host="127.0.0.1", port=8081)
     """
 
     def __init__(

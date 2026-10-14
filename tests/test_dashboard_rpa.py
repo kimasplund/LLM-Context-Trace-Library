@@ -224,7 +224,7 @@ class TestRpaApiKeyAuthentication:
         be recognized as localhost. This test verifies the bypass logic exists.
         """
         # The TestClient may not simulate localhost properly, so we test
-        # the auth status endpoint which doesn't require auth
+        # the auth status endpoint (guarded; the loopback client bypasses the key)
         response = rpa_client_localhost_bypass.get("/api/rpa/auth/status")
 
         assert response.status_code == 200

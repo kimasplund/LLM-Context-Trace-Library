@@ -179,6 +179,12 @@ def _auth_failure(
     - If LCTL_LOCALHOST_BYPASS=true (default): skip auth for localhost
     - If no keys are configured and LCTL_REQUIRE_API_KEY is not true: allow
     - Otherwise a valid key is required
+
+    Keys are compared as UTF-8 bytes so a non-ASCII key is simply invalid (never a 500).
+
+    Caveat: the localhost bypass trusts the peer address. Behind a same-host reverse
+    proxy or tunnel that does not set X-Forwarded-For (or with FORWARDED_ALLOW_IPS=*),
+    every client looks local; set LCTL_LOCALHOST_BYPASS=false in such deployments.
     """
     if app.state.localhost_bypass and _is_localhost(conn):
         return None
@@ -187,7 +193,9 @@ def _auth_failure(
     if not presented:
         return 401, "API key required. Set X-API-Key header."
     # Constant-time comparison to prevent timing attacks
-    if not any(hmac.compare_digest(presented, valid) for valid in app.state.api_keys):
+    if not any(
+        hmac.compare_digest(presented.encode(), valid.encode()) for valid in app.state.api_keys
+    ):
         return 403, "Invalid API key"
     return None
 
@@ -899,7 +907,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
     async def rpa_auth_status(request: Request):
         """Check authentication status and requirements.
 
-        Returns info about security configuration without requiring auth.
+        Returns info about the security configuration; guarded like every /api route.
         """
         return {
             "require_api_key": app.state.require_api_key,
@@ -1350,6 +1358,10 @@ def create_app(working_dir: Path | None = None) -> FastAPI:
         title="LCTL Dashboard",
         description="Web-based visualization for multi-agent LLM workflows",
         version=__version__,
+        # Auto docs would leak the route schema and version to unauthenticated clients.
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
     )
     # Guard every HTTP route (the WebSocket checks its own handshake). The guard reads
     # app.state lazily, so registering it before the state exists is fine.

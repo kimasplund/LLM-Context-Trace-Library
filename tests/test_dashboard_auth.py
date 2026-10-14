@@ -18,6 +18,17 @@ PUBLIC_PATHS = {"/"}
 STREAMING_PATHS = {"/api/events/stream"}
 
 
+def test_no_unguarded_route_kinds(keyed_app):
+    """Fail on any route that is not a guarded FastAPI route or an allowlisted mount."""
+    allowed_mounts = {"/static"}
+    for route in keyed_app.routes:
+        if isinstance(route, APIRoute | APIWebSocketRoute):
+            continue
+        assert getattr(route, "path", None) in allowed_mounts, (
+            f"route {getattr(route, 'path', route)!r} bypasses the auth guard"
+        )
+
+
 def _fill(path: str) -> str:
     out = path
     while "{" in out:
@@ -41,7 +52,7 @@ def keyed_app(monkeypatch, tmp_path):
     return create_app(tmp_path)
 
 
-def _stream_status(app, method, path, headers):
+def _stream_status(app, method, path, headers, query="", client=REMOTE):
     """Status of a never-ending response, read from the first ASGI message then cancelled.
 
     TestClient buffers whole responses, so an infinite SSE stream would hang it.
@@ -55,9 +66,9 @@ def _stream_status(app, method, path, headers):
         "method": method,
         "path": path,
         "raw_path": path.encode(),
-        "query_string": b"",
+        "query_string": query.encode(),
         "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
-        "client": REMOTE,
+        "client": client,
         "server": ("testserver", 80),
         "scheme": "http",
         "root_path": "",
@@ -160,7 +171,7 @@ def test_run_dashboard_reload_uses_import_string(monkeypatch, tmp_path):
     run_dashboard(reload=True, working_dir=tmp_path)
     ((args, kwargs),) = calls
     assert isinstance(args[0], str)
-    assert ":" in args[0]
+    assert args[0] == "lctl.dashboard.app:create_app_from_env"
     assert kwargs["factory"] is True
     assert kwargs["reload"] is True
     assert os.environ["LCTL_DASHBOARD_DIR"] == str(tmp_path)
@@ -172,3 +183,43 @@ def test_create_app_from_env(monkeypatch, tmp_path):
 
     monkeypatch.setenv("LCTL_DASHBOARD_DIR", str(tmp_path))
     assert create_app_from_env().state.working_dir == tmp_path
+
+
+def test_non_ascii_key_is_403_not_500(keyed_app):
+    client = TestClient(keyed_app, client=REMOTE, raise_server_exceptions=False)
+    resp = client.get("/api/chains", headers={"X-API-Key": "k\xe9".encode("latin-1")})
+    assert resp.status_code == 403
+    assert _stream_status(keyed_app, "GET", "/api/events/stream", {}, "api_key=k%C3%A9") == 403
+    with pytest.raises(WebSocketDisconnect), client.websocket_connect("/ws?api_key=k%C3%A9"):
+        pass
+
+
+def test_query_key_only_on_streaming_paths(keyed_app):
+    client = TestClient(keyed_app, client=REMOTE)
+    assert client.get("/api/chains?api_key=k1").status_code == 401
+    assert _stream_status(keyed_app, "GET", "/api/events/stream", {}, "api_key=k1") == 200
+
+
+def test_bypass_disabled_refuses_local_ws_and_sse(monkeypatch, tmp_path):
+    monkeypatch.setenv("LCTL_API_KEYS", "k1")
+    monkeypatch.setenv("LCTL_LOCALHOST_BYPASS", "false")
+    app = create_app(tmp_path)
+    local = ("127.0.0.1", 50000)
+    client = TestClient(app, client=local)
+    with pytest.raises(WebSocketDisconnect), client.websocket_connect("/ws"):
+        pass
+    assert _stream_status(app, "GET", "/api/events/stream", {}, client=local) == 401
+
+
+def test_run_dashboard_without_reload_passes_app_and_loopback(monkeypatch, tmp_path):
+    import uvicorn
+    from fastapi import FastAPI
+
+    from lctl.dashboard.app import run_dashboard
+
+    calls = []
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: calls.append((a, k)))
+    run_dashboard(working_dir=tmp_path)
+    ((args, kwargs),) = calls
+    assert isinstance(args[0], FastAPI)
+    assert kwargs["host"] == "127.0.0.1"
