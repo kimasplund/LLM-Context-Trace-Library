@@ -57,7 +57,7 @@ openai-agents = [
     "openai-agents>=0.1.0",
 ]
 pydantic-ai = [
-    "pydantic-ai>=0.0.14",
+    "pydantic-ai>=1.0",
 ]
 semantic-kernel = [
     "semantic-kernel>=1.0.0",

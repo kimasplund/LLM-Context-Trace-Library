@@ -86,6 +86,40 @@ class LCTLPydanticAITracer(BaseTracer):
         self._verbose = verbose
 
 
+_TOKEN_FIELDS = ("input_tokens", "request_tokens", "output_tokens", "response_tokens")
+
+
+def _has_token_counts(usage: Any) -> bool:
+    return any(isinstance(getattr(usage, a, None), int) for a in _TOKEN_FIELDS)
+
+
+def _first_int(obj: Any, *names: str) -> int:
+    for name in names:
+        value = getattr(obj, name, None)
+        if isinstance(value, int):
+            return value
+    return 0
+
+
+def _usage_tokens(result: Any) -> tuple[int, int]:
+    """Return (input, output) tokens from a run result across pydantic-ai versions.
+
+    ``usage`` is a method on 1.x and a property on 2.x; the token fields were
+    renamed ``request_tokens``/``response_tokens`` -> ``input_tokens``/``output_tokens``.
+    """
+    try:
+        usage = result.usage
+        # Old releases: usage() is a method. Newer 1.x keep a deprecated __call__
+        # on the usage object itself, so only call it when it is not usable as is.
+        if callable(usage) and not _has_token_counts(usage):
+            usage = usage()
+        tokens_in = _first_int(usage, "input_tokens", "request_tokens")
+        tokens_out = _first_int(usage, "output_tokens", "response_tokens")
+        return tokens_in, tokens_out
+    except Exception:
+        return 0, 0
+
+
 class TracedAgent:
     """Wrapper for PydanticAI Agent with LCTL tracing.
 
@@ -262,6 +296,76 @@ class TracedAgent:
         """
         return self.tracer.to_dict()
 
+    def __getattr__(self, name: str) -> Any:
+        """Forward unknown attributes (``name``, ``override``, ...) to the wrapped agent."""
+        # Look up `agent` via __dict__ so a half-initialised or unpickled
+        # instance raises AttributeError instead of recursing forever.
+        agent = self.__dict__.get("agent")
+        if agent is None:
+            raise AttributeError(name)
+        return getattr(agent, name)
+
+    def _agent_name(self) -> str:
+        return getattr(self.agent, "name", "pydantic_ai_agent") or "pydantic_ai_agent"
+
+    def _begin(self, intent: str, args: tuple, kwargs: dict) -> float:
+        user_prompt = args[0] if args else kwargs.get("user_prompt", "")
+        self.tracer.session.step_start(
+            agent=self._agent_name(),
+            intent=intent,
+            input_summary=truncate(str(user_prompt)),
+        )
+        return time.time()
+
+    def _record_success(self, result: Any, start_time: float) -> None:
+        """Record step_end and the LLM trace for a finished run (1.x and 2.x results)."""
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        # `.output` on current releases, `.data` on old ones.
+        if hasattr(result, "output"):
+            output_summary = str(result.output)
+        elif hasattr(result, "data"):
+            output_summary = str(result.data)
+        else:
+            output_summary = str(result)
+
+        tokens_in, tokens_out = _usage_tokens(result)
+
+        self.tracer.session.step_end(
+            outcome="success",
+            output_summary=output_summary,
+            duration_ms=duration_ms,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+        )
+
+        if hasattr(result, "all_messages"):
+            try:
+                messages = []
+                for msg in result.all_messages():
+                    if hasattr(msg, "model_dump"):
+                        messages.append(msg.model_dump(mode="json"))
+                    else:
+                        messages.append(str(msg))
+                self.tracer.session.llm_trace(
+                    messages=messages,
+                    response=output_summary,
+                    model=getattr(self.agent, "model_name", "unknown"),
+                    usage={"input": tokens_in, "output": tokens_out},
+                )
+            except Exception:  # noqa: S110  # tracing must never break the host application
+                pass
+
+    def _record_failure(self, exc: Exception, start_time: float) -> None:
+        duration_ms = int((time.time() - start_time) * 1000)
+        self.tracer.session.error(
+            category="execution_error",
+            error_type=type(exc).__name__,
+            message=str(exc),
+            recoverable=False,
+        )
+        self.tracer.session.step_end(outcome="error", duration_ms=duration_ms)
+
     async def run(
         self,
         *args,
@@ -279,86 +383,42 @@ class TracedAgent:
         Raises:
             Any exception raised by the agent.
         """
-        # Check signature of agent.run
-        # Typically run(user_prompt, ...)
-        user_prompt = args[0] if args else kwargs.get("user_prompt", "")
-        agent_name = getattr(self.agent, "name", "pydantic_ai_agent") or "pydantic_ai_agent"
-
-        start_time = time.time()
-
-        self.tracer.session.step_start(
-            agent=agent_name,
-            intent="run",
-            input_summary=truncate(str(user_prompt)),
-        )
-
+        start_time = self._begin("run", args, kwargs)
         try:
             result = await self.agent.run(*args, **kwargs)
-
-            duration_ms = int((time.time() - start_time) * 1000)
-
-            # Extract output
-            # result.data exists for structured results, result.output might be for unstructured?
-            # Adjust based on observed structure
-            if hasattr(result, "data"):
-                output_summary = str(result.data)
-            elif hasattr(result, "output"):
-                output_summary = str(result.output)
-            else:
-                output_summary = str(result)
-
-            # Extract usage if available
-            tokens_in = 0
-            tokens_out = 0
-
-            # Currently PydanticAI might expose usage in different ways
-            # Check result.usage() method or attribute
-            if hasattr(result, "usage"):
-                usage = result.usage()
-                tokens_in = usage.request_tokens or 0
-                tokens_out = usage.response_tokens or 0
-
-            self.tracer.session.step_end(
-                outcome="success",
-                output_summary=output_summary,
-                duration_ms=duration_ms,
-                tokens_in=tokens_in,
-                tokens_out=tokens_out,
-            )
-
-            # Record LLM Trace
-            # Capture full message history
-            if hasattr(result, "all_messages"):
-                messages = []
-                try:
-                    for msg in result.all_messages():
-                        # PydanticAI messages are Pydantic models
-                        if hasattr(msg, "model_dump"):
-                            messages.append(msg.model_dump(mode="json"))
-                        else:
-                            messages.append(str(msg))
-
-                    self.tracer.session.llm_trace(
-                        messages=messages,
-                        response=output_summary,
-                        model=getattr(self.agent, "model_name", "unknown"),
-                        usage={"input": tokens_in, "output": tokens_out},
-                    )
-                except Exception:  # noqa: S110  # tracing must never break the host application
-                    pass
-
-            return result
-
         except Exception as e:
-            duration_ms = int((time.time() - start_time) * 1000)
-            self.tracer.session.error(
-                category="execution_error",
-                error_type=type(e).__name__,
-                message=str(e),
-                recoverable=False,
-            )
-            self.tracer.session.step_end(outcome="error", duration_ms=duration_ms)
+            self._record_failure(e, start_time)
             raise
+        self._record_success(result, start_time)
+        return result
+
+    def run_sync(
+        self,
+        *args,
+        **kwargs,
+    ) -> AgentRunResult:
+        """Run the agent synchronously with tracing.
+
+        Delegates to the agent's own ``run_sync`` and records it like ``run``.
+
+        Args:
+            *args: Positional arguments passed to agent.run_sync().
+            **kwargs: Keyword arguments passed to agent.run_sync().
+
+        Returns:
+            The agent's run result.
+
+        Raises:
+            Any exception raised by the agent.
+        """
+        start_time = self._begin("run_sync", args, kwargs)
+        try:
+            result = self.agent.run_sync(*args, **kwargs)
+        except Exception as e:
+            self._record_failure(e, start_time)
+            raise
+        self._record_success(result, start_time)
+        return result
 
     @asynccontextmanager
     async def run_stream(self, *args, **kwargs):
@@ -464,11 +524,21 @@ class TracedStreamedRunResult:
         )
 
         try:
+            is_delta = bool(kwargs.get("delta", False))
             async for chunk in self._result.stream_text(*args, **kwargs):
-                self._accumulated_content += chunk
-                # Emit stream chunk event
+                # stream_text yields cumulative text unless delta=True; record
+                # only the new part so the total is the final text exactly once.
+                if is_delta:
+                    new_text = chunk
+                    self._accumulated_content += chunk
+                elif chunk.startswith(self._accumulated_content):
+                    new_text = chunk[len(self._accumulated_content) :]
+                    self._accumulated_content = chunk
+                else:  # text was rewritten rather than extended
+                    new_text = chunk
+                    self._accumulated_content = chunk
                 self._tracer.session.stream_chunk(
-                    stream_id=self._stream_id, content=chunk, index=self._chunk_index
+                    stream_id=self._stream_id, content=new_text, index=self._chunk_index
                 )
                 self._chunk_index += 1
                 yield chunk
@@ -485,13 +555,7 @@ class TracedStreamedRunResult:
 
         duration_ms = int((time.time() - self._start_time) * 1000)
 
-        try:
-            usage = self._result.usage()
-            tokens_in = usage.request_tokens or 0
-            tokens_out = usage.response_tokens or 0
-        except Exception:
-            tokens_in = 0
-            tokens_out = 0
+        tokens_in, tokens_out = _usage_tokens(self._result)
 
         # Record stream end
         self._tracer.session.stream_end(

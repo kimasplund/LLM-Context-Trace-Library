@@ -825,7 +825,7 @@ class TestEdgeCases:
         from lctl.integrations.pydantic_ai import TracedAgent
 
         result = MagicMock()
-        result.data = "x" * 10000
+        result.output = "x" * 10000  # current pydantic-ai exposes .output, not .data
         del result.usage
         del result.all_messages
 
