@@ -35,10 +35,18 @@ async def test_run_records_output_and_usage():
 
 def test_run_sync_traced():
     traced = trace_agent(Agent(TestModel(custom_output_text="sync ok")), chain_id="pai-sync")
-    result = traced.run_sync("hi")
-    # pydantic-ai's run_sync creates an event loop and never closes it; close it
-    # here so its socket/loop is not reported as an unraisable error in a later test.
-    asyncio.get_event_loop_policy().get_event_loop().close()
+    # pydantic-ai's Agent.run_sync takes the current event loop (creating one if
+    # none is set) and never closes it. With the loop leaked we saw two unraisable
+    # warnings surface in whichever test ran next: "unclosed event loop" (and its
+    # socket) and an un-awaited `AbstractAgent.run` coroutine. This test owns the
+    # loop and closes it; with that, neither warning occurs (checked on a bare Agent).
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        result = traced.run_sync("hi")
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
 
     assert result.output == "sync ok"
     (start,) = _events(traced, EventType.STEP_START)
