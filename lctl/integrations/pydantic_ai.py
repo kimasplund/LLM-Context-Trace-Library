@@ -13,7 +13,7 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
+import inspect
 import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -147,7 +147,7 @@ class TracedAgent:
 
             original_func = tool.function
             # Handle AsyncMock alongside normal coroutines
-            is_async = asyncio.iscoroutinefunction(original_func) or (
+            is_async = inspect.iscoroutinefunction(original_func) or (
                 isinstance(original_func, MagicMock)
                 and getattr(original_func, "_is_coroutine", False)
             )

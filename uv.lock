@@ -3204,15 +3204,24 @@ semantic-kernel = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "anyio" },
+    { name = "fastapi" },
     { name = "httpx2" },
-    { name = "lctl", extra = ["dashboard"] },
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "slowapi" },
     { name = "types-pyyaml" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+test = [
+    { name = "anyio" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
 ]
 
 [package.metadata]
@@ -3251,15 +3260,24 @@ provides-extras = ["all", "autogen", "crewai", "dashboard", "dspy", "langchain",
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "anyio", specifier = ">=4.0" },
+    { name = "fastapi", specifier = ">=0.110.0" },
     { name = "httpx2", specifier = ">=2.13" },
-    { name = "lctl", extras = ["dashboard"] },
     { name = "mypy", specifier = ">=2.4" },
     { name = "pre-commit", specifier = ">=4.7" },
     { name = "pytest", specifier = ">=9.1" },
     { name = "pytest-asyncio", specifier = ">=1.4" },
     { name = "pytest-cov", specifier = ">=7.0" },
     { name = "ruff", specifier = ">=0.17" },
+    { name = "slowapi", specifier = ">=0.1.9" },
     { name = "types-pyyaml" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
+]
+test = [
+    { name = "anyio", specifier = ">=4.0" },
+    { name = "pytest", specifier = ">=9.1" },
+    { name = "pytest-asyncio", specifier = ">=1.4" },
+    { name = "pytest-cov", specifier = ">=7.0" },
 ]
 
 [[package]]

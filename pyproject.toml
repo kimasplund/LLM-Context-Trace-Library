@@ -85,16 +85,25 @@ Repository = "https://github.com/kimasplund/LLM-Context-Trace-Library"
 Issues = "https://github.com/kimasplund/LLM-Context-Trace-Library/issues"
 
 [dependency-groups]
-dev = [
+# Test runner only: enough for the core suite (the CI 3.15 cell installs just this).
+test = [
     "pytest>=9.1",
     "pytest-asyncio>=1.4",
     "pytest-cov>=7.0",
+    "anyio>=4.0",  # tests/test_streaming.py runs its event loops with anyio.run
+]
+dev = [
+    { include-group = "test" },
     "httpx2>=2.13",
     "ruff>=0.17",
     "mypy>=2.4",
     "types-PyYAML",
     "pre-commit>=4.7",
-    "lctl[dashboard]",
+    # Mirror of the `dashboard` extra. Listed directly rather than as "lctl[dashboard]"
+    # so `pip install --group dev` can never resolve a package named lctl from PyPI.
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.30",
+    "slowapi>=0.1.9",
 ]
 
 [tool.hatch.version]
@@ -132,7 +141,11 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config", "--cov=lctl", "--cov-report=term-missing"]
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # slowapi (dashboard rate limiting) calls asyncio.iscoroutinefunction, deprecated in 3.14
+    "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning:slowapi",
+]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
 

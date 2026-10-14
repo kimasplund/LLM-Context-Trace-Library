@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ruff format` replaces black; modern ruff rule set (pyupgrade, bugbear, bandit, simplify, async, pytest-style)
 - mypy type checking; package ships `py.typed`
 - pytest runs with warnings as errors and branch coverage (`fail_under` enforced)
-- GitHub Actions CI (Python 3.11-3.15, wheel check, VS Code extension build) and Dependabot
+- GitHub Actions CI (Python 3.11-3.14 full suite, 3.15 core suite, wheel check, VS Code extension build) and Dependabot
 - pre-commit hooks mirroring CI's lint job
 - License metadata follows PEP 639 (`AGPL-3.0-only`, no conflicting classifier)
 

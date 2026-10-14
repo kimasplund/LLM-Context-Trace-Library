@@ -12,18 +12,26 @@ repos:
       - id: mixed-line-ending
       - id: check-added-large-files
         exclude: (^uv\.lock|package-lock\.json)$
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.17.0
-    hooks:
-      - id: ruff-check
-        args: [--fix]
-      - id: ruff-format
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.13.0
+    rev: 0.13.1 # keep equal to the uv version pinned in .github/workflows/ci.yml
     hooks:
       - id: uv-lock
+  # ruff and mypy run from the project env so their versions come from uv.lock
+  # (which Dependabot updates); a separately pinned hook rev would drift from it.
   - repo: local
     hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen ruff format --force-exclude
+        language: system
+        types_or: [python, pyi, markdown]
+        require_serial: true
       - id: mypy
         name: mypy
         entry: uv run --frozen mypy
