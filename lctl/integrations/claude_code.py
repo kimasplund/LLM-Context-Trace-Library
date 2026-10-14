@@ -54,8 +54,11 @@ import fcntl
 import html
 import json
 import logging
+import os
 import shlex
 import shutil
+import sys
+import tempfile
 import threading
 import time
 from datetime import datetime
@@ -69,6 +72,58 @@ logger = logging.getLogger("lctl.claude_code")
 
 # Thread-safe singleton support
 _tracer_lock = threading.Lock()
+HOOK_LOCK_TIMEOUT_SECONDS = 10.0
+_hook_lock_file: Any = None  # held until the hook process exits
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` through a same-directory temp file and ``os.replace``."""
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.replace(tmp_name, path)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
+
+
+def acquire_hook_lock(traces_dir: str | Path = ".claude/traces") -> None:
+    """Take the exclusive trace lock for the rest of this hook process.
+
+    Hooks run concurrently (parallel subagents); every read-modify-write of the state and
+    chain files must happen under this lock. It is released when the process exits. If it
+    cannot be acquired within ``LCTL_HOOK_LOCK_TIMEOUT`` seconds (default 10) the hook logs
+    the problem and exits 0 without writing, so Claude Code is never blocked.
+    """
+    global _hook_lock_file
+    try:
+        timeout = float(os.environ.get("LCTL_HOOK_LOCK_TIMEOUT", HOOK_LOCK_TIMEOUT_SECONDS))
+    except ValueError:
+        timeout = HOOK_LOCK_TIMEOUT_SECONDS
+    directory = Path(traces_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    lock_file = open(directory / ".lctl.lock", "a")  # noqa: SIM115  # held until process exit
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except OSError:
+            if time.monotonic() >= deadline:
+                lock_file.close()
+                try:
+                    with open("/tmp/lctl-hook-error.log", "a") as log:  # noqa: S108
+                        log.write(
+                            f"lock timeout after {timeout}s: {directory / '.lctl.lock'}\n---\n"
+                        )
+                except OSError:
+                    pass
+                sys.exit(0)
+            time.sleep(0.01)
+    _hook_lock_file = lock_file
+
+
 _tracer_instance: LCTLClaudeCodeTracer | None = None
 _tracer_file: Path | None = None
 
@@ -139,11 +194,7 @@ class LCTLClaudeCodeTracer:
             if state_path.exists():
                 try:
                     with open(state_path) as f:
-                        fcntl.flock(f.fileno(), fcntl.LOCK_SH)
-                        try:
-                            state = json.load(f)
-                        finally:
-                            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                        state = json.load(f)
 
                     # Load existing chain
                     chain_path = Path(state.get("chain_path", ""))
@@ -177,8 +228,8 @@ class LCTLClaudeCodeTracer:
     def _save_state(self) -> None:
         """Persist tracer state for hook continuity.
 
-        Uses file locking (fcntl.LOCK_EX) to prevent concurrent writes
-        from corrupting the state file.
+        Written via temp file + ``os.replace`` so readers never see a torn file.
+        Hook scripts serialise whole read-modify-write cycles with ``acquire_hook_lock``.
         """
         if _tracer_file is None:
             return
@@ -201,12 +252,7 @@ class LCTLClaudeCodeTracer:
                 "parallel_group": self._parallel_group,
                 "file_changes": self._file_changes,
             }
-            with open(_tracer_file, "w") as f:
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-                try:
-                    json.dump(state, f)
-                finally:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            _atomic_write_text(_tracer_file, json.dumps(state))
         except Exception as e:
             logger.debug(f"State save failed: {e}")
 
@@ -299,6 +345,8 @@ class LCTLClaudeCodeTracer:
         agent_id: str | None = None,
         tokens_in: int = 0,
         tokens_out: int = 0,
+        launched: bool = False,
+        tokens_detail: dict[str, int] | None = None,
     ) -> None:
         """Record a Task tool completion.
 
@@ -311,6 +359,9 @@ class LCTLClaudeCodeTracer:
             agent_id: The agent ID returned (for resume capability)
             tokens_in: Input tokens used
             tokens_out: Output tokens generated
+            launched: The call only started a background agent (outcome ``"launched"``,
+                no result fact); real completion arrives later
+            tokens_detail: Raw input-token components (plain, cache creation, cache read)
         """
         duration_ms = 0
         if agent_type in self._start_times:
@@ -327,18 +378,24 @@ class LCTLClaudeCodeTracer:
                 self.agent_stack.pop(i)
                 break
 
-        outcome = "success" if success else "failure"
+        outcome = "launched" if launched else ("success" if success else "failure")
 
+        extra: dict[str, Any] = {}
+        if agent_id:
+            extra["agent_id"] = agent_id
+        if tokens_detail:
+            extra["tokens_detail"] = tokens_detail
         self.session.step_end(
             agent=agent_type,
             outcome=outcome,
             duration_ms=duration_ms,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
+            extra=extra or None,
         )
 
-        # Add fact about result
-        if result:
+        # Add fact about result (launch metadata is not a result)
+        if result and not launched:
             result_text = f"{agent_type} result: {result[:500]}"
             if agent_id:
                 result_text += f" [agent_id: {agent_id}]"
@@ -1075,7 +1132,9 @@ sys.path.insert(0, '.')
 try:
     from pathlib import Path
 
-    from lctl.integrations.claude_code import LCTLClaudeCodeTracer
+    from lctl.integrations.claude_code import LCTLClaudeCodeTracer, acquire_hook_lock
+
+    acquire_hook_lock()
 
     hook_input = {{}}
     input_b64 = os.environ.get('HOOK_INPUT_B64', '')
@@ -1217,7 +1276,7 @@ import base64
 sys.path.insert(0, '.')
 
 try:
-    from lctl.integrations.claude_code import LCTLClaudeCodeTracer
+    from lctl.integrations.claude_code import LCTLClaudeCodeTracer, acquire_hook_lock
 
     # Decode JSON from base64
     input_b64 = os.environ.get('HOOK_INPUT_B64', '')
@@ -1229,6 +1288,7 @@ try:
 
     # Only trace subagent spawns ("Agent" in Claude Code 2.1.x, "Task" before)
     if tool_name in ('Task', 'Agent'):
+        acquire_hook_lock()
         tracer = LCTLClaudeCodeTracer.get_or_create()
         tool_input = hook_input.get('tool_input', {})
 
@@ -1284,7 +1344,7 @@ import base64
 sys.path.insert(0, '.')
 
 try:
-    from lctl.integrations.claude_code import LCTLClaudeCodeTracer
+    from lctl.integrations.claude_code import LCTLClaudeCodeTracer, acquire_hook_lock
 
     # Decode JSON from base64
     input_b64 = os.environ.get('HOOK_INPUT_B64', '')
@@ -1293,6 +1353,7 @@ try:
 
     hook_input = json.loads(base64.b64decode(input_b64).decode('utf-8'))
 
+    acquire_hook_lock()
     tracer = LCTLClaudeCodeTracer.get_or_create()
     tool_name = hook_input.get('tool_name', 'unknown')
     tool_input = hook_input.get('tool_input', {})
@@ -1308,7 +1369,12 @@ try:
     if tool_name in ('Task', 'Agent'):
         if not isinstance(tool_response, dict):
             tool_response = {'content': [{'type': 'text', 'text': str(tool_response)}]}
-        success = tool_response.get('status', 'completed') == 'completed'
+        status = tool_response.get('status', 'completed')
+        # Background / remote / teammate spawns only launch the agent: not a failure.
+        launched = bool(tool_response.get('isAsync')) or status in (
+            'async_launched', 'remote_launched', 'teammate_spawned',
+        )
+        success = launched or status == 'completed'
         content = tool_response.get('content', [])
         result_text = ''
         if content and isinstance(content, list):
@@ -1316,13 +1382,32 @@ try:
                 if isinstance(c, dict) and c.get('type') == 'text':
                     result_text += c.get('text', '')
 
+        # Input tokens = plain + cache creation + cache read (cached prompts dominate the cost).
+        usage = tool_response.get('usage')
+        usage = usage if isinstance(usage, dict) else {}
+        tokens_detail = None
+        tokens_in = 0
+        if usage:
+            tokens_detail = {
+                k: int(usage.get(k) or 0)
+                for k in ('input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens')
+            }
+            tokens_in = sum(tokens_detail.values())
+        elif isinstance(tool_response.get('totalTokens'), int):
+            # No breakdown: record the total as input, output unknown.
+            tokens_in = tool_response['totalTokens']
+        tokens_out = int(usage.get('output_tokens') or 0)
+
         tracer.on_task_complete(
             agent_type=tool_input.get('subagent_type', 'unknown'),
             description=tool_input.get('description', ''),
             result=result_text[:2000] if result_text else result[:2000],
             success=success,
-            tokens_in=tool_response.get('usage', {}).get('input_tokens', 0),
-            tokens_out=tool_response.get('usage', {}).get('output_tokens', 0),
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            agent_id=tool_response.get('agentId'),
+            launched=launched,
+            tokens_detail=tokens_detail,
         )
 
     # TodoWrite - task list updates

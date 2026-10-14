@@ -272,7 +272,14 @@ class Chain:
             content = yaml.dump(data, default_flow_style=False, sort_keys=False)
         else:
             content = json.dumps(data, indent=2, default=str)
-        path.write_text(content)
+        # Write-then-rename so a concurrent reader never sees a half-written chain.
+        tmp = path.with_name(f".{path.name}.{os.getpid()}.{new_id()}.tmp")
+        try:
+            tmp.write_text(content)
+            os.replace(tmp, path)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
 
 
 @dataclass

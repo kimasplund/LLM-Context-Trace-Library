@@ -255,8 +255,12 @@ class LCTLSession:
         tokens_out: int = 0,
         *,
         span_id: str | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> int:
-        """Record end of an agent step (closes ``span_id`` or the innermost open span)."""
+        """Record end of an agent step (closes ``span_id`` or the innermost open span).
+
+        ``extra`` adds integration-specific keys (e.g. ``agent_id``) to the event data.
+        """
         target = span_id if span_id is not None else self._innermost_span(agent)
         resolved_agent = (
             agent
@@ -269,6 +273,7 @@ class LCTLSession:
                 EventType.STEP_END,
                 resolved_agent,
                 {
+                    **(extra or {}),
                     "outcome": outcome,
                     "output_summary": output_summary,
                     "duration_ms": duration_ms,

@@ -1104,6 +1104,168 @@ class TestHookScripts:
         ends = [e for e in Chain.load(trace).events if e.type == EventType.STEP_END]
         assert [e.data["outcome"] for e in ends] == ["success", "success"]
 
+    @pytest.mark.parametrize("status", ["async_launched", "remote_launched", "teammate_spawned"])
+    def test_background_launch_is_not_a_failure(self, hook_project: Path, status: str):
+        tool_input = {"subagent_type": "Explore", "description": "d", "run_in_background": True}
+        base = {"tool_name": "Agent", "tool_input": tool_input}
+        run_hook(hook_project, "PreToolUse", base)
+        response = {
+            "isAsync": True,
+            "status": status,
+            "agentId": "a1b2c3",
+            "description": "d",
+            "prompt": "look",
+            "outputFile": "out.txt",
+        }
+        run_hook(hook_project, "PostToolUse", {**base, "tool_response": response})
+        (trace,) = trace_files(hook_project)
+        events = Chain.load(trace).events
+        (end,) = [e for e in events if e.type == EventType.STEP_END]
+        assert end.data["outcome"] == "launched"
+        assert end.data["agent_id"] == "a1b2c3"
+        assert not [
+            e for e in events if e.type == EventType.FACT_ADDED and "result" in e.data["id"]
+        ]
+
+    def test_is_async_flag_alone_means_launch(self, hook_project: Path):
+        tool_input = {"subagent_type": "Explore", "description": "d"}
+        base = {"tool_name": "Agent", "tool_input": tool_input}
+        run_hook(hook_project, "PreToolUse", base)
+        run_hook(
+            hook_project,
+            "PostToolUse",
+            {**base, "tool_response": {"isAsync": True, "status": "something_new"}},
+        )
+        (trace,) = trace_files(hook_project)
+        (end,) = [e for e in Chain.load(trace).events if e.type == EventType.STEP_END]
+        assert end.data["outcome"] == "launched"
+
+    def test_tokens_include_cache_tiers(self, hook_project: Path):
+        tool_input = {"subagent_type": "Explore", "description": "d"}
+        base = {"tool_name": "Agent", "tool_input": tool_input}
+        run_hook(hook_project, "PreToolUse", base)
+        usage = {
+            "input_tokens": 2,
+            "cache_creation_input_tokens": 30513,
+            "cache_read_input_tokens": 1000,
+            "output_tokens": 77,
+        }
+        run_hook(
+            hook_project,
+            "PostToolUse",
+            {
+                **base,
+                "tool_response": {
+                    "status": "completed",
+                    "content": [{"type": "text", "text": "ok"}],
+                    "usage": usage,
+                    "totalTokens": 99999,
+                },
+            },
+        )
+        (trace,) = trace_files(hook_project)
+        (end,) = [e for e in Chain.load(trace).events if e.type == EventType.STEP_END]
+        assert end.data["tokens"] == {"input": 2 + 30513 + 1000, "output": 77}
+        assert end.data["tokens_detail"] == {
+            "input_tokens": 2,
+            "cache_creation_input_tokens": 30513,
+            "cache_read_input_tokens": 1000,
+        }
+
+    def test_tokens_missing_cache_fields_count_zero(self, hook_project: Path):
+        base = {"tool_name": "Agent", "tool_input": {"subagent_type": "E", "description": "d"}}
+        run_hook(hook_project, "PreToolUse", base)
+        run_hook(
+            hook_project,
+            "PostToolUse",
+            {
+                **base,
+                "tool_response": {
+                    "status": "completed",
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                },
+            },
+        )
+        (trace,) = trace_files(hook_project)
+        (end,) = [e for e in Chain.load(trace).events if e.type == EventType.STEP_END]
+        assert end.data["tokens"] == {"input": 10, "output": 5}
+
+    def test_total_tokens_used_only_without_usage_breakdown(self, hook_project: Path):
+        base = {"tool_name": "Agent", "tool_input": {"subagent_type": "E", "description": "d"}}
+        run_hook(hook_project, "PreToolUse", base)
+        run_hook(
+            hook_project,
+            "PostToolUse",
+            {**base, "tool_response": {"status": "completed", "totalTokens": 1234}},
+        )
+        (trace,) = trace_files(hook_project)
+        (end,) = [e for e in Chain.load(trace).events if e.type == EventType.STEP_END]
+        # No breakdown: the total is recorded as input, output stays 0.
+        assert end.data["tokens"] == {"input": 1234, "output": 0}
+
+    def test_concurrent_pre_hooks_lose_nothing(self, hook_project: Path):
+        n = 10
+        script = str(hook_project / ".claude" / "hooks" / "PreToolUse.sh")
+        for trial in range(3):
+            payload = {
+                "session_id": "s1",
+                "tool_name": "Agent",
+                "tool_input": {"subagent_type": f"A{trial}", "description": "d"},
+            }
+            procs = [
+                subprocess.Popen(  # noqa: S603  # fixed bash + generated script path
+                    ["bash", script],  # noqa: S607
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    cwd=hook_project,
+                    text=True,
+                )
+                for _ in range(n)
+            ]
+            # Release every hook at once (they block reading stdin) so they really overlap.
+            for proc in procs:
+                assert proc.stdin is not None
+                proc.stdin.write(json.dumps(payload))
+                proc.stdin.close()
+            for proc in procs:
+                assert proc.stderr is not None
+                err = proc.stderr.read()
+                proc.wait(timeout=60)
+                proc.stderr.close()
+                assert proc.stdout is not None
+                proc.stdout.close()
+                assert proc.returncode == 0, err
+        (trace,) = trace_files(hook_project)
+        chain = Chain.load(trace)  # must be valid JSON
+        starts = [e for e in chain.events if e.type == EventType.STEP_START]
+        assert len(starts) == n * 3
+        assert [e.seq for e in chain.events] == list(range(1, len(chain.events) + 1))
+        state = json.loads((hook_project / ".claude/traces/.lctl-state.json").read_text())
+        assert state["chain_path"]
+
+    def test_lock_timeout_exits_zero_without_writing(self, hook_project: Path):
+        import fcntl
+
+        traces = hook_project / ".claude" / "traces"
+        traces.mkdir(parents=True, exist_ok=True)
+        env = {**__import__("os").environ, "LCTL_HOOK_LOCK_TIMEOUT": "0.5"}
+        with open(traces / ".lctl.lock", "w") as held:
+            fcntl.flock(held.fileno(), fcntl.LOCK_EX)
+            proc = subprocess.run(  # noqa: S603  # fixed bash + generated script path
+                ["bash", str(hook_project / ".claude/hooks/PreToolUse.sh")],  # noqa: S607
+                input=json.dumps(
+                    {"tool_name": "Agent", "tool_input": {"subagent_type": "E", "description": "d"}}
+                ),
+                cwd=hook_project,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        assert proc.returncode == 0
+        assert not trace_files(hook_project)
+
 
 class TestMergeHookSettings:
     def test_mixed_group_keeps_user_command(self, tmp_path: Path):
