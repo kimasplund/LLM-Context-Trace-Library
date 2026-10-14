@@ -1189,3 +1189,17 @@ class TestTraceTreeRobustness:
 
         assert result.exit_code == 0, result.output[-500:]
         assert result.output.count("(open)") == 3000
+
+
+def test_cli_diff_strict_flag(runner: CliRunner, record_run, tmp_path: Path):
+    a, b = tmp_path / "a.lctl.json", tmp_path / "b.lctl.json"
+    record_run(100).save(a)
+    record_run(250).save(b)
+
+    relaxed = runner.invoke(cli, ["diff", str(a), str(b)])
+    assert relaxed.exit_code == 0
+    assert "identical" in relaxed.output.lower()
+
+    strict = runner.invoke(cli, ["diff", "--strict", str(a), str(b)])
+    assert strict.exit_code == 0
+    assert "difference" in strict.output.lower()

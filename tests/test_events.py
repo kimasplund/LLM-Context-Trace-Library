@@ -795,3 +795,28 @@ class TestFormat42:
         )
         assert event.seq == 1
         assert event.agent == "planner"
+
+
+class TestStrPathsAndVolatileDiff:
+    """Chain accepts str paths; diff compares content, not timing."""
+
+    def test_load_and_save_accept_str_paths(self, sample_chain: Chain, tmp_path: Path):
+        path = str(tmp_path / "c.lctl.json")
+        sample_chain.save(path)
+        loaded = Chain.load(path)
+        assert loaded.id == sample_chain.id
+        assert len(loaded.events) == len(sample_chain.events)
+
+    def test_diff_ignores_volatile_fields_by_default(self, record_run):
+        first = ReplayEngine(record_run(100))
+        second = ReplayEngine(record_run(250))
+        assert first.chain.events[0].timestamp != second.chain.events[0].timestamp
+        assert first.diff(second) == []
+        assert first.diff(second, ignore_volatile=False) != []
+
+    def test_diff_does_not_mutate_events(self, record_run):
+        first = ReplayEngine(record_run(100))
+        second = ReplayEngine(record_run(250))
+        before = [e.to_dict() for e in first.chain.events]
+        first.diff(second)
+        assert [e.to_dict() for e in first.chain.events] == before

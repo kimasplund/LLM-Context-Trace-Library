@@ -3,6 +3,7 @@
 import bisect
 import copy
 import json
+import os
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -224,13 +225,14 @@ class Chain:
         )
 
     @classmethod
-    def load(cls, path: Path) -> "Chain":
+    def load(cls, path: str | os.PathLike[str]) -> "Chain":
         """Load chain from file (JSON or YAML).
 
         Raises:
             FileNotFoundError: If the file does not exist.
             ValueError: If the file is empty, has invalid format, or malformed data.
         """
+        path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"Chain file not found: {path}")
 
@@ -260,8 +262,9 @@ class Chain:
 
         return cls.from_dict(data)
 
-    def save(self, path: Path) -> None:
+    def save(self, path: str | os.PathLike[str]) -> None:
         """Save chain to file. Assigns a trace_id first if the chain has none (pre-4.2 files)."""
+        path = Path(path)
         if self.trace_id is None:
             self.trace_id = new_id()
         data = self.to_dict()
@@ -564,18 +567,28 @@ class ReplayEngine:
 
         return int((as_utc(end_event.timestamp) - as_utc(start)).total_seconds() * 1000)
 
-    def diff(self, other: "ReplayEngine") -> list[dict[str, Any]]:
-        """Compare two chains and find divergence points."""
+    def diff(self, other: "ReplayEngine", *, ignore_volatile: bool = True) -> list[dict[str, Any]]:
+        """Compare two chains and find divergence points.
+
+        By default only content is compared: ids, span ids, timestamps and
+        ``data["duration_ms"]`` differ between any two runs and are ignored.
+        Pass ``ignore_volatile=False`` to compare every field.
+        """
         diffs = []
         max_len = max(len(self.chain.events), len(other.chain.events))
 
         def comparable(event: Event) -> dict[str, Any]:
-            # Identity fields differ between any two runs; compare content only.
-            return {
+            d = event.to_dict()
+            if not ignore_volatile:
+                return d
+            d = {
                 k: v
-                for k, v in event.to_dict().items()
-                if k not in ("id", "span_id", "parent_span_id")
+                for k, v in d.items()
+                if k not in ("id", "span_id", "parent_span_id", "timestamp")
             }
+            if isinstance(d.get("data"), dict):
+                d["data"] = {k: v for k, v in d["data"].items() if k != "duration_ms"}
+            return d
 
         for i in range(max_len):
             e1 = self.chain.events[i] if i < len(self.chain.events) else None

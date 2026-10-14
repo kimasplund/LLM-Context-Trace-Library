@@ -252,3 +252,21 @@ def chain_for_confidence_test(base_timestamp: datetime) -> Chain:
     for event in events:
         chain.add_event(event)
     return chain
+
+
+@pytest.fixture
+def record_run():
+    """Record the same workflow twice-callable: differs only in timestamps and durations."""
+    import time
+
+    from lctl import LCTLSession
+
+    def _record(duration_ms: int) -> Chain:
+        time.sleep(0.01)  # make the timestamps really differ between recordings
+        with LCTLSession(chain_id="same-workflow") as session:
+            session.step_start("analyzer", "analyze", "input")
+            session.add_fact("F1", "Found issue", confidence=0.8)
+            session.step_end("analyzer", outcome="success", duration_ms=duration_ms)
+        return session.chain
+
+    return _record

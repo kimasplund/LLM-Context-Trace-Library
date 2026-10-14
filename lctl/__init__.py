@@ -34,15 +34,9 @@ _global_session = None
 
 
 def auto_instrument():
-    """Enable automatic instrumentation for supported frameworks.
+    """Create (or return) the global session used by `@lctl.traced` and `lctl.export()`.
 
-    Currently supports:
-    - Basic Python (via decorators)
-
-    Planned:
-    - LangChain
-    - CrewAI
-    - AutoGen
+    It does not instrument frameworks; use the integration for your framework.
     """
     global _global_session
     if _global_session is None:

@@ -228,11 +228,17 @@ def confidence(chain_file: str):
 @cli.command("diff")
 @click.argument("chain1", type=click.Path())
 @click.argument("chain2", type=click.Path())
-def diff_chains(chain1: str, chain2: str):
+@click.option(
+    "--strict",
+    is_flag=True,
+    help="Compare every field, including timestamps and durations.",
+)
+def diff_chains(chain1: str, chain2: str, strict: bool):
     """Compare two chains and find divergence.
 
     Examples:
         lctl diff chain-v1.lctl.json chain-v2.lctl.json
+        lctl diff --strict chain-v1.lctl.json chain-v2.lctl.json
     """
     c1 = _load_chain_safely(chain1)
     if c1 is None:
@@ -245,7 +251,7 @@ def diff_chains(chain1: str, chain2: str):
     engine1 = ReplayEngine(c1)
     engine2 = ReplayEngine(c2)
 
-    diffs = engine1.diff(engine2)
+    diffs = engine1.diff(engine2, ignore_volatile=not strict)
 
     if not diffs:
         click.echo(click.style("Chains are identical.", fg="green"))

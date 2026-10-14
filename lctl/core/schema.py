@@ -22,7 +22,7 @@ VERSION_HISTORY = {
 }
 
 
-class SchemaVersionError(Exception):
+class SchemaVersionError(ValueError):
     """Raised when schema version is incompatible."""
 
     def __init__(self, found_version: str, required_version: str, message: str = ""):

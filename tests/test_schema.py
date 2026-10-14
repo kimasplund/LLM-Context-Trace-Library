@@ -417,3 +417,9 @@ class TestMigrationIntegrity:
         SchemaMigrator.migrate(original)
 
         assert original == original_copy
+
+
+def test_schema_version_error_is_value_error():
+    assert issubclass(SchemaVersionError, ValueError)
+    with pytest.raises(ValueError, match="version"):
+        validate_version({"lctl": "0.0.1"})
