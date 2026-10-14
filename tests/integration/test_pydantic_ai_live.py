@@ -100,3 +100,57 @@ async def test_multi_chunk_stream_records_text_once(delta):
     assert end.data["total_content"] == "Hello world"
     chunks = [e.data["content"] for e in _events(traced, EventType.STREAM_CHUNK)]
     assert "".join(chunks) == "Hello world"
+
+
+def _assert_llm_trace_inside_span(traced, model="test"):
+    (trace,) = _events(traced, EventType.LLM_TRACE)
+    (start,) = _events(traced, EventType.STEP_START)
+    (end,) = _events(traced, EventType.STEP_END)
+    assert trace.data["model"] == model
+    assert trace.agent == start.agent
+    assert start.seq < trace.seq < end.seq
+    assert trace.span_id == start.span_id
+
+
+@pytest.mark.asyncio
+async def test_run_llm_trace_has_model_and_sits_inside_the_step():
+    traced = trace_agent(Agent(TestModel(), name="worker"), chain_id="pai-lt-run")
+    await traced.run("hi")
+    _assert_llm_trace_inside_span(traced)
+
+
+def test_run_sync_llm_trace_has_model_and_sits_inside_the_step():
+    traced = trace_agent(Agent(TestModel(), name="worker"), chain_id="pai-lt-sync")
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        traced.run_sync("hi")
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
+    _assert_llm_trace_inside_span(traced)
+
+
+@pytest.mark.asyncio
+async def test_stream_llm_trace_has_model_and_sits_inside_the_step():
+    traced = trace_agent(Agent(TestModel(), name="worker"), chain_id="pai-lt-stream")
+    async with traced.run_stream("hi") as stream:
+        async for _ in stream.stream_text():
+            pass
+    _assert_llm_trace_inside_span(traced)
+
+
+def test_model_name_handles_strings_none_and_unnamed_models():
+    from lctl.integrations.pydantic_ai import _model_name
+
+    class Bare:
+        pass
+
+    class Agentish:
+        def __init__(self, model):
+            self.model = model
+
+    assert _model_name(Agentish("openai:gpt-4o")) == "openai:gpt-4o"
+    assert _model_name(Agentish(None)) == "unknown"
+    assert _model_name(Agentish(TestModel())) == "test"
+    assert _model_name(Agentish(Bare())) == "Bare"

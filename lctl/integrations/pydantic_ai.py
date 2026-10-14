@@ -101,6 +101,23 @@ def _first_int(obj: Any, *names: str) -> int:
     return 0
 
 
+def _model_name(agent: Any) -> str:
+    """Best-effort model name of an agent (``Model`` instance, ``"provider:model"`` string or None)."""
+    model = getattr(agent, "model", None)
+    if model is None:
+        return "unknown"
+    if isinstance(model, str):
+        return model or "unknown"
+    for attr in ("model_name", "name"):
+        value = getattr(model, attr, None)
+        if isinstance(value, str) and value:
+            return value
+    legacy = getattr(agent, "model_name", None)  # wrappers that expose the name directly
+    if isinstance(legacy, str) and legacy:
+        return legacy
+    return type(model).__name__
+
+
 def _usage_tokens(result: Any) -> tuple[int, int]:
     """Return (input, output) tokens from a run result across pydantic-ai versions.
 
@@ -331,14 +348,7 @@ class TracedAgent:
 
         tokens_in, tokens_out = _usage_tokens(result)
 
-        self.tracer.session.step_end(
-            outcome="success",
-            output_summary=output_summary,
-            duration_ms=duration_ms,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-        )
-
+        # llm_trace first: it resolves its agent/span from the still-open step.
         if hasattr(result, "all_messages"):
             try:
                 messages = []
@@ -350,11 +360,19 @@ class TracedAgent:
                 self.tracer.session.llm_trace(
                     messages=messages,
                     response=output_summary,
-                    model=getattr(self.agent, "model_name", "unknown"),
+                    model=_model_name(self.agent),
                     usage={"input": tokens_in, "output": tokens_out},
                 )
             except Exception:  # noqa: S110  # tracing must never break the host application
                 pass
+
+        self.tracer.session.step_end(
+            outcome="success",
+            output_summary=output_summary,
+            duration_ms=duration_ms,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+        )
 
     def _record_failure(self, exc: Exception, start_time: float) -> None:
         duration_ms = int((time.time() - start_time) * 1000)
@@ -448,7 +466,9 @@ class TracedAgent:
         traced_result = None
         try:
             async with self.agent.run_stream(*args, **kwargs) as result:
-                traced_result = TracedStreamedRunResult(result, self.tracer, agent_name, start_time)
+                traced_result = TracedStreamedRunResult(
+                    result, self.tracer, agent_name, start_time, _model_name(self.agent)
+                )
                 yield traced_result
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
@@ -485,6 +505,7 @@ class TracedStreamedRunResult:
         tracer: LCTLPydanticAITracer,
         agent_name: str,
         start_time: float,
+        model_name: str = "unknown",
     ):
         """Initialize the traced stream result.
 
@@ -493,7 +514,9 @@ class TracedStreamedRunResult:
             tracer: The LCTL tracer instance.
             agent_name: Name of the agent for event recording.
             start_time: Start time for duration calculation.
+            model_name: Model name recorded on the LLM trace.
         """
+        self._model_name = model_name
         self._result = result
         self._tracer = tracer
         self._agent_name = agent_name
@@ -565,6 +588,24 @@ class TracedStreamedRunResult:
             tokens_out=tokens_out,
         )
 
+        # Record the LLM trace before step_end so it lands inside the step's span.
+        if hasattr(self._result, "all_messages"):
+            try:
+                messages = []
+                for msg in self._result.all_messages():
+                    if hasattr(msg, "model_dump"):
+                        messages.append(msg.model_dump(mode="json"))
+                    else:
+                        messages.append(str(msg))
+                self._tracer.session.llm_trace(
+                    messages=messages,
+                    response=self._accumulated_content,
+                    model=self._model_name,
+                    usage={"input": tokens_in, "output": tokens_out},
+                )
+            except Exception:  # noqa: S110  # tracing must never break the host application
+                pass
+
         self._tracer.session.step_end(
             outcome="success",
             output_summary=self._accumulated_content,
@@ -572,33 +613,6 @@ class TracedStreamedRunResult:
             tokens_in=tokens_in,
             tokens_out=tokens_out,
         )
-
-        # Record LLM Trace
-        if hasattr(self._result, "all_messages"):
-            messages = []
-            try:
-                for msg in self._result.all_messages():
-                    if hasattr(msg, "model_dump"):
-                        messages.append(msg.model_dump(mode="json"))
-                    else:
-                        messages.append(str(msg))
-
-                # Get model name from the agent if accessible through tracer
-                model_name = "unknown"
-                if hasattr(self._tracer, "session") and hasattr(self._tracer.session, "chain"):
-                    # Try to get model from chain metadata if available
-                    chain = self._tracer.session.chain
-                    if hasattr(chain, "metadata") and isinstance(chain.metadata, dict):
-                        model_name = chain.metadata.get("model", "unknown")
-
-                self._tracer.session.llm_trace(
-                    messages=messages,
-                    response=self._accumulated_content,
-                    model=model_name,
-                    usage={"input": tokens_in, "output": tokens_out},
-                )
-            except Exception:  # noqa: S110  # tracing must never break the host application
-                pass
 
 
 def trace_agent(
