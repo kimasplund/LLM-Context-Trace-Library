@@ -1,202 +1,95 @@
-"""Example: Using LCTL with CrewAI for traced crew execution.
+"""CrewAI example: a two-agent crew driven by a scripted stub LLM (no API key).
 
-This example demonstrates how to use LCTL to trace a CrewAI crew
-for time-travel debugging and observability.
+Run it in a scratch directory; it writes ``crewai_trace.lctl.json`` there. View with:
 
-Prerequisites:
-    pip install lctl crewai
-
-Usage:
-    python crewai_example.py
+    lctl trace --tree crewai_trace.lctl.json
 """
 
-# Check if CrewAI is available
+import os
+
+# Telemetry must be off before crewai is imported, so nothing tries the network.
+os.environ.setdefault("CREWAI_DISABLE_TELEMETRY", "true")
+os.environ.setdefault("OTEL_SDK_DISABLED", "true")
+os.environ.setdefault("OPENAI_API_KEY", "sk-fake")  # never used: the LLM below is a stub
+
+import sys
+
 try:
-    from crewai import Task  # noqa: F401  # availability probe
-
-    CREWAI_INSTALLED = True
+    import crewai  # noqa: F401
 except ImportError:
-    CREWAI_INSTALLED = False
-    print("CrewAI is not installed. Install with: pip install crewai")
-    print("This example shows the intended usage pattern.\n")
+    print("CrewAI is not installed. Install it with:")
+    print(
+        '  pip install "lctl[crewai] @ git+https://github.com/kimasplund/LLM-Context-Trace-Library"'
+    )
+    sys.exit(0)
 
-from lctl.integrations.crewai import (
-    CREWAI_AVAILABLE,
-    LCTLAgent,
-    LCTLCrew,
-    LCTLTask,
-)
+import time
+from pathlib import Path
+
+from crewai import BaseLLM
+from crewai.tools import tool
+
+from lctl.integrations.crewai import LCTLAgent, LCTLCrew, LCTLTask, is_available
+
+
+class ScriptedLLM(BaseLLM):
+    """Replays canned ReAct text, one reply per call."""
+
+    def __init__(self, replies):
+        super().__init__(model="stub")
+        self.replies = list(replies)
+
+    def call(self, messages, tools=None, callbacks=None, available_functions=None, **kwargs):
+        time.sleep(0.01)
+        return self.replies.pop(0)
+
+    def supports_function_calling(self):
+        return False
+
+
+FINAL = "Thought: I now know the final answer\nFinal Answer: {}"
+
+
+@tool("Search Database")
+def search_database(query: str) -> str:
+    """Search the internal database for information."""
+    return f"Found 3 results for: {query}"
 
 
 def main() -> None:
-    """Run a sample CrewAI crew with LCTL tracing."""
+    if not is_available():
+        print('LCTL CrewAI integration unavailable: pip install "lctl[crewai]"')
+        sys.exit(0)
 
-    if not CREWAI_AVAILABLE:
-        print("=" * 60)
-        print("CrewAI Integration Example (Mock Mode)")
-        print("=" * 60)
-        print()
-        print("CrewAI is not installed. Below is how the code would look:")
-        print()
-        print_example_code()
-        return
-
-    # Example 1: Using LCTL wrappers directly
-    print("=" * 60)
-    print("Example 1: Using LCTL Wrappers")
-    print("=" * 60)
-
-    # Create traced agents
     researcher = LCTLAgent(
-        role="Senior Research Analyst",
-        goal="Uncover cutting-edge developments in AI and data science",
-        backstory="""You work at a leading tech think tank. Your expertise lies
-        in identifying emerging trends. You have a knack for dissecting complex
-        data and presenting actionable insights.""",
-        verbose=True,
-        allow_delegation=False,
+        role="researcher",
+        goal="Find the facts",
+        backstory="A careful analyst.",
+        tools=[search_database],
+        llm=ScriptedLLM(
+            [
+                'Thought: use the tool\nAction: Search Database\nAction Input: {"query": "orders"}',
+                FINAL.format("three results"),
+            ]
+        ),
     )
-
     writer = LCTLAgent(
-        role="Tech Content Strategist",
-        goal="Craft compelling content on tech advancements",
-        backstory="""You are a renowned Content Strategist, known for your
-        insightful and engaging articles. You transform complex concepts into
-        compelling narratives.""",
-        verbose=True,
-        allow_delegation=True,
+        role="writer",
+        goal="Write it up",
+        backstory="A concise writer.",
+        llm=ScriptedLLM([FINAL.format("a short report")]),
     )
+    tasks = [
+        LCTLTask(description="Research {topic}", expected_output="notes", agent=researcher),
+        LCTLTask(description="Write it up", expected_output="report", agent=writer),
+    ]
+    crew = LCTLCrew(agents=[researcher, writer], tasks=tasks, chain_id="crewai-example")
+    result = crew.kickoff(inputs={"topic": "orders"})
+    print(f"Crew finished: {result}")
 
-    # Create traced tasks
-    research_task = LCTLTask(
-        description="""Conduct a comprehensive analysis of the latest
-        advancements in AI in 2024. Identify key trends, breakthrough
-        technologies, and potential industry impacts.""",
-        expected_output="""Full analysis report with detailed findings on
-        AI advancements, including a summary of key trends and technologies.""",
-        agent=researcher,
-    )
-
-    write_task = LCTLTask(
-        description="""Using the insights provided, develop an engaging blog
-        post that highlights the most significant AI advancements. Your post
-        should be informative yet accessible.""",
-        expected_output="""Full blog post of at least 4 paragraphs covering
-        the major AI trends and their implications.""",
-        agent=writer,
-        context=[research_task],
-    )
-
-    # Create traced crew
-    crew = LCTLCrew(
-        agents=[researcher, writer],
-        tasks=[research_task, write_task],
-        process="sequential",
-        verbose=True,
-        chain_id="ai-research-crew",
-    )
-
-    print("\nStarting crew execution with LCTL tracing...")
-    print("(Note: This requires an LLM API key to actually run)")
-    print()
-
-    # In a real scenario, you would run:
-    # result = crew.kickoff()
-
-    # For demo purposes, we'll just show the setup
-    print("Crew configured with:")
-    print(f"  - Chain ID: {crew.session.chain.id}")
-    print("  - Process: sequential")
-    print(f"  - Agents: {len(crew.crew.agents)}")
-    print(f"  - Tasks: {len(crew.crew.tasks)}")
-    print()
-
-    # Export what we have so far (just the setup events)
-    crew.export_trace("ai_research_crew.lctl.json")
-    print("Trace exported to: ai_research_crew.lctl.json")
-    print()
-
-    # Example 2: Wrapping an existing crew
-    print("=" * 60)
-    print("Example 2: Wrapping an Existing Crew")
-    print("=" * 60)
-    print()
-    print("You can also wrap an existing CrewAI Crew:")
-    print()
-    print("    from crewai import Agent, Crew, Task")
-    print("    from lctl.integrations.crewai import trace_crew")
-    print()
-    print("    # Your existing crew")
-    print("    crew = Crew(agents=[...], tasks=[...])")
-    print()
-    print("    # Add LCTL tracing")
-    print("    traced_crew = trace_crew(crew, chain_id='my-crew')")
-    print("    result = traced_crew.kickoff()")
-    print("    traced_crew.export_trace('trace.lctl.json')")
-    print()
-
-
-def print_example_code() -> None:
-    """Print example code when CrewAI is not installed."""
-    code = """
-from lctl.integrations.crewai import LCTLAgent, LCTLCrew, LCTLTask
-
-# Create agents with automatic tracing
-researcher = LCTLAgent(
-    role="Senior Research Analyst",
-    goal="Uncover cutting-edge developments in AI",
-    backstory="Expert at identifying emerging trends...",
-    verbose=True,
-)
-
-writer = LCTLAgent(
-    role="Tech Content Strategist",
-    goal="Craft compelling content on tech advancements",
-    backstory="Known for insightful and engaging articles...",
-    verbose=True,
-)
-
-# Create tasks
-research_task = LCTLTask(
-    description="Analyze latest AI advancements...",
-    expected_output="Full analysis report...",
-    agent=researcher,
-)
-
-write_task = LCTLTask(
-    description="Write an engaging blog post...",
-    expected_output="Full blog post...",
-    agent=writer,
-    context=[research_task],
-)
-
-# Create and run the crew
-crew = LCTLCrew(
-    agents=[researcher, writer],
-    tasks=[research_task, write_task],
-    process="sequential",
-    verbose=True,
-)
-
-# Execute with tracing
-result = crew.kickoff()
-
-# Export the trace for debugging
-crew.export_trace("research_crew.lctl.json")
-
-# Or get trace as dict
-trace_data = crew.get_trace()
-"""
-    print(code)
-    print()
-    print("The trace captures:")
-    print("  - Crew kickoff and completion")
-    print("  - Agent steps and reasoning")
-    print("  - Task execution with timing")
-    print("  - Tool usage")
-    print("  - Delegation events")
-    print("  - Errors with context")
-    print()
+    path = Path("crewai_trace.lctl.json")
+    crew.export_trace(str(path))
+    print(f"Trace written to {path.resolve()} ({len(crew.session.chain.events)} events)")
 
 
 if __name__ == "__main__":

@@ -64,6 +64,14 @@ jobs:
         run: uv run --no-sync pytest
       - if: ${{ matrix.core-only }}
         run: uv run --no-sync pytest --no-cov
+      - name: Run the core span demo and render its tree
+        env:
+          SCRATCH: ${{ runner.temp }}/spans
+        run: |
+          mkdir -p "$SCRATCH"
+          cd "$SCRATCH"
+          uv run --no-sync --project "$GITHUB_WORKSPACE" python "$GITHUB_WORKSPACE/examples/spans_demo.py"
+          uv run --no-sync --project "$GITHUB_WORKSPACE" lctl trace --tree spans_demo.lctl.json
 
   package:
     name: Build and check wheel
@@ -124,6 +132,14 @@ jobs:
       fail-fast: false
       matrix:
         extra: [langchain, crewai, openai-agents, pydantic-ai, semantic-kernel, dspy, llamaindex]
+        include:
+          - {extra: langchain, example: langchain_example.py}
+          - {extra: crewai, example: crewai_example.py}
+          - {extra: openai-agents, example: openai_agents_example.py}
+          - {extra: pydantic-ai, example: pydantic_ai_example.py}
+          - {extra: semantic-kernel, example: semantic_kernel_example.py}
+          - {extra: dspy, example: dspy_example.py}
+          - {extra: llamaindex, example: llamaindex_example.py}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -138,7 +154,15 @@ jobs:
           EXTRA: ${{ matrix.extra }}
         run: uv sync --locked --extra "$EXTRA"
       - name: Live framework tests
-        # Exit 5 (nothing collected) is tolerated while an extra has no live tests yet; every
-        # module is importorskip'd, so such a cell reports skips only. Drop once all cells have tests.
+        run: uv run --no-sync pytest -m integration -q --no-cov -rs tests/integration
+      - name: Run the extra's example and render its span tree
+        env:
+          EXAMPLE: ${{ matrix.example }}
+          SCRATCH: ${{ runner.temp }}/example
         run: |
-          uv run --no-sync pytest -m integration -q --no-cov -rs tests/integration || [ "$?" -eq 5 ]
+          mkdir -p "$SCRATCH"
+          cd "$SCRATCH"
+          uv run --no-sync --project "$GITHUB_WORKSPACE" python "$GITHUB_WORKSPACE/examples/$EXAMPLE"
+          trace=$(ls ./*_trace.lctl.json)
+          test -s "$trace"
+          uv run --no-sync --project "$GITHUB_WORKSPACE" lctl trace --tree "$trace"
