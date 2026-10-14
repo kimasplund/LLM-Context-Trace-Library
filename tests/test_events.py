@@ -720,3 +720,78 @@ class TestEdgeCases:
 
         assert state.metrics["event_count"] == 1000
         assert len(state.facts) == 1000
+
+
+class TestFormat42:
+    """Trace format 4.2: optional event span fields and chain trace_id."""
+
+    @staticmethod
+    def _event(**kwargs) -> Event:
+        return Event(
+            seq=1,
+            type=EventType.STEP_START,
+            timestamp=datetime(2026, 10, 14, 12, 0, 0),
+            agent="planner",
+            data={"intent": "plan"},
+            **kwargs,
+        )
+
+    def test_event_roundtrip_keeps_span_fields(self):
+        from lctl.core.ids import new_id
+
+        event_id, span_id, parent_id = new_id(), new_id(), new_id()
+        event = self._event(id=event_id, span_id=span_id, parent_span_id=parent_id)
+        restored = Event.from_dict(event.to_dict())
+        assert restored.id == event_id
+        assert restored.span_id == span_id
+        assert restored.parent_span_id == parent_id
+
+    def test_event_to_dict_omits_absent_span_fields(self):
+        assert set(self._event().to_dict()) == {"seq", "type", "timestamp", "agent", "data"}
+
+    def test_new_chain_has_uuid7_trace_id(self):
+        import uuid
+
+        assert uuid.UUID(Chain(id="c").trace_id).version == 7
+
+    def test_chain_json_and_yaml_roundtrip_trace_id(self, tmp_path):
+        from lctl.core.ids import new_id
+
+        chain = Chain(id="c")
+        chain.add_event(self._event(id=new_id(), span_id=new_id()))
+        for name in ("c.lctl.json", "c.lctl.yaml"):
+            path = tmp_path / name
+            chain.save(path)
+            loaded = Chain.load(path)
+            assert loaded.trace_id == chain.trace_id
+            assert loaded.events[0].id == chain.events[0].id
+            assert loaded.events[0].span_id == chain.events[0].span_id
+
+    def test_old_file_loads_without_trace_id_and_save_assigns_one(self, tmp_path):
+        import uuid
+
+        path = tmp_path / "old.lctl.json"
+        path.write_text(json.dumps({"lctl": "4.1", "chain": {"id": "old"}, "events": []}))
+        loaded = Chain.load(path)
+        assert loaded.trace_id is None
+        assert loaded.version == "4.2"
+
+        loaded.save(path)
+        reloaded = Chain.load(path)
+        assert uuid.UUID(reloaded.trace_id).version == 7
+
+    def test_forward_compat_unknown_event_keys_ignored(self):
+        event = Event.from_dict(
+            {
+                "seq": 1,
+                "type": "step_start",
+                "timestamp": "2026-10-14T12:00:00",
+                "agent": "planner",
+                "data": {},
+                "id": "x",
+                "span_id": "y",
+                "future_field": 1,
+            }
+        )
+        assert event.seq == 1
+        assert event.agent == "planner"

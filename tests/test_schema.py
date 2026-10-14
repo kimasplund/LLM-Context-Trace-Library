@@ -24,7 +24,7 @@ class TestVersionConstants:
     def test_current_version_is_string(self):
         """CURRENT_VERSION should be a string."""
         assert isinstance(CURRENT_VERSION, str)
-        assert CURRENT_VERSION == "4.1"
+        assert CURRENT_VERSION == "4.2"
 
     def test_min_supported_version_is_string(self):
         """MIN_SUPPORTED_VERSION should be a string."""
@@ -37,6 +37,7 @@ class TestVersionConstants:
         assert "3.0" in VERSION_HISTORY
         assert "4.0" in VERSION_HISTORY
         assert "4.1" in VERSION_HISTORY
+        assert "4.2" in VERSION_HISTORY
 
     def test_current_version_in_history(self):
         """CURRENT_VERSION should be in VERSION_HISTORY."""
@@ -173,11 +174,22 @@ class TestSchemaMigrator:
         path = SchemaMigrator._get_migration_path("4.0", "4.1")
         assert path == [("4.0", "4.1")]
 
+    def test_get_migration_path_4_1_to_4_2(self):
+        """Migration path from 4.1 to 4.2 should be single step."""
+        path = SchemaMigrator._get_migration_path("4.1", "4.2")
+        assert path == [("4.1", "4.2")]
+
+    def test_get_migration_path_3_to_current(self):
+        """Migration path from 3.0 to the current version includes the 4.2 step."""
+        path = SchemaMigrator._get_migration_path("3.0", CURRENT_VERSION)
+        assert path == [("3.0", "4.0"), ("4.0", "4.1"), ("4.1", "4.2")]
+
     def test_registered_migrations(self):
         """Check that expected migrations are registered."""
         migrations = SchemaMigrator.get_registered_migrations()
         assert "3.0->4.0" in migrations
         assert "4.0->4.1" in migrations
+        assert "4.1->4.2" in migrations
 
 
 class TestGetVersionInfo:

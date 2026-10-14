@@ -12,6 +12,7 @@ from typing import Any, TypeVar
 
 import yaml
 
+from .ids import new_id
 from .schema import CURRENT_VERSION, SchemaMigrator, validate_version
 
 T = TypeVar("T")
@@ -108,15 +109,24 @@ class Event:
     timestamp: datetime
     agent: str
     data: dict[str, Any] = field(default_factory=dict)
+    # Format 4.2 identity (optional; absent in older traces)
+    id: str | None = None
+    span_id: str | None = None
+    parent_span_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result: dict[str, Any] = {
             "seq": self.seq,
             "type": self.type.value if isinstance(self.type, EventType) else self.type,
             "timestamp": self.timestamp.isoformat(),
             "agent": self.agent,
             "data": self.data,
         }
+        for key in ("id", "span_id", "parent_span_id"):
+            value = getattr(self, key)
+            if value is not None:
+                result[key] = value
+        return result
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Event":
@@ -156,7 +166,14 @@ class Event:
                 raise ValueError(f"Invalid timestamp format '{d['timestamp']}': {e}") from e
 
         return cls(
-            seq=seq, type=event_type, timestamp=timestamp, agent=d["agent"], data=d.get("data", {})
+            seq=seq,
+            type=event_type,
+            timestamp=timestamp,
+            agent=d["agent"],
+            data=d.get("data", {}),
+            id=d.get("id"),
+            span_id=d.get("span_id"),
+            parent_span_id=d.get("parent_span_id"),
         )
 
 
@@ -167,6 +184,7 @@ class Chain:
     id: str
     events: list[Event] = field(default_factory=list)
     version: str = CURRENT_VERSION
+    trace_id: str | None = field(default_factory=new_id)
 
     def add_event(self, event: Event) -> None:
         """Add event to the chain."""
@@ -175,7 +193,7 @@ class Chain:
     def to_dict(self) -> dict[str, Any]:
         return {
             "lctl": self.version,
-            "chain": {"id": self.id},
+            "chain": {"id": self.id, **({"trace_id": self.trace_id} if self.trace_id else {})},
             "events": [e.to_dict() for e in self.events],
         }
 
@@ -202,6 +220,7 @@ class Chain:
             id=chain_meta.get("id", "unknown"),
             version=d.get("lctl", CURRENT_VERSION),
             events=[Event.from_dict(e) for e in d.get("events", [])],
+            trace_id=chain_meta.get("trace_id"),
         )
 
     @classmethod
@@ -242,7 +261,9 @@ class Chain:
         return cls.from_dict(data)
 
     def save(self, path: Path) -> None:
-        """Save chain to file."""
+        """Save chain to file. Assigns a trace_id first if the chain has none (pre-4.2 files)."""
+        if self.trace_id is None:
+            self.trace_id = new_id()
         data = self.to_dict()
         if path.suffix in (".yaml", ".yml"):
             content = yaml.dump(data, default_flow_style=False, sort_keys=False)

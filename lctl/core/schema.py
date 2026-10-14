@@ -8,7 +8,7 @@ from typing import Any, ClassVar
 from packaging import version
 
 # Current schema version
-CURRENT_VERSION = "4.1"
+CURRENT_VERSION = "4.2"
 
 # Minimum supported version for loading
 MIN_SUPPORTED_VERSION = "3.0"
@@ -18,6 +18,7 @@ VERSION_HISTORY = {
     "3.0": "Initial public release",
     "4.0": "Added confidence tracking, fact modification",
     "4.1": "Added LRU cache, schema versioning, redaction support",
+    "4.2": "Span IDs (event id, span_id, parent_span_id) and chain trace_id",
 }
 
 
@@ -137,4 +138,13 @@ def _migrate_4_to_4_1(data: dict) -> dict:
     result = data.copy()
     # 4.0 -> 4.1: No structural changes, just version bump
     # Adds LRU cache and redaction support (runtime features)
+    return result
+
+
+@SchemaMigrator.register("4.1", "4.2")
+def _migrate_4_1_to_4_2(data: dict) -> dict:
+    """Migrate from 4.1 to 4.2 - optional span IDs and chain trace_id."""
+    result = data.copy()
+    # 4.1 -> 4.2: No structural changes; the new fields are optional and
+    # older traces get their structure inferred at replay time.
     return result
