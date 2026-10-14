@@ -21,3 +21,4 @@ cli_test.lctl-report.html
 .mypy_cache/
 .superpowers/
 .coverage.*
+*.tsbuildinfo
