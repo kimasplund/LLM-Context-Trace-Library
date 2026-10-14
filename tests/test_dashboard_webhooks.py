@@ -3,6 +3,7 @@
 import json
 import threading
 import time
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -104,16 +105,22 @@ def test_matching_event_is_delivered_signed(client):
 
 def test_non_matching_event_not_delivered(client):
     with Receiver() as rx:
-        first = register(client, rx.url, events=["error"])
+        wid = register(client, rx.url, events=["error"])
         emit(client, event_type="step_start")
-        time.sleep(0.3)
-        assert rx.requests == []
-        # chain filter
-        client.delete(f"/api/rpa/webhooks/{first}")
-        register(client, rx.url, events=["error"], chain_id="other")
-        emit(client, event_type="error", chain_id="c1")
-        time.sleep(0.3)
-        assert len(rx.requests) == 0
+        emit(client, event_type="error", chain_id="sentinel")
+        assert wait_for(lambda: rx.requests)
+        # The sentinel arrived after the non-matching event, so it would have shown up by now.
+        assert [json.loads(b)["payload"]["type"] for _, b in rx.requests] == ["error"]
+        client.delete(f"/api/rpa/webhooks/{wid}")
+
+
+def test_chain_filter(client):
+    with Receiver() as rx:
+        register(client, rx.url, events=["error"], chain_id="wanted")
+        emit(client, event_type="error", chain_id="other")
+        emit(client, event_type="error", chain_id="wanted")
+        assert wait_for(lambda: rx.requests)
+        assert [json.loads(b)["chain_id"] for _, b in rx.requests] == ["wanted"]
 
 
 def test_failing_receiver_retried_three_times_and_logged(client):
@@ -130,6 +137,23 @@ def test_failing_receiver_retried_three_times_and_logged(client):
     assert len(rx.requests) == 3
     assert record["attempts"] == 3
     assert "500" in record["last_error"]
+    assert record["status_code"] == 500
+    assert len({h["x-lctl-delivery"] for h, _ in rx.requests}) == 1
+
+
+def test_redirect_response_counts_as_failure(client):
+    with Receiver(status=302) as rx:
+        wid = register(client, rx.url, events=["error"])
+        emit(client)
+
+        def done():
+            d = client.get(f"/api/rpa/webhooks/{wid}/deliveries").json()["deliveries"]
+            return d and d[0]["status"] == "failed"
+
+        assert wait_for(done)
+        record = client.get(f"/api/rpa/webhooks/{wid}/deliveries").json()["deliveries"][0]
+    assert record["status_code"] == 302
+    assert len(rx.requests) == 3
 
 
 def test_unreachable_receiver_logged_not_raised(client):
@@ -168,7 +192,15 @@ def test_slow_receiver_does_not_block_emission(client):
 
 
 @pytest.mark.parametrize(
-    "url", ["file:///etc/passwd", "ftp://example.com/x", "http://", "nonsense"]
+    "url",
+    [
+        "file:///etc/passwd",
+        "ftp://example.com/x",
+        "http://",
+        "nonsense",
+        "http://h:notaport/x",
+        "http://h:99999/x",
+    ],
 )
 def test_only_http_urls_accepted(client, url):
     r = client.post("/api/rpa/webhooks", json={"url": url})
@@ -178,10 +210,12 @@ def test_only_http_urls_accepted(client, url):
 def test_delete_stops_delivery_and_unknown_deliveries_404(client):
     with Receiver() as rx:
         wid = register(client, rx.url, events=["error"])
+        register(client, rx.url, events=["step_end"])  # sentinel hook, still registered
         assert client.delete(f"/api/rpa/webhooks/{wid}").status_code == 200
         emit(client)
-        time.sleep(0.3)
-        assert rx.requests == []
+        emit(client, event_type="step_end")
+        assert wait_for(lambda: rx.requests)
+        assert [json.loads(b)["payload"]["type"] for _, b in rx.requests] == ["step_end"]
     assert client.get(f"/api/rpa/webhooks/{wid}/deliveries").status_code == 404
 
 
@@ -204,5 +238,50 @@ def test_delivery_log_capped_at_100():
 
     d.register("w", WebhookRegistration(url="http://127.0.0.1:1/h"))
     for i in range(150):
-        d._record("w", {"n": i})
+        d._logs["w"].append({"n": i})
     assert len(d.deliveries("w")) == 100
+
+
+def test_slow_receiver_does_not_block_when_lifespan_never_ran(monkeypatch, tmp_path):
+    """TestClient used without `with` (or a mounted sub-app) never runs the lifespan."""
+    monkeypatch.setenv("LCTL_API_KEYS", "k1")
+    plain = TestClient(create_app(tmp_path), headers=HEADERS)
+    with Receiver(delay=2.0) as rx:
+        wid = register(plain, rx.url, events=["error"])
+        start = time.monotonic()
+        assert emit(plain).status_code == 200
+        assert time.monotonic() - start < 0.5
+        time.sleep(0.2)
+        # Nothing was scheduled on a throwaway request loop, so no bogus "failed" record.
+        assert plain.get(f"/api/rpa/webhooks/{wid}/deliveries").json()["deliveries"] == []
+
+
+def test_emit_from_plain_thread_is_delivered(client):
+    from lctl.streaming.emitter import StreamingEvent, StreamingEventType
+
+    with Receiver() as rx:
+        register(client, rx.url, events=["error"])
+        event = StreamingEvent(
+            id="e1",
+            type=StreamingEventType.EVENT,
+            timestamp=datetime.now(UTC),
+            chain_id="c1",
+            payload={"type": "error"},
+        )
+        t = threading.Thread(target=client.app.state.emitter.emit, args=(event,))
+        t.start()
+        t.join()
+        assert wait_for(lambda: rx.requests)
+
+
+def test_no_orphan_log_after_unregister(client):
+    from lctl.dashboard.app import WebhookRegistration
+
+    d = client.app.state.webhook_dispatcher
+    reg = WebhookRegistration(url="http://127.0.0.1:1/h", events=["error"])
+    d.register("gone", reg)
+    d.dispatch({"id": "e", "type": "event", "chain_id": "c", "payload": {"type": "error"}})
+    d.unregister("gone")  # before the scheduled task gets to run
+    time.sleep(0.3)
+    assert d.deliveries("gone") == []
+    assert "gone" not in d._logs

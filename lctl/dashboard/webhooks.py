@@ -55,6 +55,12 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 _opener = urllib.request.build_opener(_NoRedirect)
 
 
+class _HttpStatusError(RuntimeError):
+    def __init__(self, code: int) -> None:
+        super().__init__(f"HTTP {code}")
+        self.code = code
+
+
 def _post(url: str, body: bytes, headers: dict[str, str]) -> int:
     """Blocking POST (run in a thread). Raises on non-2xx or transport errors."""
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")  # noqa: S310  # scheme validated at registration
@@ -62,7 +68,7 @@ def _post(url: str, body: bytes, headers: dict[str, str]) -> int:
         with _opener.open(req, timeout=REQUEST_TIMEOUT_SECONDS) as resp:
             return int(resp.status)
     except urllib.error.HTTPError as err:
-        raise RuntimeError(f"HTTP {err.code}") from err
+        raise _HttpStatusError(err.code) from err
 
 
 class WebhookDispatcher:
@@ -98,9 +104,6 @@ class WebhookDispatcher:
     def deliveries(self, webhook_id: str) -> list[dict[str, Any]]:
         return list(self._logs.get(webhook_id, ()))
 
-    def _record(self, webhook_id: str, record: dict[str, Any]) -> None:
-        self._logs.setdefault(webhook_id, deque(maxlen=DELIVERY_LOG_SIZE)).append(record)
-
     # -- dispatch --------------------------------------------------------
     def dispatch(self, event: dict[str, Any]) -> None:
         """Schedule delivery to every matching webhook. Never blocks, never raises."""
@@ -118,22 +121,24 @@ class WebhookDispatcher:
             logger.exception("webhook dispatch failed")
 
     def _schedule(self, coro: Coroutine[Any, Any, None]) -> None:
+        """Run ``coro`` on the bound app loop only; a throwaway request loop would cancel it."""
+        loop = self._loop
+        if loop is None or loop.is_closed():
+            coro.close()
+            logger.warning("webhook delivery dropped: app lifespan has not bound an event loop")
+            return
         try:
-            running = asyncio.get_running_loop()
+            on_bound_loop = asyncio.get_running_loop() is loop
         except RuntimeError:
-            running = None
-        if running is not None:
+            on_bound_loop = False
+        if on_bound_loop:
             self._start(coro)
             return
-        loop = self._loop
-        if loop is not None and loop.is_running():
-            try:
-                loop.call_soon_threadsafe(self._start, coro)
-                return
-            except RuntimeError:  # loop closed between the check and the call
-                pass
-        coro.close()
-        logger.warning("webhook delivery dropped: no running event loop")
+        try:
+            loop.call_soon_threadsafe(self._start, coro)
+        except RuntimeError:  # loop closed between the check and the call
+            coro.close()
+            logger.warning("webhook delivery dropped: event loop is closed")
 
     def _start(self, coro: Coroutine[Any, Any, None]) -> None:
         task = asyncio.get_running_loop().create_task(coro)
@@ -141,6 +146,9 @@ class WebhookDispatcher:
         task.add_done_callback(self._tasks.discard)
 
     async def _deliver(self, wid: str, reg: WebhookLike, event: dict[str, Any], etype: str) -> None:
+        log = self._logs.get(wid)
+        if log is None:  # unregistered before this task got to run
+            return
         delivery_id = new_id()
         record: dict[str, Any] = {
             "delivery_id": delivery_id,
@@ -154,7 +162,7 @@ class WebhookDispatcher:
             "created_at": datetime.now(UTC).isoformat(),
             "finished_at": None,
         }
-        self._record(wid, record)
+        log.append(record)
         body = json.dumps(event, default=str).encode()
         headers = {
             "Content-Type": "application/json",
@@ -173,6 +181,8 @@ class WebhookDispatcher:
                     record["last_error"] = None
                     return
                 except Exception as err:
+                    if isinstance(err, _HttpStatusError):
+                        record["status_code"] = err.code
                     record["last_error"] = f"{type(err).__name__}: {err}"
                     logger.warning(
                         "webhook %s attempt %d/%d failed: %s",

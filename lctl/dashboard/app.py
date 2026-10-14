@@ -85,7 +85,11 @@ class WebhookRegistration(BaseModel):
     @classmethod
     def _http_url_only(cls, value: str) -> str:
         parsed = urlsplit(value)
-        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        try:
+            port = parsed.port  # raises ValueError for a non-numeric or out-of-range port
+        except ValueError as err:
+            raise ValueError("webhook url has an invalid port") from err
+        if parsed.scheme not in ("http", "https") or not parsed.hostname or port == 0:
             raise ValueError("webhook url must be an absolute http(s) URL")
         return value
 
