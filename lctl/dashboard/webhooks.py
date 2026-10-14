@@ -68,7 +68,9 @@ def _post(url: str, body: bytes, headers: dict[str, str]) -> int:
         with _opener.open(req, timeout=REQUEST_TIMEOUT_SECONDS) as resp:
             return int(resp.status)
     except urllib.error.HTTPError as err:
-        raise _HttpStatusError(err.code) from err
+        code = err.code
+        err.close()  # otherwise the body tempfile is finalised unclosed (ResourceWarning on 3.14)
+        raise _HttpStatusError(code) from None
 
 
 class WebhookDispatcher:
