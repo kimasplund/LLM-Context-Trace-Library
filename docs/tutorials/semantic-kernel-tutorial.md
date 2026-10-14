@@ -167,7 +167,7 @@ if __name__ == "__main__":
 
 ## How it Works
 
-LCTL uses Semantic Kernel's **Filters API** (`FunctionInvocationFilter`). 
+LCTL uses Semantic Kernel's **Filters API** (`FunctionInvocationFilter`).
 
 1. **Before Invocation**: Records `step_start` with arguments.
 2. **Invocation**: Executes the function (native or prompt).
