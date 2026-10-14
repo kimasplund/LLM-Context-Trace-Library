@@ -17,6 +17,7 @@ Covers:
 import asyncio
 import contextlib
 import json
+import socket
 import sys
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -554,14 +555,6 @@ class TestWebSocketServerClientMessageHandling:
 class TestWebSocketServerConnectionHandling:
     """Tests for WebSocketServer connection handling."""
 
-    @pytest.mark.xfail(
-        sys.version_info < (3, 12),
-        reason=(
-            "Known bug (spec follow-up 12): on 3.11 asyncio.wait_for loses the send "
-            "loop's cancellation, and _send_loop recursion overflows after ~95s"
-        ),
-        run=False,
-    )
     @pytest.mark.asyncio
     async def test_handle_connection_basic(
         self, server: WebSocketServer, mock_websocket: AsyncMock
@@ -818,6 +811,112 @@ class TestWebSocketServerStartStop:
             mock_start.side_effect = raise_import
             with pytest.raises(ImportError, match="websockets"):
                 await mock_start()
+
+
+# =============================================================================
+# WebSocketServer - Send Loop and Standalone Mode
+# =============================================================================
+
+
+def _frame_depth() -> int:
+    """Number of frames on the current call stack."""
+    depth, frame = 0, sys._getframe()
+    while frame is not None:
+        depth, frame = depth + 1, frame.f_back
+    return depth
+
+
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+async def _connect(websockets_module, port: int):
+    """Connect once the standalone server is listening."""
+    for _ in range(100):
+        try:
+            return await websockets_module.connect(f"ws://127.0.0.1:{port}")
+        except OSError:
+            await asyncio.sleep(0.02)
+    raise AssertionError(f"standalone server never listened on port {port}")
+
+
+async def _recv_until(ws, predicate) -> dict:
+    """Receive JSON messages until one matches (other broadcasts may arrive first)."""
+    async with asyncio.timeout(2.0):
+        while True:
+            message = json.loads(await ws.recv())
+            if predicate(message):
+                return message
+
+
+class TestWebSocketServerSendLoop:
+    """Tests for the per-client send loop."""
+
+    @pytest.mark.asyncio
+    async def test_idle_heartbeats_do_not_grow_the_stack(self, emitter: EventEmitter):
+        """Each heartbeat timeout used to recurse, overflowing after ~1000 heartbeats."""
+        server = WebSocketServer(emitter, heartbeat_interval=0.001)
+        client = await server.register_client()
+        depths: list[int] = []
+
+        async def record_send(text: str) -> None:
+            depths.append(_frame_depth())
+            if len(depths) == 20:
+                raise ConnectionError("client went away")
+
+        mock_ws = AsyncMock()
+        mock_ws.send_text = AsyncMock(side_effect=record_send)
+
+        await server._send_loop(mock_ws, client)
+
+        assert len(depths) == 20
+        assert depths[-1] == depths[0]
+
+
+class TestWebSocketServerStandalone:
+    """start() serves clients of the real `websockets` library."""
+
+    @pytest.mark.asyncio
+    async def test_real_client_gets_welcome_events_and_pong(self, emitter: EventEmitter):
+        websockets = pytest.importorskip("websockets")
+        server = WebSocketServer(emitter)
+        port = _free_port()
+        serve_task = asyncio.create_task(server.start("127.0.0.1", port))
+        try:
+            async with await _connect(websockets, port) as ws:
+                welcome = json.loads(await asyncio.wait_for(ws.recv(), timeout=2))
+                assert welcome["type"] == "connected"
+
+                emitter.emit(StreamingEvent.chain_started("chain-1"))
+                event = await _recv_until(
+                    ws, lambda m: m["type"] == StreamingEventType.CHAIN_START.value
+                )
+                assert event["chain_id"] == "chain-1"
+
+                await ws.send(json.dumps({"type": "ping"}))
+                pong = await _recv_until(ws, lambda m: m.get("payload") == {"pong": True})
+                assert pong["type"] == StreamingEventType.HEARTBEAT.value
+        finally:
+            await server.stop()
+            await asyncio.wait_for(serve_task, timeout=2)
+
+    @pytest.mark.asyncio
+    async def test_stop_closes_the_listener(self, emitter: EventEmitter):
+        websockets = pytest.importorskip("websockets")
+        server = WebSocketServer(emitter)
+        port = _free_port()
+        serve_task = asyncio.create_task(server.start("127.0.0.1", port))
+        ws = await _connect(websockets, port)
+        await ws.close()
+
+        await server.stop()
+        await asyncio.wait_for(serve_task, timeout=2)
+
+        assert not server.is_running
+        with pytest.raises(ConnectionRefusedError):
+            await websockets.connect(f"ws://127.0.0.1:{port}")
 
 
 # =============================================================================

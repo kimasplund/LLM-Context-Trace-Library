@@ -23,6 +23,24 @@ class WebSocketClient:
     send_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
 
 
+class _WebsocketsConnection:
+    """Expose a `websockets` library connection through the Starlette-style API
+    (accept / send_text / receive_text) that handle_connection() speaks."""
+
+    def __init__(self, connection: Any) -> None:
+        self._connection = connection
+
+    async def accept(self) -> None:
+        """The websockets library completes the handshake before calling the handler."""
+
+    async def send_text(self, data: str) -> None:
+        await self._connection.send(data)
+
+    async def receive_text(self) -> str:
+        message = await self._connection.recv()
+        return message if isinstance(message, str) else message.decode()
+
+
 class WebSocketServer:
     """WebSocket server for broadcasting events to connected clients.
 
@@ -56,6 +74,7 @@ class WebSocketServer:
         self._lock = asyncio.Lock()
         self._running = False
         self._heartbeat_task: asyncio.Task | None = None
+        self._standalone_server: Any = None
 
         self._emitter.on("all", self._on_event)
 
@@ -207,15 +226,14 @@ class WebSocketServer:
         """Send loop for pushing events to client."""
         try:
             while True:
-                event = await asyncio.wait_for(
-                    client.send_queue.get(), timeout=self._heartbeat_interval
-                )
+                try:
+                    # asyncio.timeout (not wait_for) so cancellation is never lost on 3.11
+                    async with asyncio.timeout(self._heartbeat_interval):
+                        event = await client.send_queue.get()
+                except TimeoutError:
+                    event = StreamingEvent.heartbeat()
                 await websocket.send_text(event.to_json())
-        except TimeoutError:
-            heartbeat = StreamingEvent.heartbeat()
-            await websocket.send_text(heartbeat.to_json())
-            await self._send_loop(websocket, client)
-        except Exception:  # noqa: S110  # tracing must never break the host application
+        except Exception:  # noqa: S110  # send failed: the connection is gone, end this loop
             pass
 
     async def _handle_client_message(
@@ -269,13 +287,16 @@ class WebSocketServer:
         self._running = True
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
-        async def handler(websocket: Any, path: str) -> None:
-            await self.handle_connection(websocket)
+        # websockets>=14 calls handler(connection); older releases also pass the request path.
+        async def handler(connection: Any, path: str | None = None) -> None:
+            await self.handle_connection(_WebsocketsConnection(connection))
 
-        server = await websockets.serve(handler, host, port)  # type: ignore[arg-type]  # legacy (ws, path) handler; broken on websockets>=14, spec follow-up 11
         try:
-            await server.wait_closed()
+            async with websockets.serve(handler, host, port) as server:
+                self._standalone_server = server
+                await server.wait_closed()
         finally:
+            self._standalone_server = None
             self._running = False
             if self._heartbeat_task:
                 self._heartbeat_task.cancel()
@@ -283,6 +304,8 @@ class WebSocketServer:
     async def stop(self) -> None:
         """Stop the WebSocket server."""
         self._running = False
+        if self._standalone_server is not None:
+            self._standalone_server.close()
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

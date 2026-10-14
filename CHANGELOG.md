@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Standalone WebSocket server (`WebSocketServer.start` / `start_websocket_server`) now works with the `websockets` library: connections previously failed immediately (close code 1011), and `stop()` now closes the listener
+- WebSocket send loop no longer recurses on every heartbeat, which silently stopped event delivery after ~1000 idle heartbeats and, on Python 3.11, kept disconnected clients' loops running
+
 ### Changed
 
 - Project management with uv and a committed `uv.lock`; dev tools moved to a PEP 735 dependency group
