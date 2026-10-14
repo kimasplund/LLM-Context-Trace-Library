@@ -6,9 +6,12 @@ retrievers, and LLM calls with LCTL for time-travel debugging.
 Usage:
     from lctl.integrations.llamaindex import LCTLLlamaIndexCallback, trace_query_engine
 
-    # Option 1: Use callback directly
+    # Option 1: Use callback directly (global, via Settings)
+    from llama_index.core import Settings
+
     callback = LCTLLlamaIndexCallback()
-    index.as_query_engine(callback_manager=callback.get_callback_manager())
+    Settings.callback_manager = callback.get_callback_manager()
+    index.as_query_engine().query("...")
 
     # Option 2: Use helper to wrap existing engine
     traced = trace_query_engine(query_engine)
@@ -18,6 +21,7 @@ Usage:
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from typing import Any
@@ -104,9 +108,8 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
 
     Example:
         callback = LCTLLlamaIndexCallback(chain_id="my-query")
-        query_engine = index.as_query_engine(
-            callback_manager=callback.get_callback_manager()
-        )
+        Settings.callback_manager = callback.get_callback_manager()
+        query_engine = index.as_query_engine()
         response = query_engine.query("What is the capital of France?")
         callback.export("trace.lctl.json")
     """
@@ -128,6 +131,8 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             cleanup_interval: Cleanup interval in seconds (default 1 hour).
         """
         _check_llamaindex_available()
+        # BaseCallbackHandler.__init__ sets the ignore lists the CallbackManager reads.
+        BaseCallbackHandler.__init__(self, event_starts_to_ignore=[], event_ends_to_ignore=[])
 
         self._tracer = TracerDelegate(
             chain_id=chain_id,
@@ -423,6 +428,19 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             duration_ms=duration_ms,
             tokens_in=tokens["input"],
             tokens_out=tokens["output"],
+        )
+
+        serialized = payload.get(EventPayload.SERIALIZED) if EventPayload else None
+        model = "unknown"
+        if isinstance(serialized, dict):
+            model = str(serialized.get("model") or serialized.get("model_name") or "unknown")
+        self._safe_session_call(
+            "llm_trace",
+            messages=[{"role": "user", "content": event_info.get("input_summary", "")}],
+            response=truncate(response_text, 2000),
+            model=model,
+            usage={"input": tokens["input"], "output": tokens["output"]},
+            duration_ms=duration_ms,
         )
 
     def _on_query_start(self, event_id: str, payload: dict[str, Any]) -> None:
@@ -741,14 +759,43 @@ def _merge_callback_manager(
 
     new_manager = CallbackManager([*existing_handlers, new_handler])
 
-    if hasattr(existing_manager, "trace_map"):
-        new_manager.trace_map = existing_manager.trace_map
-    if hasattr(existing_manager, "event_starts_to_ignore"):
-        new_manager.event_starts_to_ignore = existing_manager.event_starts_to_ignore
-    if hasattr(existing_manager, "event_ends_to_ignore"):
-        new_manager.event_ends_to_ignore = existing_manager.event_ends_to_ignore
+    # ``trace_map`` is a read-only property backed by ``_trace_map`` in current
+    # llama-index-core; older releases exposed a plain attribute. Detect which.
+    existing_map = getattr(existing_manager, "_trace_map", None)
+    if existing_map is not None and hasattr(new_manager, "_trace_map"):
+        new_manager._trace_map = existing_map
+    elif hasattr(existing_manager, "trace_map"):
+        # Read-only on some versions; the fresh map is fine then.
+        with contextlib.suppress(AttributeError):
+            new_manager.trace_map = existing_manager.trace_map
 
     return new_manager
+
+
+def _attach_handler(engine: Any, handler: LCTLLlamaIndexCallback) -> None:
+    """Attach ``handler`` to an engine's existing callback manager.
+
+    Adds to the manager in place when it has ``add_handler`` so its trace state
+    and ignore lists are kept; otherwise swaps in a merged manager.
+    """
+    if not hasattr(engine, "callback_manager"):
+        return
+    manager = engine.callback_manager
+    if manager is not None and hasattr(manager, "add_handler"):
+        manager.add_handler(handler)
+    else:
+        engine.callback_manager = _merge_callback_manager(manager, handler)
+
+    # Retrievers keep their own manager (empty unless the caller passed one), so
+    # retrieval events only reach the handler if it is added there too.
+    retriever = getattr(engine, "_retriever", None) or getattr(engine, "retriever", None)
+    retriever_manager = getattr(retriever, "callback_manager", None)
+    if (
+        retriever_manager is not None
+        and retriever_manager is not engine.callback_manager
+        and hasattr(retriever_manager, "add_handler")
+    ):
+        retriever_manager.add_handler(handler)
 
 
 class LCTLQueryEngine:
@@ -790,11 +837,7 @@ class LCTLQueryEngine:
             session=session,
         )
 
-        if hasattr(query_engine, "callback_manager"):
-            query_engine.callback_manager = _merge_callback_manager(
-                query_engine.callback_manager,
-                self._callback,
-            )
+        _attach_handler(query_engine, self._callback)
 
     @property
     def query_engine(self) -> Any:
@@ -887,11 +930,7 @@ class LCTLChatEngine:
             session=session,
         )
 
-        if hasattr(chat_engine, "callback_manager"):
-            chat_engine.callback_manager = _merge_callback_manager(
-                chat_engine.callback_manager,
-                self._callback,
-            )
+        _attach_handler(chat_engine, self._callback)
 
     @property
     def chat_engine(self) -> Any:

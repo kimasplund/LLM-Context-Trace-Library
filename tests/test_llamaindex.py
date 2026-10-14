@@ -66,6 +66,18 @@ class MockCallbackManager:
         self.handlers = handlers or []
 
 
+class MockBaseCallbackHandler:
+    """Mock of BaseCallbackHandler: its __init__ sets the ignore lists, as the real one does."""
+
+    def __init__(
+        self,
+        event_starts_to_ignore: list[Any] | None = None,
+        event_ends_to_ignore: list[Any] | None = None,
+    ) -> None:
+        self.event_starts_to_ignore = tuple(event_starts_to_ignore or ())
+        self.event_ends_to_ignore = tuple(event_ends_to_ignore or ())
+
+
 class MockNode:
     """Mock LlamaIndex Node."""
 
@@ -146,7 +158,7 @@ mock_llama_index_core_callbacks = MagicMock()
 mock_llama_index_core_callbacks.CallbackManager = MockCallbackManager
 
 mock_llama_index_core_callbacks_base_handler = MagicMock()
-mock_llama_index_core_callbacks_base_handler.BaseCallbackHandler = object
+mock_llama_index_core_callbacks_base_handler.BaseCallbackHandler = MockBaseCallbackHandler
 
 mock_llama_index_core_callbacks_schema = MagicMock()
 mock_llama_index_core_callbacks_schema.CBEventType = MockCBEventType
