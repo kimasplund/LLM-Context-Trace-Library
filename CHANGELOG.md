@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenAI Agents: `LCTLRunHooks.on_tool_start`/`on_tool_end` match the SDK signatures (the old ones crashed) and take tool input from `context.tool_arguments`
 - CrewAI: steps are attributed to agent roles (and the manager), durations are real and clamped to non-negative, no spurious `ToolResult` steps, `kickoff_for_each` is traced, and user step callbacks are chained and always restored; installing the tracer twice is a no-op
 - VS Code extension: token and cost come from library traces (`data.tokens`, legacy `tokens_in`/`tokens_out` as fallback); the `lctl.autoRefresh`, `lctl.maxEventsInTree` and `lctl.defaultPricing` settings are honoured; palette commands offer a file picker when run without a selection; `npm test` runs `node:test` and CI runs it
+- Claude Code tracing: concurrent hooks no longer lose events or corrupt the chain (hooks hold `.claude/traces/.lctl.lock` and write atomically; a lock that cannot be taken within 10 s skips the write and exits 0); background/remote/teammate agent launches end their step with outcome `launched` (with `agent_id`) instead of a failure and no longer add a bogus result fact; input tokens include cache-creation and cache-read tokens (components kept in `tokens_detail`)
+- `lctl claude init --force` keeps a user's own hook running: when it backs a script up to `<script>.bak`, the `settings.json` entries that ran it are kept and now run the backup
+- Install hints in error messages, CLI output and examples use `pip install "lctl[<extra>] @ git+https://github.com/kimasplund/LLM-Context-Trace-Library"`; `lctl` is not published on PyPI
+- PydanticAI: `llm_trace` records the agent's real model name and is emitted inside the step's span on `run`, `run_sync` and streams
+- Webhook delivery closes HTTP error responses (no `ResourceWarning` on Python 3.14)
 - Examples: every example runs without an API key; duplicates merged; added `spans_demo` and `examples/README.md`
 
 ### Changed
@@ -67,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The dashboard, `WebSocketServer.start()` and `start_websocket_server()` bind to `127.0.0.1` by default; deployments that relied on `0.0.0.0` must pass the host explicitly.
 - With API keys configured, the whole API, `/ws` and SSE require a key from remote clients. This includes `/api/health` and `/api/rpa/auth/status`, which were previously open.
+- With API keys configured, the web UI only works from localhost (or through an SSH tunnel): remote browser access needs a key-aware UI (planned), because the UI's JavaScript never sends a key and the data routes it calls were open before.
 - The FastAPI auto-docs (`/docs`, `/redoc`, `/openapi.json`) are disabled because they exposed the route schema to unauthenticated clients.
 - The AutoGen integration and the `autogen` extra are removed.
 - `ReplayEngine.diff()` ignores volatile fields by default; use `ignore_volatile=False` (`lctl diff --strict`) for the old behaviour.

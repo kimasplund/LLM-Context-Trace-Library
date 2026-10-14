@@ -180,21 +180,22 @@ def test_same_agents_traced_by_two_crews_in_sequence():
 
 
 def test_durations_start_at_the_agents_task_not_the_run():
-    r, w = _agents(researcher_delay=0.15)
+    r, w = _agents(researcher_delay=0.3)
     crew = LCTLCrew(agents=[r, w], tasks=_tasks(r, w))
     crew.kickoff(inputs={"topic": "x"})
     writer_ends = [
         e for e in crew.session.chain.events if e.type == EventType.STEP_END and e.agent == "writer"
     ]
     assert writer_ends
-    assert writer_ends[0].data["duration_ms"] < 100
+    # The researcher takes ~600 ms (two LLM calls); a run-start clock would include it.
+    assert writer_ends[0].data["duration_ms"] < 300
 
 
 def test_second_kickoff_excludes_idle_time():
     r, w = _agents(runs=2)
     crew = LCTLCrew(agents=[r, w], tasks=_tasks(r, w))
     crew.kickoff(inputs={"topic": "x"})
-    time.sleep(0.5)
+    time.sleep(1.0)
     before = len(crew.session.chain.events)
     crew.kickoff(inputs={"topic": "x"})
     first = next(
@@ -202,7 +203,7 @@ def test_second_kickoff_excludes_idle_time():
         for e in crew.session.chain.events[before:]
         if e.type == EventType.STEP_END and e.agent == "researcher"
     )
-    assert first.data["duration_ms"] < 400
+    assert first.data["duration_ms"] < 600
 
 
 def test_hierarchical_manager_steps_are_not_unknown():
