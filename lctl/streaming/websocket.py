@@ -293,7 +293,7 @@ class WebSocketServer:
                 with contextlib.suppress(asyncio.QueueFull):
                     client.send_queue.put_nowait(heartbeat)
 
-    async def start(self, host: str = "0.0.0.0", port: int = 8081) -> None:  # noqa: S104  # bind address is user-configurable; default tracked as spec follow-up
+    async def start(self, host: str = "127.0.0.1", port: int = 8081) -> None:
         """Start the WebSocket server (standalone mode).
 
         Serves until stop() is called, from this or any other thread/event loop.
@@ -501,7 +501,7 @@ def create_sse_response(
 
 def start_websocket_server(
     emitter: EventEmitter,
-    host: str = "0.0.0.0",  # noqa: S104  # bind address is user-configurable; default tracked as spec follow-up
+    host: str = "127.0.0.1",
     port: int = 8081,
     run_in_thread: bool = False,
 ) -> WebSocketServer | None:

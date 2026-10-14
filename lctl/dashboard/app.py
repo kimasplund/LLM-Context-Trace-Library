@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.requests import HTTPConnection
 
 from .. import __version__
 from ..core.events import Chain, ReplayEngine
@@ -156,10 +157,52 @@ def _get_cached_engine(app: FastAPI, file_path: Path) -> ReplayEngine:
         raise HTTPException(status_code=500, detail=f"Error loading chain: {e}") from e
 
 
-def _is_localhost(request: Request) -> bool:
+def _is_localhost(request: HTTPConnection) -> bool:
     """Check if request is from localhost."""
     client_host = request.client.host if request.client else ""
     return client_host in ("127.0.0.1", "localhost", "::1")
+
+
+# Paths reachable without a key. Everything else registered on the app is guarded,
+# so a newly added route cannot silently skip authentication.
+_PUBLIC_PATHS = frozenset({"/"})
+# Paths whose clients cannot set headers (browser EventSource/WebSocket) may use ?api_key=.
+_QUERY_KEY_PATHS = frozenset({"/ws", "/api/events/stream"})
+
+
+def _auth_failure(
+    app: FastAPI, conn: HTTPConnection, presented: str | None
+) -> tuple[int, str] | None:
+    """Return (status, detail) when the connection must be refused, else None.
+
+    Security behavior:
+    - If LCTL_LOCALHOST_BYPASS=true (default): skip auth for localhost
+    - If no keys are configured and LCTL_REQUIRE_API_KEY is not true: allow
+    - Otherwise a valid key is required
+    """
+    if app.state.localhost_bypass and _is_localhost(conn):
+        return None
+    if not app.state.require_api_key and not app.state.api_keys:
+        return None
+    if not presented:
+        return 401, "API key required. Set X-API-Key header."
+    # Constant-time comparison to prevent timing attacks
+    if not any(hmac.compare_digest(presented, valid) for valid in app.state.api_keys):
+        return 403, "Invalid API key"
+    return None
+
+
+def _presented_key(conn: HTTPConnection) -> str | None:
+    key = conn.headers.get("x-api-key")
+    if not key and conn.url.path in _QUERY_KEY_PATHS:
+        key = conn.query_params.get("api_key")
+    return key
+
+
+def _raise_auth_failure(failure: tuple[int, str]) -> None:
+    status, detail = failure
+    headers = {"WWW-Authenticate": "ApiKey"} if status == 401 else None
+    raise HTTPException(status_code=status, detail=detail, headers=headers)
 
 
 def _create_verify_api_key(app: FastAPI) -> Callable:
@@ -168,41 +211,27 @@ def _create_verify_api_key(app: FastAPI) -> Callable:
     async def verify_api_key(
         request: Request, x_api_key: str | None = Header(None, alias="X-API-Key")
     ) -> bool:
-        """Verify API key for protected endpoints.
-
-        Security behavior:
-        - If LCTL_REQUIRE_API_KEY=true: Always require valid API key
-        - If LCTL_LOCALHOST_BYPASS=true (default): Skip auth for localhost
-        - Otherwise: Require API key for non-localhost requests
-        """
-        # Check if we should bypass for localhost
-        if app.state.localhost_bypass and _is_localhost(request):
-            return True
-
-        # If API key enforcement is disabled and no keys configured, allow
-        if not app.state.require_api_key and not app.state.api_keys:
-            return True
-
-        # Require API key if enforcement enabled or keys are configured
-        if app.state.require_api_key or app.state.api_keys:
-            if not x_api_key:
-                raise HTTPException(
-                    status_code=401,
-                    detail="API key required. Set X-API-Key header.",
-                    headers={"WWW-Authenticate": "ApiKey"},
-                )
-
-            # Constant-time comparison to prevent timing attacks
-            key_valid = any(
-                hmac.compare_digest(x_api_key, valid_key) for valid_key in app.state.api_keys
-            )
-
-            if not key_valid:
-                raise HTTPException(status_code=403, detail="Invalid API key")
-
+        """Verify API key for protected endpoints."""
+        failure = _auth_failure(app, request, x_api_key)
+        if failure:
+            _raise_auth_failure(failure)
         return True
 
     return verify_api_key
+
+
+def _create_app_guard(app: FastAPI) -> Callable:
+    """App-wide dependency: every HTTP route except the public ones needs a key."""
+
+    async def guard(conn: HTTPConnection) -> None:
+        # WebSocket handshakes are checked in the handler, where the close code is set.
+        if conn.scope["type"] == "websocket" or conn.url.path in _PUBLIC_PATHS:
+            return
+        failure = _auth_failure(app, conn, _presented_key(conn))
+        if failure:
+            _raise_auth_failure(failure)
+
+    return guard
 
 
 # =============================================================================
@@ -680,6 +709,10 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
         - {"type": "unsubscribe"}
         - {"type": "ping"}
         """
+        failure = _auth_failure(app, websocket, _presented_key(websocket))
+        if failure:
+            await websocket.close(code=1008, reason=failure[1])
+            return
         await websocket.accept()
 
         client_id = str(uuid4())[:8]
@@ -1318,6 +1351,9 @@ def create_app(working_dir: Path | None = None) -> FastAPI:
         description="Web-based visualization for multi-agent LLM workflows",
         version=__version__,
     )
+    # Guard every HTTP route (the WebSocket checks its own handshake). The guard reads
+    # app.state lazily, so registering it before the state exists is fine.
+    app.router.dependencies.append(Depends(_create_app_guard(app)))
 
     # Setup middleware
     _setup_middleware(app)
@@ -1347,6 +1383,15 @@ def create_app(working_dir: Path | None = None) -> FastAPI:
 # =============================================================================
 
 
+def create_app_from_env() -> FastAPI:
+    """App factory for uvicorn's reload mode (import string + ``factory=True``).
+
+    Reads the working directory from ``LCTL_DASHBOARD_DIR``.
+    """
+    env_dir = os.environ.get("LCTL_DASHBOARD_DIR")
+    return create_app(Path(env_dir) if env_dir else None)
+
+
 def run_dashboard(
     host: str = "127.0.0.1",
     port: int = 8080,
@@ -1363,7 +1408,17 @@ def run_dashboard(
     """
     import uvicorn
 
-    # Create app with working directory
-    app = create_app(working_dir)
+    if reload:
+        # uvicorn can only reload from an import string; pass the directory via env.
+        os.environ["LCTL_DASHBOARD_DIR"] = str(working_dir or Path.cwd())
+        uvicorn.run(
+            "lctl.dashboard.app:create_app_from_env",
+            factory=True,
+            host=host,
+            port=port,
+            reload=True,
+            log_level="info",
+        )
+        return
 
-    uvicorn.run(app, host=host, port=port, reload=reload, log_level="info")
+    uvicorn.run(create_app(working_dir), host=host, port=port, log_level="info")

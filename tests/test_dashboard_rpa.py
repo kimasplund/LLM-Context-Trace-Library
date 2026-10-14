@@ -177,7 +177,7 @@ def rpa_client_localhost_bypass(rpa_temp_chain_dir):
     app.state.api_keys = {"test-api-key-12345"}
     app.state.require_api_key = True
     app.state.localhost_bypass = True
-    return TestClient(app)
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 # =============================================================================
@@ -234,7 +234,9 @@ class TestRpaApiKeyAuthentication:
 
     def test_rpa_auth_status_endpoint(self, rpa_client_with_api_key):
         """Test auth status endpoint returns correct configuration."""
-        response = rpa_client_with_api_key.get("/api/rpa/auth/status")
+        response = rpa_client_with_api_key.get(
+            "/api/rpa/auth/status", headers={"X-API-Key": "test-api-key-12345"}
+        )
 
         assert response.status_code == 200
         data = response.json()

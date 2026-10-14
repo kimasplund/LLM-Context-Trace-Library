@@ -777,7 +777,13 @@ def metrics(chain_file: str, output_format: str, as_json: bool):
 
 @cli.command()
 @click.option("--port", "-p", default=8080, help="Port to run dashboard on")
-@click.option("--host", "-h", default="0.0.0.0", help="Host to bind to")  # noqa: S104  # bind address is user-configurable; default tracked as spec follow-up
+@click.option(
+    "--host",
+    "-h",
+    default="127.0.0.1",
+    show_default=True,
+    help="Host to bind to (0.0.0.0 exposes the dashboard on the network)",
+)
 @click.option(
     "--dir",
     "-d",
