@@ -143,6 +143,7 @@ filterwarnings = [
     # slowapi (dashboard rate limiting) calls asyncio.iscoroutinefunction, deprecated in 3.14
     "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning:slowapi",
 ]
+markers = ["integration: needs a real framework package; run in its extra's environment"]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
 

@@ -112,3 +112,31 @@ jobs:
         working-directory: vscode-lctl
       - run: npm run build:webview
         working-directory: vscode-lctl
+
+  integrations:
+    name: Integration (${{ matrix.extra }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        extra: [langchain, crewai, openai-agents, pydantic-ai, semantic-kernel, dspy, llamaindex]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.1"
+          enable-cache: true
+          python-version: "3.13"
+      - name: Sync the extra's environment
+        env:
+          EXTRA: ${{ matrix.extra }}
+        run: uv sync --locked --extra "$EXTRA"
+      - name: Live framework tests
+        # Exit 5 (nothing collected) is tolerated while an extra has no live tests yet; every
+        # module is importorskip'd, so such a cell reports skips only. Drop once all cells have tests.
+        run: |
+          uv run --no-sync pytest -m integration -q --no-cov -rs tests/integration || [ "$?" -eq 5 ]
