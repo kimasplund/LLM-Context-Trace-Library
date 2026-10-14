@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from fastapi import (
@@ -26,7 +27,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -36,6 +37,7 @@ from .. import __version__
 from ..core.events import Chain, ReplayEngine
 from ..evaluation.metrics import ChainMetrics
 from ..streaming.emitter import EventEmitter, StreamingEvent, StreamingEventType
+from .webhooks import WebhookDispatcher
 
 # =============================================================================
 # Request/Response Models
@@ -78,6 +80,14 @@ class WebhookRegistration(BaseModel):
     events: list[str] = ["error", "step_end"]
     chain_id: str | None = None
     secret: str | None = None
+
+    @field_validator("url")
+    @classmethod
+    def _http_url_only(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            raise ValueError("webhook url must be an absolute http(s) URL")
+        return value
 
 
 class RpaEventSubmission(BaseModel):
@@ -282,6 +292,13 @@ def _setup_app_state(app: FastAPI, working_dir: Path | None) -> None:
     app.state.engine_cache = {}  # Cache for ReplayEngine instances: (abs_path, mtime) -> engine
     app.state.emitter = EventEmitter(max_history=500)  # Global event emitter for streaming
     app.state.webhooks = {}  # Registered webhooks by ID: dict[str, WebhookRegistration]
+    dispatcher = WebhookDispatcher()
+    app.state.webhook_dispatcher = dispatcher
+
+    def _deliver_webhooks(event: StreamingEvent) -> None:
+        dispatcher.dispatch(event.to_dict())  # never raises, never blocks
+
+    app.state.emitter.on("all", _deliver_webhooks)
 
     # API Key Security Configuration
     # Load API keys from environment variable (comma-separated) or generate one
@@ -1212,6 +1229,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
         """
         webhook_id = str(uuid4())[:12]
         app.state.webhooks[webhook_id] = webhook
+        app.state.webhook_dispatcher.register(webhook_id, webhook)
 
         return {
             "webhook_id": webhook_id,
@@ -1235,11 +1253,20 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
             )
         return {"webhooks": webhooks, "total": len(webhooks)}
 
+    @app.get("/api/rpa/webhooks/{webhook_id}/deliveries", response_class=JSONResponse)
+    async def webhook_deliveries(webhook_id: str):
+        """Last 100 delivery records for a webhook (newest last)."""
+        if webhook_id not in app.state.webhooks:
+            raise HTTPException(status_code=404, detail="Webhook not found")
+        deliveries = app.state.webhook_dispatcher.deliveries(webhook_id)
+        return {"webhook_id": webhook_id, "deliveries": deliveries, "total": len(deliveries)}
+
     @app.delete("/api/rpa/webhooks/{webhook_id}", response_class=JSONResponse)
     async def delete_webhook(webhook_id: str, _auth: bool = Depends(verify_api_key)):
         """Unregister a webhook."""
         if webhook_id in app.state.webhooks:
             del app.state.webhooks[webhook_id]
+            app.state.webhook_dispatcher.unregister(webhook_id)
             return {"status": "deleted", "webhook_id": webhook_id}
         raise HTTPException(status_code=404, detail="Webhook not found")
 
@@ -1354,7 +1381,18 @@ def create_app(working_dir: Path | None = None) -> FastAPI:
     Returns:
         Configured FastAPI application.
     """
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        dispatcher = app.state.webhook_dispatcher
+        dispatcher.bind_loop(asyncio.get_running_loop())
+        try:
+            yield
+        finally:
+            await dispatcher.aclose()
+
     app = FastAPI(
+        lifespan=lifespan,
         title="LCTL Dashboard",
         description="Web-based visualization for multi-agent LLM workflows",
         version=__version__,
