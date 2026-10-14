@@ -233,7 +233,7 @@ def _setup_rate_limiter(app: FastAPI) -> Limiter:
     """Setup rate limiting."""
     limiter = Limiter(key_func=get_remote_address)
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]  # slowapi's handler is typed for its own exception
     return limiter
 
 
@@ -243,7 +243,7 @@ def _setup_app_state(app: FastAPI, working_dir: Path | None) -> None:
     app.state.working_dir = working_dir or Path.cwd()
     app.state.engine_cache = {}  # Cache for ReplayEngine instances: (abs_path, mtime) -> engine
     app.state.emitter = EventEmitter(max_history=500)  # Global event emitter for streaming
-    app.state.webhooks: dict[str, WebhookRegistration] = {}  # Registered webhooks by ID
+    app.state.webhooks = {}  # Registered webhooks by ID: dict[str, WebhookRegistration]
 
     # API Key Security Configuration
     # Load API keys from environment variable (comma-separated) or generate one
@@ -436,7 +436,12 @@ def _register_core_endpoints(app: FastAPI, limiter: Limiter) -> None:
                 "top_bottleneck": bottlenecks[0] if bottlenecks else None,
             }
 
-        fact_comparison = {"only_in_first": [], "only_in_second": [], "different": [], "same": []}
+        fact_comparison: dict[str, list[Any]] = {
+            "only_in_first": [],
+            "only_in_second": [],
+            "different": [],
+            "same": [],
+        }
 
         all_fact_ids = set(state1.facts.keys()) | set(state2.facts.keys())
         for fact_id in all_fact_ids:
@@ -579,7 +584,7 @@ def _register_analysis_endpoints(app: FastAPI) -> None:
         fact_heatmap.sort(key=lambda x: x["seq"])
 
         issues = []
-        warnings = []
+        warnings: list[dict[str, Any]] = []
 
         if error_count > 0:
             issues.append(

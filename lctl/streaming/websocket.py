@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import json
 import threading
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -272,7 +272,7 @@ class WebSocketServer:
         async def handler(websocket: Any, path: str) -> None:
             await self.handle_connection(websocket)
 
-        server = await websockets.serve(handler, host, port)
+        server = await websockets.serve(handler, host, port)  # type: ignore[arg-type]  # legacy (ws, path) handler; broken on websockets>=14, spec follow-up 11
         try:
             await server.wait_closed()
         finally:
@@ -319,7 +319,7 @@ class SSEHandler:
 
     async def event_stream(
         self, filters: dict[str, Any] | None = None, include_history: bool = False
-    ) -> Iterator[str]:
+    ) -> AsyncIterator[str]:
         """Generate an SSE event stream.
 
         Args:
@@ -391,7 +391,7 @@ class SSEHandler:
 
 def create_sse_response(
     emitter: EventEmitter, filters: dict[str, Any] | None = None, include_history: bool = False
-) -> Iterator[str]:
+) -> AsyncIterator[str]:
     """Create an SSE response generator.
 
     Convenience function for creating SSE responses.

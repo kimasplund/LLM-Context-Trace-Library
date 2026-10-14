@@ -185,7 +185,7 @@ def welch_t_test(
 
     if se_diff == 0:
         t_stat = 0.0
-        df = n_a + n_b - 2
+        df: float = n_a + n_b - 2
     else:
         t_stat = (mean_a - mean_b) / se_diff
 

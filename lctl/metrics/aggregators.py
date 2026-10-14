@@ -1,5 +1,6 @@
 """LCTL Metric Aggregators - Aggregate metrics across multiple chains."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -194,7 +195,7 @@ class AggregatedMetrics:
         }
 
 
-def _percentile(sorted_values: list[float], p: float) -> float:
+def _percentile(sorted_values: Sequence[float], p: float) -> float:
     """Calculate percentile from sorted values."""
     if not sorted_values:
         return 0.0

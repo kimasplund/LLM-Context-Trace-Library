@@ -49,7 +49,7 @@ except ImportError:
 
 def _extract_signature_info(signature: Any) -> dict[str, Any]:
     """Extract information from a DSPy signature."""
-    info = {"input_fields": [], "output_fields": []}
+    info: dict[str, list[Any]] = {"input_fields": [], "output_fields": []}
 
     if signature is None:
         return info
@@ -617,7 +617,7 @@ def _wrap_module(module: Any, callback: LCTLDSPyCallback) -> Any:
         return _wrap_module_instance(module, callback)
 
 
-def _wrap_module_class(module_class: type, callback: LCTLDSPyCallback) -> type:
+def _wrap_module_class(module_class: type[Any], callback: LCTLDSPyCallback) -> type:
     """Wrap a DSPy module class with LCTL tracing.
 
     Creates a subclass with traced forward() method instead of mutating the original.

@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, Self
 
 from .emitter import EventEmitter, StreamingEvent, StreamingEventType
 
@@ -49,7 +49,7 @@ class EventSubscriber(ABC):
             self._subscribed = True
         return self
 
-    def unsubscribe(self) -> "EventSubscriber":
+    def unsubscribe(self) -> Self:
         """Unsubscribe from events.
 
         Returns:
@@ -303,7 +303,7 @@ class BufferedSubscriber(EventSubscriber):
         with self._lock:
             return len(self._buffer)
 
-    def unsubscribe(self) -> "BufferedSubscriber":
+    def unsubscribe(self) -> Self:
         """Unsubscribe and flush remaining events."""
         self.flush()
         if self._flush_timer is not None:
@@ -398,7 +398,8 @@ class AsyncSubscriber(EventSubscriber):
         """Main processing loop."""
         while self._running:
             try:
-                event = await asyncio.wait_for(self._queue.get(), timeout=1.0)
+                # start() sets _queue before _running; stop() clears _running first
+                event = await asyncio.wait_for(self._queue.get(), timeout=1.0)  # type: ignore[union-attr]
                 try:
                     result = self._handler(event)
                     if asyncio.iscoroutine(result):

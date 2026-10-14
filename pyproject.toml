@@ -114,6 +114,21 @@ ignore = ["E501"]
 "tests/**" = ["S101", "S105", "S106"]
 "benchmarks/**" = ["S311"]
 
+[tool.mypy]
+python_version = "3.11"
+files = ["lctl"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "langchain.*", "langchain_core.*", "crewai.*", "autogen.*", "autogen_core.*", "ag2.*",
+    "agents.*", "pydantic_ai.*", "semantic_kernel.*", "dspy.*", "llama_index.*",
+    "slowapi.*", "uvicorn.*", "websockets.*",
+]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --cov=lctl --cov-report=term-missing"

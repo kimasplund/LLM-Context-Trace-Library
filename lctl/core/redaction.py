@@ -79,7 +79,7 @@ class Redactor:
         if not self.enabled or depth > max_depth:
             return data
 
-        result = {}
+        result: dict[str, Any] = {}
         sensitive_key_exact = {
             "password",
             "secret",

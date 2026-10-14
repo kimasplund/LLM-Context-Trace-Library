@@ -271,6 +271,7 @@ All of these are verified with command output before the work is called done:
 8. Anything the `S` rules or the leaky-test diagnosis surface as a real library defect (§4.2, §4.3).
 9. **`lctl/streaming/subscriber.py` polls with `asyncio.sleep` in a `while` loop** (ASYNC110). An `asyncio.Event`-based wait would cut latency and wakeups. This is a behavior change.
 10. **Examples' calculator tools `eval()` model output** (`examples/langchain_example.py`, `examples/openai_agents_example.py`). Users copy examples, so replace this with a safe arithmetic evaluator.
+11. **High priority: the standalone WebSocket server is broken on websockets ≥14.** `WebSocketServer.start` registers a legacy `handler(websocket, path)`. websockets 16 (which `uvicorn[standard]` installs) calls handlers with one argument, so every connection fails with close code 1011 (`TypeError: missing 1 required positional argument: 'path'`). This was reproduced 2026-10-14. Fix: make `path` optional, and add a test against the real websockets server.
 
 ## 7. Risks
 

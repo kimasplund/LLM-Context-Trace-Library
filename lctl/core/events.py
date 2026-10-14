@@ -461,7 +461,9 @@ class ReplayEngine:
             of total time for each step.
         """
         step_durations = []
-        step_stack = []  # Stack of {'agent': str, 'seq': int, 'start_time': datetime}
+        step_stack: list[
+            dict[str, Any]
+        ] = []  # Stack of {'agent': str, 'seq': int, 'start_time': datetime}
 
         for event in self.chain.events:
             if event.type == EventType.STEP_START:
@@ -503,7 +505,7 @@ class ReplayEngine:
 
     def get_confidence_timeline(self) -> dict[str, list[dict[str, Any]]]:
         """Track confidence changes for each fact."""
-        timelines = {}
+        timelines: dict[str, list[dict[str, Any]]] = {}
 
         for event in self.chain.events:
             if event.type in (EventType.FACT_ADDED, EventType.FACT_MODIFIED):

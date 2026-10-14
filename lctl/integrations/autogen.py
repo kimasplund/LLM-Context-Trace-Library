@@ -39,14 +39,14 @@ try:
     AUTOGEN_MODE = "modern"
     AUTOGEN_AVAILABLE = True
     # Define legacy names as None for compatibility
-    Agent = None
-    ConversableAgent = None
-    GroupChat = None
-    GroupChatManager = None
+    Agent: Any = None
+    ConversableAgent: Any = None
+    GroupChat: Any = None
+    GroupChatManager: Any = None
 except ImportError:
     try:
         # Try legacy AutoGen / AG2
-        from autogen import Agent, ConversableAgent, GroupChat, GroupChatManager
+        from autogen import Agent, ConversableAgent, GroupChat, GroupChatManager  # type: ignore[no-redef]
 
         AUTOGEN_MODE = "legacy"
         AUTOGEN_AVAILABLE = True
@@ -56,7 +56,7 @@ except ImportError:
     except ImportError:
         try:
             # Fallback for ag2 renaming of legacy
-            from ag2 import Agent, ConversableAgent, GroupChat, GroupChatManager  # noqa: F401
+            from ag2 import Agent, ConversableAgent, GroupChat, GroupChatManager  # type: ignore[no-redef]  # noqa: F401  # availability probe
 
             AUTOGEN_MODE = "legacy"
             AUTOGEN_AVAILABLE = True

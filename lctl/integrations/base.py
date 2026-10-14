@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 import time
 from abc import ABC
+from collections.abc import Callable
 from typing import Any
 
 from ..core.session import LCTLSession
@@ -30,7 +31,7 @@ def truncate(text: str, max_length: int = 200) -> str:
     return text[: max_length - 3] + "..."
 
 
-def check_availability(module_name: str, import_check: callable) -> bool:
+def check_availability(module_name: str, import_check: Callable[[], object]) -> bool:
     """Check if a framework is available.
 
     Args:

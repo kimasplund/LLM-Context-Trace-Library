@@ -858,7 +858,7 @@ class LCTLClaudeCodeTracer:
         """
         import subprocess
 
-        result = {"commits": [], "uncommitted_changes": []}
+        result: dict[str, Any] = {"commits": [], "uncommitted_changes": []}
 
         try:
             # Get recent commits during workflow
@@ -1349,7 +1349,7 @@ except Exception as e:
 
         # Create state file pointing to this chain
         state_path = traces_dir / ".lctl-state.json"
-        state = {
+        state: dict[str, Any] = {
             "chain_path": str(chain_path),
             "agent_stack": [],
             "tool_counts": {},
@@ -1385,7 +1385,7 @@ def validate_hooks(hooks_dir: str = ".claude/hooks") -> dict[str, Any]:
     import stat
 
     hooks_path = Path(hooks_dir)
-    result = {
+    result: dict[str, Any] = {
         "valid": True,
         "hooks": {},
         "warnings": [],
@@ -1697,7 +1697,7 @@ MODEL_PRICING = {
 }
 
 
-def estimate_cost(tokens_in: int, tokens_out: int, model: str = "default") -> dict[str, float]:
+def estimate_cost(tokens_in: int, tokens_out: int, model: str = "default") -> dict[str, Any]:
     """Estimate cost based on token usage.
 
     Args:

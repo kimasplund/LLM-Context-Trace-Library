@@ -40,13 +40,13 @@ try:
     OPENAI_AGENTS_AVAILABLE = True
 except ImportError:
     OPENAI_AGENTS_AVAILABLE = False
-    Agent = None  # type: ignore[assignment, misc]
-    RunContextWrapper = None  # type: ignore[assignment, misc]
-    RunHooks = object  # type: ignore[assignment, misc]
-    Tool = None  # type: ignore[assignment, misc]
-    Usage = None  # type: ignore[assignment, misc]
-    Trace = None  # type: ignore[assignment, misc]
-    TracingProcessor = object  # type: ignore[assignment, misc]
+    Agent = None
+    RunContextWrapper = None
+    RunHooks = object
+    Tool = None
+    Usage = None
+    Trace = None
+    TracingProcessor = object
 
 
 # Default timeout for stale entry cleanup (1 hour)
@@ -161,8 +161,8 @@ class LCTLRunHooks(RunHooks):
             stale_context_keys = [
                 k for k, v in self._tool_context_map.items() if v not in self._tool_stack
             ]
-            for k in stale_context_keys:
-                del self._tool_context_map[k]
+            for key in stale_context_keys:
+                del self._tool_context_map[key]
 
         return removed_count
 
