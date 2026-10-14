@@ -1106,9 +1106,9 @@ class TestClaudeCommands:
         monkeypatch.chdir(tmp_path)
         assert runner.invoke(cli, ["claude", "init"]).exit_code == 0
         script = Path(".claude/hooks/Stop.sh")
-        script.write_text("#!/bin/bash\n# LCTL customised\n")
+        script.write_text("#!/bin/bash\n# LCTL Tracing Hook - customised\n")
         assert runner.invoke(cli, ["claude", "init"]).exit_code == 0
-        assert script.read_text() == "#!/bin/bash\n# LCTL customised\n"
+        assert script.read_text() == "#!/bin/bash\n# LCTL Tracing Hook - customised\n"
         assert runner.invoke(cli, ["claude", "init", "--force"]).exit_code == 0
         assert "PYTHON_EOF" in script.read_text()
 
@@ -1150,6 +1150,179 @@ class TestClaudeCommands:
         result = runner.invoke(cli, ["claude", "validate"])
         assert result.exit_code != 0
         assert "lctl claude init" in result.output
+
+    def _foreign_hook_setup(self, tmp_path: Path) -> tuple[Path, Path, str]:
+        hooks = Path(".claude/hooks")
+        hooks.mkdir(parents=True)
+        script = hooks / "PreToolUse.sh"
+        script.write_text("#!/bin/bash\n# my own rm guard\n")
+        settings = Path(".claude/settings.json")
+        settings.write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "PreToolUse": [
+                            {
+                                "matcher": "Bash",
+                                "hooks": [
+                                    {
+                                        "type": "command",
+                                        "command": "bash .claude/hooks/PreToolUse.sh",
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                }
+            )
+        )
+        return script, settings, script.read_text()
+
+    def test_init_refuses_to_clobber_foreign_script(
+        self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        script, settings, original = self._foreign_hook_setup(tmp_path)
+        before = settings.read_bytes()
+        result = runner.invoke(cli, ["claude", "init"])
+        assert result.exit_code == 1
+        assert "PreToolUse.sh" in result.output
+        assert script.read_text() == original
+        assert settings.read_bytes() == before
+        assert not Path(".claude/settings.json.bak").exists()
+        assert not Path(".claude/hooks/Stop.sh").exists()
+
+    def test_init_force_backs_up_foreign_script(
+        self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        script, _settings, original = self._foreign_hook_setup(tmp_path)
+        result = runner.invoke(cli, ["claude", "init", "--force"])
+        assert result.exit_code == 0, result.output
+        assert Path(".claude/hooks/PreToolUse.sh.bak").read_text() == original
+        assert "LCTL Tracing Hook" in script.read_text()
+
+    def test_hook_commands_survive_awkward_project_paths(
+        self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        import subprocess
+        import sys
+
+        project = tmp_path / "My Pro'ject"
+        project.mkdir()
+        (project / ".venv").symlink_to(sys.prefix)
+        monkeypatch.chdir(project)
+        assert runner.invoke(cli, ["claude", "init"]).exit_code == 0
+        settings = json.loads(Path(".claude/settings.json").read_text())
+        for event in ("PreToolUse", "Stop", "SessionStart"):
+            command = settings["hooks"][event][0]["hooks"][0]["command"]
+            proc = subprocess.run(  # noqa: S603
+                ["bash", "-c", command],  # noqa: S607
+                input=json.dumps({"session_id": "s", "tool_name": "Bash", "tool_input": {}}),
+                capture_output=True,
+                text=True,
+                cwd=tmp_path,
+                timeout=60,
+            )
+            assert proc.returncode == 0, (event, proc.stderr)
+
+    def test_init_chain_id_is_a_prefix(
+        self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(cli, ["claude", "init", "--chain-id", "my-project"])
+        assert result.exit_code == 0
+        assert "Chain prefix: my-project" in result.output
+        assert "my-project" in Path(".claude/hooks/SessionStart.sh").read_text()
+
+    @pytest.mark.parametrize("bad_hooks", [[], {"PreToolUse": {}}])
+    def test_init_refuses_unexpected_settings_shapes(
+        self,
+        runner: CliRunner,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        bad_hooks: object,
+    ):
+        monkeypatch.chdir(tmp_path)
+        settings = Path(".claude/settings.json")
+        settings.parent.mkdir()
+        settings.write_text(json.dumps({"hooks": bad_hooks}))
+        before = settings.read_bytes()
+        result = runner.invoke(cli, ["claude", "init"])
+        assert result.exit_code == 1
+        assert settings.read_bytes() == before
+        assert not Path(".claude/settings.json.bak").exists()
+        assert not Path(".claude/hooks").exists()
+
+    def test_init_malformed_settings_json_untouched(
+        self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        settings = Path(".claude/settings.json")
+        settings.parent.mkdir()
+        settings.write_text("{not json")
+        result = runner.invoke(cli, ["claude", "init"])
+        assert result.exit_code == 1
+        assert settings.read_text() == "{not json"
+        assert not Path(".claude/settings.json.bak").exists()
+
+    def test_upgrade_from_old_install_end_to_end(
+        self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        assert runner.invoke(cli, ["claude", "init"]).exit_code == 0
+        hooks = Path(".claude/hooks")
+        for name in ("SessionStart.sh", "SessionEnd.sh"):
+            (hooks / name).unlink()
+        (hooks / "PreToolUse.sh").write_text("#!/bin/bash\n# LCTL Tracing Hook - old\n")
+        cmd = f"cd {tmp_path} && bash .claude/hooks"
+        Path(".claude/settings.json").write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "PreToolUse": [
+                            {
+                                "matcher": "Task",
+                                "hooks": [{"type": "command", "command": f"{cmd}/PreToolUse.sh"}],
+                            }
+                        ]
+                    }
+                }
+            )
+        )
+        result = runner.invoke(cli, ["claude", "validate"])
+        assert result.exit_code != 0
+        assert "All hooks valid" not in result.output
+        advice = [
+            line.split("'")[1] for line in result.output.splitlines() if "lctl claude init" in line
+        ]
+        assert advice == ["lctl claude init --force"]
+        run = runner.invoke(cli, advice[0].split()[1:])
+        assert run.exit_code == 0, run.output
+        assert runner.invoke(cli, ["claude", "validate"]).exit_code == 0
+
+    def test_plain_init_warns_about_outdated_kept_scripts(
+        self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        assert runner.invoke(cli, ["claude", "init"]).exit_code == 0
+        Path(".claude/hooks/Stop.sh").write_text("#!/bin/bash\n# LCTL Tracing Hook - old\n")
+        result = runner.invoke(cli, ["claude", "init"])
+        assert result.exit_code == 0
+        assert "--force" in result.output
+
+    def test_validate_without_registered_hooks_fails(
+        self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        assert runner.invoke(cli, ["claude", "init"]).exit_code == 0
+        Path(".claude/settings.json").write_text("{}")
+        result = runner.invoke(cli, ["claude", "validate"])
+        assert result.exit_code != 0
+        assert "lctl claude init" in result.output
+        assert "--force" not in result.output
+        Path(".claude/settings.json").unlink()
+        assert runner.invoke(cli, ["claude", "validate"]).exit_code != 0
 
     def test_claude_status_no_session(
         self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -901,7 +901,7 @@ def claude():
 @claude.command("init")
 @click.option("--hooks-dir", "-d", default=".claude/hooks", help="Hooks directory")
 @click.option("--force", "-f", is_flag=True, help="Overwrite existing hook scripts")
-@click.option("--chain-id", "-c", default=None, help="Chain ID for tracing session")
+@click.option("--chain-id", "-c", default=None, help="Prefix for the chain IDs of traced sessions")
 def claude_init(hooks_dir: str, force: bool, chain_id: str):
     """Initialize LCTL tracing for Claude Code.
 
@@ -917,10 +917,29 @@ def claude_init(hooks_dir: str, force: bool, chain_id: str):
     """
     import shutil
 
-    from ..integrations.claude_code import generate_hooks, merge_hook_settings
+    from ..integrations.claude_code import (
+        HOOK_EVENTS,
+        foreign_hook_scripts,
+        generate_hooks,
+        merge_hook_settings,
+        stale_hook_scripts,
+    )
 
     try:
-        existing_scripts = sorted(Path(hooks_dir).glob("*.sh")) if Path(hooks_dir).exists() else []
+        # Validate everything first: nothing is written (or backed up) on failure.
+        foreign = foreign_hook_scripts(hooks_dir)
+        if foreign and not force:
+            names = ", ".join(str(p) for p in foreign)
+            click.echo(
+                click.style(
+                    f"Refusing to overwrite hook scripts that are not LCTL's: {names}\n"
+                    "Move them, or use --force (each is copied to <script>.bak first).",
+                    fg="red",
+                ),
+                err=True,
+            )
+            sys.exit(1)
+
         # Merge LCTL entries into settings.json; everything else is preserved.
         # Use an absolute project root so hooks work from any subdirectory.
         settings_path = Path(".claude/settings.json")
@@ -929,31 +948,40 @@ def claude_init(hooks_dir: str, force: bool, chain_id: str):
             existing = json.loads(settings_path.read_text())
             if not isinstance(existing, dict):
                 raise ValueError(f"{settings_path} must contain a JSON object")
+        settings = merge_hook_settings(existing, Path.cwd().resolve(), hooks_dir)
+
+        if settings_path.exists():
             shutil.copy2(settings_path, settings_path.with_name(settings_path.name + ".bak"))
 
+        present = {e for e in HOOK_EVENTS if (Path(hooks_dir) / f"{e}.sh").exists()}
+        kept = set() if force else present
         hooks = generate_hooks(hooks_dir, chain_id=chain_id, overwrite=force)
-        settings = merge_hook_settings(existing, Path.cwd().resolve(), hooks_dir)
+        if chain_id:
+            kept.discard("SessionStart")
         settings_path.parent.mkdir(parents=True, exist_ok=True)
         settings_path.write_text(json.dumps(settings, indent=2))
 
-        if existing_scripts and not force:
+        click.echo(click.style("LCTL Claude Code tracing initialized!", fg="green"))
+        click.echo()
+        click.echo("Hooks:")
+        for name, path in hooks.items():
+            status = "kept existing" if name in kept else "generated"
+            click.echo(f"  {name}: {path} ({status})")
+        stale = stale_hook_scripts(hooks_dir) if kept else []
+        if stale:
+            click.echo()
             click.echo(
                 click.style(
-                    f"Kept {len(existing_scripts)} existing hook scripts; "
-                    "use --force to regenerate them.",
+                    "Kept hook scripts are outdated: " + "; ".join(stale) + ". "
+                    "Run 'lctl claude init --force' to regenerate them.",
                     fg="yellow",
                 )
             )
-        click.echo(click.style("LCTL Claude Code tracing initialized!", fg="green"))
-        click.echo()
-        click.echo("Generated hooks:")
-        for name, path in hooks.items():
-            click.echo(f"  {name}: {path}")
         click.echo()
         click.echo(f"Settings: {settings_path}")
         click.echo()
         if chain_id:
-            click.echo(f"Tracing session: {chain_id}")
+            click.echo(f"Chain prefix: {chain_id}")
             click.echo()
         click.echo("Tracing will automatically capture:")
         click.echo("  - Agent/Task tool invocations (subagent spawning)")
@@ -964,6 +992,8 @@ def claude_init(hooks_dir: str, force: bool, chain_id: str):
         click.echo("Traces will be saved to: .claude/traces/")
         click.echo()
         click.echo(click.style("Restart Claude Code to activate hooks.", fg="yellow"))
+    except click.exceptions.Exit:
+        raise
     except Exception as e:
         click.echo(click.style(f"Error generating hooks: {e}", fg="red"), err=True)
         sys.exit(1)
@@ -989,10 +1019,11 @@ def claude_validate(hooks_dir: str):
         sys.exit(1)
 
     validation = validate_hooks(hooks_dir)
+    failing = not validation["valid"] or validation["outdated"]
 
-    if validation["valid"]:
+    if not failing:
         click.echo(click.style("All hooks valid!", fg="green"))
-    else:
+    elif not validation["valid"]:
         click.echo(click.style("Hook validation failed:", fg="red"))
 
     click.echo()
@@ -1013,12 +1044,15 @@ def claude_validate(hooks_dir: str):
 
     if validation["outdated"]:
         click.echo()
-        click.echo(click.style("Outdated installation:", fg="red"))
+        click.echo(click.style("Outdated or incomplete installation:", fg="red"))
         for reason in validation["reasons"]:
             click.echo(f"  - {reason}")
-        click.echo("Run 'lctl claude init' (add --force to regenerate the scripts).")
+        command = "lctl claude init" + (" --force" if validation["needs_force"] else "")
+        if hooks_dir != ".claude/hooks":
+            command += f" --hooks-dir {hooks_dir}"
+        click.echo(f"Run '{command}' to fix.")
 
-    if not validation["valid"] or validation["outdated"]:
+    if failing:
         sys.exit(1)
 
 

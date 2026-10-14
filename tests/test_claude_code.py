@@ -921,7 +921,7 @@ def hook_project(tmp_path: Path) -> Path:
 
 
 def run_hook(project: Path, event: str, payload: dict) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603  # fixed bash + generated script path
+    proc = subprocess.run(  # noqa: S603  # fixed bash + generated script path
         ["bash", str(project / ".claude" / "hooks" / f"{event}.sh")],  # noqa: S607
         input=json.dumps(payload),
         cwd=project,
@@ -929,6 +929,8 @@ def run_hook(project: Path, event: str, payload: dict) -> subprocess.CompletedPr
         text=True,
         timeout=60,
     )
+    assert proc.returncode == 0, proc.stderr
+    return proc
 
 
 def trace_files(project: Path) -> list[Path]:
@@ -1049,11 +1051,152 @@ class TestHookScripts:
         assert (traces / ".lctl-state.json").exists()
         start = run_hook(hook_project, "SessionStart", {"session_id": "s2"})
         assert start.returncode == 0, start.stderr
-        assert not (traces / ".lctl-state.json").exists() or (
-            json.loads((traces / ".lctl-state.json").read_text())["agent_stack"] == []
-        )
+        fresh = json.loads((traces / ".lctl-state.json").read_text())
+        assert fresh["agent_stack"] == []
         assert list(traces.glob(".lctl-state*archived*"))
 
     def test_generate_hooks_returns_session_hooks(self, tmp_path: Path):
         hooks = generate_hooks(str(tmp_path / "h"))
         assert set(hooks) == {"PreToolUse", "PostToolUse", "Stop", "SessionStart", "SessionEnd"}
+
+    def test_session_start_on_compaction_keeps_the_trace(self, hook_project: Path):
+        tool_input = {"subagent_type": "Explore", "description": "d"}
+        base = {"session_id": "s1", "tool_name": "Agent", "tool_input": tool_input}
+        run_hook(hook_project, "PreToolUse", base)
+        run_hook(hook_project, "SessionStart", {"session_id": "s1", "source": "compact"})
+        run_hook(hook_project, "PostToolUse", {**base, "tool_response": {"status": "completed"}})
+        (trace,) = trace_files(hook_project)
+        engine = ReplayEngine(Chain.load(trace))
+        (node,) = engine.get_span_tree()
+        assert node["agent"] == "Explore"
+        assert node["end_seq"] is not None
+        assert not list((hook_project / ".claude" / "traces").glob(".lctl-state-*"))
+
+    def test_chain_id_is_the_chain_prefix(self, tmp_path: Path):
+        (tmp_path / ".venv").symlink_to(sys.prefix)
+        generate_hooks(str(tmp_path / ".claude" / "hooks"), chain_id="my-project")
+        tool_input = {"subagent_type": "Explore", "description": "d"}
+        run_hook(tmp_path, "SessionStart", {"session_id": "s1"})
+        run_hook(
+            tmp_path,
+            "PreToolUse",
+            {"session_id": "s1", "tool_name": "Agent", "tool_input": tool_input},
+        )
+        run_hook(tmp_path, "Stop", {"session_id": "s1"})
+        (trace,) = trace_files(tmp_path)
+        assert Chain.load(trace).id.startswith("my-project-")
+
+    def test_archives_never_collide(self, hook_project: Path):
+        pre = {"tool_name": "Agent", "tool_input": {"subagent_type": "Explore"}}
+        run_hook(hook_project, "PreToolUse", pre)
+        for _ in range(3):
+            run_hook(hook_project, "SessionStart", {"session_id": "same"})
+        archived = list((hook_project / ".claude" / "traces").glob(".lctl-state-*.archived"))
+        assert len(archived) == 3
+
+    def test_post_hook_missing_status_is_success_and_string_response_ok(self, hook_project: Path):
+        for i, response in enumerate([{"content": []}, "plain string result"]):
+            tool_input = {"subagent_type": f"A{i}", "description": "d"}
+            base = {"tool_name": "Agent", "tool_input": tool_input}
+            run_hook(hook_project, "PreToolUse", base)
+            run_hook(hook_project, "PostToolUse", {**base, "tool_response": response})
+        (trace,) = trace_files(hook_project)
+        ends = [e for e in Chain.load(trace).events if e.type == EventType.STEP_END]
+        assert [e.data["outcome"] for e in ends] == ["success", "success"]
+
+
+class TestMergeHookSettings:
+    def test_mixed_group_keeps_user_command(self, tmp_path: Path):
+        from lctl.integrations.claude_code import merge_hook_settings
+
+        existing = {
+            "hooks": {
+                "Stop": [
+                    {
+                        "matcher": "",
+                        "hooks": [
+                            {"type": "command", "command": "echo user"},
+                            {"type": "command", "command": "bash .claude/hooks/Stop.sh"},
+                        ],
+                    }
+                ]
+            }
+        }
+        merged = merge_hook_settings(existing, tmp_path)
+        commands = [h["command"] for g in merged["hooks"]["Stop"] for h in g["hooks"]]
+        assert commands.count("echo user") == 1
+        assert sum(c.endswith("Stop.sh") for c in commands) == 1
+        assert "bash .claude/hooks/Stop.sh" not in commands
+
+    def test_recognises_old_unquoted_and_new_quoted_entries(self, tmp_path: Path):
+        from lctl.integrations.claude_code import merge_hook_settings
+
+        root = tmp_path / "My Project"
+        old = f"cd {root} && bash .claude/hooks/Stop.sh"
+        once = merge_hook_settings(
+            {"hooks": {"Stop": [{"matcher": "", "hooks": [{"type": "command", "command": old}]}]}},
+            root,
+        )
+        twice = merge_hook_settings(once, root)
+        assert once == twice
+        assert len(twice["hooks"]["Stop"]) == 1
+        assert old not in json.dumps(twice)
+
+    @pytest.mark.parametrize(
+        "bad",
+        [{"hooks": []}, {"hooks": "x"}, {"hooks": {"PreToolUse": {}}}, {"hooks": {"Stop": "x"}}],
+    )
+    def test_bad_shapes_raise(self, tmp_path: Path, bad: dict):
+        from lctl.integrations.claude_code import merge_hook_settings
+
+        with pytest.raises(ValueError, match="settings"):
+            merge_hook_settings(bad, tmp_path)
+
+
+class TestValidateHooksState:
+    def test_no_settings_is_reported(self, tmp_path: Path):
+        generate_hooks(str(tmp_path / "h"))
+        result = validate_hooks(str(tmp_path / "h"), str(tmp_path / "missing.json"))
+        assert result["outdated"] is True
+        assert result["reasons"]
+
+    def test_settings_without_lctl_entries_is_reported(self, tmp_path: Path):
+        generate_hooks(str(tmp_path / "h"))
+        settings = tmp_path / "s.json"
+        settings.write_text("{}")
+        result = validate_hooks(str(tmp_path / "h"), str(settings))
+        assert result["outdated"] is True
+
+    def test_session_hooks_checked_without_pre_group(self, tmp_path: Path):
+        generate_hooks(str(tmp_path / "h"))
+        settings = tmp_path / "s.json"
+        settings.write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "Stop": [
+                            {
+                                "hooks": [
+                                    {"type": "command", "command": f"bash {tmp_path}/h/Stop.sh"}
+                                ]
+                            }
+                        ]
+                    }
+                }
+            )
+        )
+        result = validate_hooks(str(tmp_path / "h"), str(settings))
+        assert any("SessionStart" in r for r in result["reasons"])
+
+    def test_script_level_staleness_needs_force(self, tmp_path: Path):
+        from lctl.integrations.claude_code import merge_hook_settings
+
+        hooks = tmp_path / "h"
+        generate_hooks(str(hooks))
+        settings = tmp_path / "s.json"
+        settings.write_text(json.dumps(merge_hook_settings({}, tmp_path, str(hooks))))
+        assert validate_hooks(str(hooks), str(settings))["outdated"] is False
+        (hooks / "Stop.sh").write_text("#!/bin/bash\n# LCTL Tracing Hook - Stop\n")
+        result = validate_hooks(str(hooks), str(settings))
+        assert result["outdated"] is True
+        assert result["needs_force"] is True

@@ -54,6 +54,8 @@ import fcntl
 import html
 import json
 import logging
+import shlex
+import shutil
 import threading
 import time
 from datetime import datetime
@@ -1028,6 +1030,8 @@ class LCTLClaudeCodeTracer:
         _tracer_instance = None
 
 
+HOOK_MARKER = "LCTL Tracing Hook"  # first-line marker of every generated script
+
 HOOK_EVENTS = ("PreToolUse", "PostToolUse", "Stop", "SessionStart", "SessionEnd")
 
 # Settings matcher per event; the subagent tool is "Agent" in Claude Code 2.1.x, "Task" before.
@@ -1108,16 +1112,21 @@ _SESSION_END_BODY = """    # The session is over: write the final trace and drop
         state_file.unlink()
 """
 
-_SESSION_START_BODY = """    # Never append to another session's trace: set any leftover state aside as-is
+_SESSION_START_BODY = """    # Compaction restarts the hook inside the same session: keep the live trace.
+    if hook_input.get('source') == 'compact':
+        sys.exit(0)
+    # Never append to another session's trace: set any leftover state aside as-is
     # (its chain file is already on disk) and start a fresh chain.
-    if state_file.exists():
-        import time
-        stamp = time.strftime('%Y%m%d-%H%M%S')
-        state_file.rename(state_file.with_name(f'.lctl-state-{stamp}.json.archived'))
     from datetime import datetime
-    chain_id = 'claude-code-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f')
-    if session_id:
-        chain_id += '-' + ''.join(c for c in session_id if c.isalnum() or c in '-_')[:12]
+    now = datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+    safe_sid = ''.join(c for c in session_id if c.isalnum() or c in '-_')[:12]
+    if state_file.exists():
+        import uuid
+        archive = f'.lctl-state-{now}-{safe_sid}-{uuid.uuid4().hex[:8]}.json.archived'
+        state_file.rename(state_file.with_name(archive))
+    chain_id = __CHAIN_PREFIX__ + '-' + now
+    if safe_sid:
+        chain_id += '-' + safe_sid
     LCTLClaudeCodeTracer.get_or_create(chain_id=chain_id)
 """
 
@@ -1126,9 +1135,30 @@ def _session_hook_script(title: str, summary: str, body: str) -> str:
     return _HOOK_PYTHON_PRELUDE.format(title=title, summary=summary, body=body.rstrip("\n"))
 
 
+def _is_lctl_script(path: Path) -> bool:
+    try:
+        return HOOK_MARKER in path.read_text()
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
+def foreign_hook_scripts(output_dir: str = ".claude/hooks") -> list[Path]:
+    """Scripts at LCTL's target paths that are not LCTL's (a user's own hooks)."""
+    return [
+        path
+        for event in HOOK_EVENTS
+        if (path := Path(output_dir) / f"{event}.sh").exists() and not _is_lctl_script(path)
+    ]
+
+
 def _write_hook(path: Path, content: str, overwrite: bool) -> None:
-    """Write a hook script; an existing one is kept unless ``overwrite``."""
+    """Write a hook script; an existing one is kept unless ``overwrite``.
+
+    A script that is not LCTL's is copied to ``<script>.bak`` before it is replaced.
+    """
     if overwrite or not path.exists():
+        if path.exists() and not _is_lctl_script(path):
+            shutil.copy2(path, path.with_name(path.name + ".bak"))
         path.write_text(content)
     path.chmod(0o755)
 
@@ -1142,9 +1172,11 @@ def generate_hooks(
 
     Args:
         output_dir: Directory to write hook scripts
-        chain_id: Optional chain ID for the tracing session
-        overwrite: Replace scripts that already exist. When False they are left
-            untouched and only missing scripts are written.
+        chain_id: Prefix for the chain IDs SessionStart creates (default
+            ``claude-code``); giving one also regenerates SessionStart.sh
+        overwrite: Replace scripts that already exist (a non-LCTL script is backed
+            up to ``<script>.bak`` first). When False they are left untouched and
+            only missing scripts are written.
 
     Returns:
         Dict mapping hook name to file path
@@ -1405,33 +1437,14 @@ PYTHON_EOF
     }
     for hook_name, (title, summary, body) in session_hooks.items():
         hook_path = hooks_dir / f"{hook_name}.sh"
-        _write_hook(hook_path, _session_hook_script(title, summary, body), overwrite)
+        if hook_name == "SessionStart":
+            body = body.replace("__CHAIN_PREFIX__", repr(chain_id or "claude-code"))
+        _write_hook(
+            hook_path,
+            _session_hook_script(title, summary, body),
+            overwrite or (hook_name == "SessionStart" and chain_id is not None),
+        )
         hooks[hook_name] = str(hook_path)
-
-    # Initialize state file with chain_id if provided
-    if chain_id:
-        traces_dir = Path(".claude/traces")
-        traces_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create initial chain file
-        chain_path = traces_dir / f"{chain_id}.lctl.json"
-        initial_chain = {"lctl": "4.0", "chain": {"id": chain_id}, "events": []}
-        with open(chain_path, "w") as f:
-            json.dump(initial_chain, f, indent=2)
-
-        # Create state file pointing to this chain
-        state_path = traces_dir / ".lctl-state.json"
-        state: dict[str, Any] = {
-            "chain_path": str(chain_path),
-            "agent_stack": [],
-            "tool_counts": {},
-            "start_times": {},
-            "agent_ids": {},
-            "parallel_group": None,
-            "file_changes": [],
-        }
-        with open(state_path, "w") as f:
-            json.dump(state, f)
 
     return hooks
 
@@ -1441,15 +1454,24 @@ def _normalize_hooks_dir(hooks_dir: str) -> str:
 
 
 def is_lctl_hook_command(command: Any, event: str, hooks_dir: str = ".claude/hooks") -> bool:
-    """True if ``command`` runs ``<hooks_dir>/<event>.sh`` (an LCTL-installed hook)."""
+    """True if ``command`` runs ``<hooks_dir>/<event>.sh`` (an LCTL-installed hook).
+
+    The command is parsed shell-style, so entries written before the project root
+    was quoted and current quoted ones are both recognised.
+    """
     if not isinstance(command, str):
         return False
-    return command.strip().endswith(f"{_normalize_hooks_dir(hooks_dir)}/{event}.sh")
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return False
+    return bool(tokens) and tokens[-1] == f"{_normalize_hooks_dir(hooks_dir)}/{event}.sh"
 
 
 def build_hook_settings(project_root: Path, hooks_dir: str = ".claude/hooks") -> dict[str, Any]:
     """The ``hooks`` section of ``.claude/settings.json`` that enables LCTL tracing."""
     hooks_dir = _normalize_hooks_dir(hooks_dir)
+    root = shlex.quote(str(project_root))
     return {
         event: [
             {
@@ -1457,7 +1479,7 @@ def build_hook_settings(project_root: Path, hooks_dir: str = ".claude/hooks") ->
                 "hooks": [
                     {
                         "type": "command",
-                        "command": f"cd {project_root} && bash {hooks_dir}/{event}.sh",
+                        "command": f"cd {root} && bash {shlex.quote(f'{hooks_dir}/{event}.sh')}",
                     }
                 ],
             }
@@ -1474,15 +1496,23 @@ def merge_hook_settings(
     Earlier LCTL entries (commands running ``<hooks_dir>/<Event>.sh``) are removed
     and the current entry appended, so repeated calls never duplicate. Every other
     key, event and user hook is left as it was. ``existing`` is not modified.
+
+    Raises:
+        ValueError: ``hooks`` or an event's value has an unexpected shape, so that
+            nothing user-written is silently dropped.
     """
     merged = dict(existing)
-    hooks_section = merged.get("hooks")
-    hooks_section = dict(hooks_section) if isinstance(hooks_section, dict) else {}
+    raw_hooks = merged.get("hooks", {})
+    if not isinstance(raw_hooks, dict):
+        raise ValueError("settings 'hooks' must be an object")
+    hooks_section = dict(raw_hooks)
 
     for event, groups in build_hook_settings(project_root, hooks_dir).items():
         kept: list[Any] = []
-        existing_groups = hooks_section.get(event)
-        for group in existing_groups if isinstance(existing_groups, list) else []:
+        existing_groups = hooks_section.get(event, [])
+        if not isinstance(existing_groups, list):
+            raise ValueError(f"settings hooks.{event} must be a list")
+        for group in existing_groups:
             entries = group.get("hooks") if isinstance(group, dict) else None
             if not isinstance(entries, list):
                 kept.append(group)
@@ -1513,17 +1543,16 @@ def is_available() -> bool:
     return True
 
 
-def _outdated_reasons(hooks_dir: str, settings_path: Path) -> list[str]:
-    """Why an existing install predates the current hook set (empty if up to date)."""
-    reasons: list[str] = []
+def _settings_reasons(hooks_dir: str, settings_path: Path) -> list[str]:
+    """Settings-level reasons the install is missing or predates the current hook set."""
     hooks_dir = _normalize_hooks_dir(hooks_dir)
     try:
         settings = json.loads(settings_path.read_text())
     except (OSError, ValueError):
-        return reasons
+        return [f"{settings_path} is missing or unreadable, so no LCTL hooks are registered"]
     hooks_section = settings.get("hooks") if isinstance(settings, dict) else None
     if not isinstance(hooks_section, dict):
-        return reasons
+        hooks_section = {}
 
     def lctl_groups(event: str) -> list[dict[str, Any]]:
         groups = hooks_section.get(event)
@@ -1537,14 +1566,33 @@ def _outdated_reasons(hooks_dir: str, settings_path: Path) -> list[str]:
                 found.append(g)
         return found
 
+    reasons: list[str] = []
+    if not any(lctl_groups(event) for event in HOOK_EVENTS):
+        return [f"{settings_path} registers no LCTL hooks"]
     for group in lctl_groups("PreToolUse"):
         if "Agent" not in str(group.get("matcher", "")).split("|"):
             reasons.append(
                 f"PreToolUse matcher {group.get('matcher')!r} does not match the Agent tool"
             )
-    for event in ("SessionStart", "SessionEnd"):
-        if lctl_groups("PreToolUse") and not lctl_groups(event):
+    for event in HOOK_EVENTS:
+        if not lctl_groups(event):
             reasons.append(f"{event} hook is not configured in {settings_path}")
+    return reasons
+
+
+def stale_hook_scripts(hooks_dir: str = ".claude/hooks") -> list[str]:
+    """Reasons LCTL-owned scripts in ``hooks_dir`` predate the current generator."""
+    hooks_path = Path(hooks_dir)
+    checks = {
+        "PreToolUse": ("'Agent'", "does not handle the Agent tool"),
+        "PostToolUse": ("'Agent'", "does not handle the Agent tool"),
+        "Stop": ("PYTHON_EOF", "uses the old, broken Stop script"),
+    }
+    reasons = []
+    for event, (needle, why) in checks.items():
+        path = hooks_path / f"{event}.sh"
+        if path.exists() and _is_lctl_script(path) and needle not in path.read_text():
+            reasons.append(f"{event}.sh {why}")
     return reasons
 
 
@@ -1559,9 +1607,10 @@ def validate_hooks(
 
     Returns:
         Validation result dict with 'valid', 'hooks', 'warnings', and
-        'outdated' (bool) / 'reasons' (list) keys. An outdated install
-        (settings with a Task-only matcher or without session hooks) should be
-        refreshed with ``lctl claude init``.
+        'outdated' (bool) / 'reasons' (list) / 'needs_force' (bool) keys. An
+        outdated or unregistered install should be refreshed with
+        ``lctl claude init``, or ``lctl claude init --force`` when
+        ``needs_force`` (some LCTL script itself is stale).
     """
     import stat
 
@@ -1572,6 +1621,7 @@ def validate_hooks(
         "warnings": [],
         "outdated": False,
         "reasons": [],
+        "needs_force": False,
     }
 
     expected_hooks = [f"{event}.sh" for event in HOOK_EVENTS]
@@ -1604,16 +1654,14 @@ def validate_hooks(
 
         result["hooks"][hook_name.replace(".sh", "")] = hook_status
 
-    reasons = _outdated_reasons(hooks_dir, Path(settings_path))
-    pre_script = hooks_path / "PreToolUse.sh"
-    if pre_script.exists() and "'Agent'" not in pre_script.read_text():
-        reasons.append("PreToolUse.sh does not handle the Agent tool")
-    if pre_script.exists():
-        for event in ("SessionStart", "SessionEnd"):
-            if not (hooks_path / f"{event}.sh").exists():
-                reasons.append(f"{event}.sh is missing")
-    result["reasons"] = reasons
-    result["outdated"] = bool(reasons)
+    reasons = _settings_reasons(hooks_dir, Path(settings_path))
+    script_reasons = stale_hook_scripts(hooks_dir)
+    for event in HOOK_EVENTS:
+        if not (hooks_path / f"{event}.sh").exists():
+            reasons.append(f"{event}.sh is missing")
+    result["reasons"] = reasons + script_reasons
+    result["outdated"] = bool(result["reasons"])
+    result["needs_force"] = bool(script_reasons)
 
     # Check for traces directory
     traces_dir = Path(".claude/traces")
