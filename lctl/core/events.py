@@ -5,7 +5,7 @@ import copy
 import json
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, TypeVar
@@ -458,6 +458,7 @@ class ReplayEngine:
         nodes: dict[str, dict[str, Any]] = {}
         roots: list[dict[str, Any]] = []
         open_ids: list[str] = []
+        start_times: dict[str, datetime] = {}
 
         for event in self.chain.events:
             if event.type == EventType.STEP_START:
@@ -486,6 +487,7 @@ class ReplayEngine:
                 else:
                     roots.append(node)
                 nodes[span_id] = node
+                start_times[span_id] = event.timestamp
                 open_ids.append(span_id)
             elif event.type == EventType.STEP_END:
                 closing = self._closing_span(event, nodes, open_ids)
@@ -512,13 +514,17 @@ class ReplayEngine:
                 node["end_seq"] = event.seq
                 node["end_time"] = event.timestamp.isoformat()
                 node["outcome"] = event.data.get("outcome")
-                node["duration_ms"] = self._span_duration_ms(node, event)
-            else:
-                owner = (
-                    event.span_id
-                    if event.span_id in nodes
-                    else (open_ids[-1] if open_ids else None)
+                node["duration_ms"] = self._span_duration_ms(
+                    start_times.get(node["span_id"]), event
                 )
+            else:
+                if event.span_id in nodes:
+                    owner: str | None = event.span_id
+                elif event.id is None:
+                    # Pre-4.2 event: attribute to the innermost open span by inference.
+                    owner = open_ids[-1] if open_ids else None
+                else:
+                    owner = None  # 4.2 event recorded outside any span
                 if owner is not None:
                     nodes[owner]["event_count"] += 1
 
@@ -528,24 +534,35 @@ class ReplayEngine:
     def _closing_span(
         event: Event, nodes: dict[str, dict[str, Any]], open_ids: list[str]
     ) -> str | None:
-        """Which open span a STEP_END closes: its recorded span, else by inference."""
+        """Which open span a STEP_END closes.
+
+        Its recorded span when known; otherwise (no span id, e.g. an end recorded by a
+        separate process or session) the most recent open span of the same agent,
+        whether that span's id was recorded or inferred.
+        """
         if event.span_id is not None and event.span_id in nodes:
             return event.span_id if event.span_id in open_ids else None
         for span_id in reversed(open_ids):
-            node = nodes[span_id]
-            if node["inferred"] and node["agent"] == event.agent:
+            if nodes[span_id]["agent"] == event.agent:
                 return span_id
         return None
 
     @staticmethod
-    def _span_duration_ms(node: dict[str, Any], end_event: Event) -> int | None:
-        recorded = end_event.data.get("duration_ms") or 0
+    def _span_duration_ms(start: datetime | None, end_event: Event) -> int | None:
+        """Recorded duration if positive, else end minus start (naive times taken as UTC)."""
+        try:
+            recorded = float(end_event.data.get("duration_ms") or 0)
+        except (TypeError, ValueError):
+            recorded = 0
         if recorded > 0:
             return int(recorded)
-        if node["start_time"] is None:
+        if start is None:
             return None
-        start = datetime.fromisoformat(node["start_time"])
-        return int((end_event.timestamp - start).total_seconds() * 1000)
+
+        def as_utc(moment: datetime) -> datetime:
+            return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+
+        return int((as_utc(end_event.timestamp) - as_utc(start)).total_seconds() * 1000)
 
     def diff(self, other: "ReplayEngine") -> list[dict[str, Any]]:
         """Compare two chains and find divergence points."""

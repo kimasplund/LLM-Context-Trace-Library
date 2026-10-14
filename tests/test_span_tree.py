@@ -149,3 +149,64 @@ def test_get_trace_includes_span_fields_when_present():
 
     legacy = ReplayEngine(Chain.load(FIXTURE)).get_trace()
     assert all("span_id" not in entry for entry in legacy)
+
+
+def _event(seq, type_, agent, ts, data=None, **ids) -> Event:
+    return Event(seq=seq, type=type_, timestamp=ts, agent=agent, data=data or {}, **ids)
+
+
+def test_spanless_end_pairs_with_exact_start():
+    # Claude Code hooks run as separate processes: the START carries a span id,
+    # the END (recorded by a fresh session) does not.
+    t0 = datetime(2026, 1, 1)
+    chain = Chain(id="cross-process")
+    chain.add_event(
+        _event(1, EventType.STEP_START, "explorer", t0, {"intent": "find x"}, span_id="S1", id="e1")
+    )
+    chain.add_event(
+        _event(
+            2,
+            EventType.STEP_END,
+            "explorer",
+            t0 + timedelta(seconds=3),
+            {"outcome": "success"},
+            id="e2",
+        )
+    )
+
+    (node,) = ReplayEngine(chain).get_span_tree()
+    assert node["span_id"] == "S1"
+    assert node["end_seq"] == 2
+    assert node["outcome"] == "success"
+    assert node["inferred"] is False
+
+
+def test_root_level_42_event_not_counted_in_sibling_span():
+    t0 = datetime(2026, 1, 1)
+    chain = Chain(id="root-fact")
+    chain.add_event(
+        _event(1, EventType.STEP_START, "worker", t0, {"intent": "w"}, span_id="W", id="e1")
+    )
+    chain.add_event(_event(2, EventType.FACT_ADDED, "main", t0, {"id": "F"}, id="e2", span_id=None))
+    chain.add_event(
+        _event(3, EventType.STEP_END, "worker", t0, {"outcome": "success"}, span_id="W", id="e3")
+    )
+
+    (node,) = ReplayEngine(chain).get_span_tree()
+    assert node["event_count"] == 0
+
+
+def test_tree_survives_naive_aware_mix_and_string_duration():
+    from datetime import UTC
+
+    naive = datetime(2026, 1, 1, 12, 0, 0)
+    aware = datetime(2026, 1, 1, 12, 0, 2, tzinfo=UTC)
+    chain = Chain(id="malformed")
+    chain.add_event(_event(1, EventType.STEP_START, "a", naive, {"intent": "x"}))
+    chain.add_event(_event(2, EventType.STEP_END, "a", aware, {"duration_ms": 0}))
+    chain.add_event(_event(3, EventType.STEP_START, "b", naive, {"intent": "y"}))
+    chain.add_event(_event(4, EventType.STEP_END, "b", naive, {"duration_ms": "5"}))
+
+    nodes = {n["agent"]: n for n in ReplayEngine(chain).get_span_tree()}
+    assert nodes["a"]["duration_ms"] == 2000
+    assert nodes["b"]["duration_ms"] == 5

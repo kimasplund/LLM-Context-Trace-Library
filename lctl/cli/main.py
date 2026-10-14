@@ -275,7 +275,10 @@ def _print_span_tree(chain_id: str, roots: list[dict]) -> None:
     click.echo(f"Span tree for {chain_id}:")
     click.echo()
 
-    def show(node: dict, depth: int) -> None:
+    # Iterative depth-first walk: inferred trees of unclosed steps can nest thousands deep.
+    pending: list[tuple[dict, int]] = [(root, 0) for root in reversed(roots)]
+    while pending:
+        node, depth = pending.pop()
         indent = "  " * depth
         if node["start_seq"] is None:
             click.echo(f"{indent}{node['agent']}  (orphan end)")
@@ -289,11 +292,7 @@ def _print_span_tree(chain_id: str, roots: list[dict]) -> None:
                 outcome = click.style(outcome, fg="red")
             seconds = (node["duration_ms"] or 0) / 1000
             click.echo(f"{indent}{node['agent']}: {node['intent']}  [{seconds:.1f}s] {outcome}")
-        for child in node["children"]:
-            show(child, depth + 1)
-
-    for root in roots:
-        show(root, 0)
+        pending.extend((child, depth + 1) for child in reversed(node["children"]))
 
 
 @cli.command()

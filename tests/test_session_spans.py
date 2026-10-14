@@ -260,3 +260,79 @@ class TestSessionSpanContextManager:
             assert error.agent == "a"
         finally:
             lctl._global_session = None
+
+
+class TestSpanRobustness:
+    """Review fixes: cross-context ends, tracing failures, ContextVar lifetime."""
+
+    def test_step_end_for_agent_without_open_span_does_not_close_others(self):
+        session = LCTLSession()
+        session.step_start("a", "work")
+        span_a = session.current_span_id
+
+        session.step_end("b")
+
+        assert session.chain.events[-1].span_id is None
+        assert session.current_span_id == span_a
+
+    def test_end_in_another_thread_closes_span_and_unblocks_origin(self):
+        import threading
+
+        session = LCTLSession()
+        session.step_start("worker", "background job")
+        span = session.current_span_id
+
+        thread = threading.Thread(target=lambda: session.step_end("worker"))
+        thread.start()
+        thread.join()
+
+        assert session.chain.events[-1].span_id == span
+        assert session.current_span_id is None
+        session.step_start("next", "after")
+        assert session.chain.events[-1].parent_span_id is None
+
+    def test_emitter_failure_does_not_corrupt_span_stack(self):
+        class BrokenEmitter:
+            chain_id = None
+
+            def emit_lctl_event(self, event):
+                raise ValueError("emitter down")
+
+        session = LCTLSession(emitter=BrokenEmitter())
+        session.step_start("a", "first")
+        session.step_end()
+        session.step_start("b", "second")
+
+        assert session.chain.events[-1].parent_span_id is None
+        assert session.current_span_id == session.chain.events[-1].span_id
+
+    def test_step_end_recording_failure_still_closes_span(self, monkeypatch):
+        session = LCTLSession()
+        session.step_start("a", "work")
+        real_add_event = session._add_event
+
+        def fail_on_end(event_type, *args, **kwargs):
+            if event_type == EventType.STEP_END:
+                raise OSError("disk full")
+            return real_add_event(event_type, *args, **kwargs)
+
+        monkeypatch.setattr(session, "_add_event", fail_on_end)
+        with pytest.raises(OSError, match="disk full"):
+            session.step_end()
+
+        assert session.current_span_id is None
+
+    def test_span_stacks_do_not_leak_contextvars(self):
+        from lctl.core import session as session_module
+
+        sessions = []
+        for _ in range(200):
+            s = LCTLSession()
+            with s.span("a", "x"):
+                pass
+            sessions.append(s)
+
+        for s in sessions:
+            assert not any(isinstance(v, contextvars.ContextVar) for v in vars(s).values())
+        live_keys = set(session_module._SPAN_STACKS.get())
+        assert not any(s._span_key in live_keys for s in sessions)

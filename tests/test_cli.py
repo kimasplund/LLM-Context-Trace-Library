@@ -1166,3 +1166,26 @@ class TestTraceTree:
             "┌─ [11] fix-implementer: fix\n"
             "└─ [14] success (18.0s)\n"
         )
+
+
+class TestTraceTreeRobustness:
+    def test_trace_tree_deep_nesting_does_not_crash(self, runner: CliRunner, tmp_path: Path):
+        t0 = datetime(2026, 1, 1)
+        chain = Chain(id="deep")
+        for seq in range(1, 3001):
+            chain.add_event(
+                Event(
+                    seq,
+                    EventType.STEP_START,
+                    t0 + timedelta(seconds=seq),
+                    f"agent-{seq}",
+                    {"intent": "x"},
+                )
+            )
+        path = tmp_path / "deep.lctl.json"
+        chain.save(path)
+
+        result = runner.invoke(cli, ["trace", "--tree", str(path)])
+
+        assert result.exit_code == 0, result.output[-500:]
+        assert result.output.count("(open)") == 3000

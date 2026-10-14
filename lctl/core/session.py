@@ -2,10 +2,11 @@
 
 import contextvars
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Optional
 from uuid import uuid4
 
@@ -19,6 +20,13 @@ if TYPE_CHECKING:
 
 # Sentinel: "attach to the innermost open span in the current context".
 _UNSET: Any = object()
+
+# Open spans per execution context, for every session: {session key: ((span_id, agent), ...)}.
+# One module-level ContextVar (not one per session, which would never be freed). Values are
+# immutable, so tasks that copy the context never share a stack.
+_SPAN_STACKS: contextvars.ContextVar[Mapping[str, tuple[tuple[str, str], ...]]] = (
+    contextvars.ContextVar("lctl_span_stacks", default=MappingProxyType({}))
+)
 
 
 class LCTLSession:
@@ -58,12 +66,12 @@ class LCTLSession:
         self.chain = Chain(id=chain_id or str(uuid4())[:8])
         self._seq = 0
         self._current_agent: str | None = None
-        # Open spans per execution context, innermost last: ((span_id, agent), ...).
-        # Immutable tuples, so tasks that copy the context never share a stack.
-        self._span_stack: contextvars.ContextVar[tuple[tuple[str, str], ...]] = (
-            contextvars.ContextVar(f"lctl_span_stack_{id(self)}", default=())
-        )
-        self._span_agents: dict[str, str] = {}
+        self._span_key = new_id()  # this session's slot in _SPAN_STACKS
+        self._span_agents: dict[str, str] = {}  # every span started -> its agent
+        # Spans not yet ended, session-wide (start order). A span ended from another
+        # thread or context leaves a stale entry on its origin context's stack; the
+        # stack is always read through this registry, so stale entries are ignored.
+        self._open_spans: dict[str, str] = {}
         self._emitter: EventEmitter | None = emitter
         self._event_listeners: list[Callable[[Event], None]] = []
         self._redaction_enabled = redaction_enabled
@@ -122,7 +130,9 @@ class LCTLSession:
         self.chain.add_event(event)
 
         if self._emitter is not None:
-            self._emitter.emit_lctl_event(event)
+            # Tracing must never break the host: emitter failures are dropped like listener ones.
+            with suppress(Exception):
+                self._emitter.emit_lctl_event(event)
 
         for listener in self._event_listeners:
             with suppress(Exception):
@@ -164,29 +174,51 @@ class LCTLSession:
             return True
         return False
 
+    def _context_stack(self) -> tuple[tuple[str, str], ...]:
+        """Open spans in the current execution context, innermost last (stale ones dropped)."""
+        stack = _SPAN_STACKS.get().get(self._span_key, ())
+        return tuple(entry for entry in stack if entry[0] in self._open_spans)
+
+    def _set_context_stack(self, stack: tuple[tuple[str, str], ...]) -> None:
+        stacks = dict(_SPAN_STACKS.get())
+        if stack:
+            stacks[self._span_key] = stack
+        else:
+            stacks.pop(self._span_key, None)
+        _SPAN_STACKS.set(MappingProxyType(stacks))
+
     @property
     def current_span_id(self) -> str | None:
         """The innermost open span in the current execution context, if any."""
-        stack = self._span_stack.get()
+        stack = self._context_stack()
         return stack[-1][0] if stack else None
 
     def _resolve_agent(self, span_id: str | None = None) -> str:
         """Agent for an event: the given span's agent, else the innermost open span's."""
         if span_id is not None and span_id in self._span_agents:
             return self._span_agents[span_id]
-        stack = self._span_stack.get()
+        stack = self._context_stack()
         if stack:
             return stack[-1][1]
         return self._current_agent or "unknown"
 
     def _innermost_span(self, agent: str | None = None) -> str | None:
-        """Innermost open span, preferring one owned by ``agent`` when given."""
-        stack = self._span_stack.get()
-        if agent is not None:
-            for span_id, span_agent in reversed(stack):
-                if span_agent == agent:
-                    return span_id
-        return stack[-1][0] if stack else None
+        """The span a step_end without an explicit span_id closes.
+
+        With ``agent``: that agent's innermost span in this context, else its most recent
+        open span anywhere in the session (ends recorded from another thread), else none:
+        never another agent's span. Without ``agent``: the innermost span in this context.
+        """
+        stack = self._context_stack()
+        if agent is None:
+            return stack[-1][0] if stack else None
+        for span_id, span_agent in reversed(stack):
+            if span_agent == agent:
+                return span_id
+        for span_id, span_agent in reversed(self._open_spans.items()):
+            if span_agent == agent:
+                return span_id
+        return None
 
     def step_start(
         self,
@@ -209,7 +241,8 @@ class LCTLSession:
             span_id=new_span,
             parent_span_id=parent,
         )
-        self._span_stack.set((*self._span_stack.get(), (new_span, agent)))
+        self._open_spans[new_span] = agent
+        self._set_context_stack((*self._context_stack(), (new_span, agent)))
         return event.seq
 
     def step_end(
@@ -231,20 +264,24 @@ class LCTLSession:
             or self._current_agent
             or "unknown"
         )
-        event = self._add_event(
-            EventType.STEP_END,
-            resolved_agent,
-            {
-                "outcome": outcome,
-                "output_summary": output_summary,
-                "duration_ms": duration_ms,
-                "tokens": {"input": tokens_in, "output": tokens_out},
-            },
-            span_id=target,
-        )
-        if target is not None:
-            self._span_stack.set(tuple(e for e in self._span_stack.get() if e[0] != target))
-        self._current_agent = None
+        try:
+            event = self._add_event(
+                EventType.STEP_END,
+                resolved_agent,
+                {
+                    "outcome": outcome,
+                    "output_summary": output_summary,
+                    "duration_ms": duration_ms,
+                    "tokens": {"input": tokens_in, "output": tokens_out},
+                },
+                span_id=target,
+            )
+        finally:
+            # The step is over even if recording its end failed.
+            if target is not None:
+                self._open_spans.pop(target, None)
+                self._set_context_stack(tuple(e for e in self._context_stack() if e[0] != target))
+            self._current_agent = None
         return event.seq
 
     @contextmanager
