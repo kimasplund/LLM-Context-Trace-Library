@@ -70,30 +70,11 @@ def traced(agent: str, intent: str = "execute"):
 
     def decorator(func):
         def wrapper(*args, **kwargs):
-            import time
-
             session = get_session()
-            start = time.time()
-
             # Build input summary from args
             input_summary = f"args={len(args)}, kwargs={list(kwargs.keys())}"
-
-            session.step_start(agent, intent, input_summary)
-            try:
-                result = func(*args, **kwargs)
-                duration_ms = int((time.time() - start) * 1000)
-                session.step_end(agent, outcome="success", duration_ms=duration_ms)
-                return result
-            except Exception as e:
-                duration_ms = int((time.time() - start) * 1000)
-                session.step_end(agent, outcome="error", duration_ms=duration_ms)
-                session.error(
-                    category="execution_error",
-                    error_type=type(e).__name__,
-                    message=str(e),
-                    recoverable=False,
-                )
-                raise
+            with session.span(agent, intent, input_summary):
+                return func(*args, **kwargs)
 
         wrapper.__name__ = func.__name__
         wrapper.__doc__ = func.__doc__

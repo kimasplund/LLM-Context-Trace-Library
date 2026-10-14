@@ -165,3 +165,98 @@ class TestSpanConcurrency:
         assert implicit_parent is None
         assert explicit_parent == outer
         assert session.current_span_id == outer
+
+
+class TestSessionSpanContextManager:
+    def test_span_success(self):
+        session = LCTLSession()
+        with session.span("a", "do") as span_id:
+            assert span_id == session.current_span_id
+
+        start, end = session.chain.events
+        assert start.type == EventType.STEP_START
+        assert start.span_id == span_id
+        assert end.type == EventType.STEP_END
+        assert end.data["outcome"] == "success"
+        assert end.span_id == span_id
+        assert end.data["duration_ms"] >= 0
+        assert session.current_span_id is None
+
+    def test_span_error_keeps_order_and_attribution(self):
+        session = LCTLSession()
+        with pytest.raises(RuntimeError, match="boom"), session.span("a", "do") as span_id:
+            raise RuntimeError("boom")
+
+        types = [event.type for event in session.chain.events]
+        assert types == [EventType.STEP_START, EventType.STEP_END, EventType.ERROR]
+        end, error = session.chain.events[1], session.chain.events[2]
+        assert end.data["outcome"] == "error"
+        assert error.span_id == span_id
+        assert error.agent == "a"
+        assert error.data["type"] == "RuntimeError"
+
+    def test_span_never_masks_user_exception_when_tracing_breaks(self, monkeypatch):
+        session = LCTLSession()
+        real_add_event = session._add_event
+        calls = {"n": 0}
+
+        def flaky_add_event(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] > 1:
+                raise OSError("disk full")
+            return real_add_event(*args, **kwargs)
+
+        monkeypatch.setattr(session, "_add_event", flaky_add_event)
+        with pytest.raises(ValueError, match="user"), session.span("a", "do"):
+            raise ValueError("user")
+
+    def test_span_tracing_failure_on_normal_exit_is_silent(self, monkeypatch):
+        session = LCTLSession()
+        real_add_event = session._add_event
+        calls = {"n": 0}
+
+        def flaky_add_event(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] > 1:
+                raise OSError("disk full")
+            return real_add_event(*args, **kwargs)
+
+        monkeypatch.setattr(session, "_add_event", flaky_add_event)
+        ran = []
+        with session.span("a", "do"):
+            ran.append(True)
+        assert ran == [True]
+
+    def test_traced_step_produces_span(self):
+        from lctl.core.session import traced_step
+
+        session = LCTLSession()
+        with traced_step(session, "a", "x"):
+            pass
+
+        start, end = session.chain.events
+        assert start.span_id is not None
+        assert end.span_id == start.span_id
+
+    def test_traced_decorator_produces_span_and_error_attribution(self):
+        import lctl
+
+        lctl._global_session = None
+        try:
+            session = lctl.auto_instrument()
+
+            @lctl.traced("a", "x")
+            def failing():
+                raise ValueError("bad")
+
+            with pytest.raises(ValueError, match="bad"):
+                failing()
+
+            types = [event.type for event in session.chain.events]
+            assert types == [EventType.STEP_START, EventType.STEP_END, EventType.ERROR]
+            start, end, error = session.chain.events
+            assert end.span_id == start.span_id
+            assert error.span_id == start.span_id
+            assert error.agent == "a"
+        finally:
+            lctl._global_session = None

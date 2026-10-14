@@ -1,6 +1,7 @@
 """LCTL Session - Context manager for manual instrumentation."""
 
 import contextvars
+import time
 from collections.abc import Callable
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
@@ -246,6 +247,65 @@ class LCTLSession:
         self._current_agent = None
         return event.seq
 
+    @contextmanager
+    def span(
+        self,
+        agent: str,
+        intent: str,
+        input_summary: str = "",
+        *,
+        span_id: str | None = None,
+        parent_span_id: str | None = None,
+    ):
+        """Trace a block as a span; yields its span_id.
+
+        Usage:
+            with session.span("analyzer", "analyze", "code.py") as span_id:
+                do_work()
+
+        Ends with outcome "success", or "error" followed by an ERROR event for the
+        span when an exception escapes. The exception is always re-raised, and a
+        failure inside tracing never masks or replaces it.
+        """
+        start = time.time()
+        try:
+            self.step_start(
+                agent, intent, input_summary, span_id=span_id, parent_span_id=parent_span_id
+            )
+            opened = self.current_span_id
+        except Exception:
+            opened = None
+
+        if opened is None:
+            # Tracing could not start: run the block untraced (outside any handler,
+            # so a user exception isn't chained to the tracing failure).
+            yield span_id or ""
+            return
+
+        try:
+            yield opened
+        except BaseException as exc:
+            duration_ms = int((time.time() - start) * 1000)
+            with suppress(Exception):
+                self.step_end(outcome="error", duration_ms=duration_ms, span_id=opened)
+            if isinstance(exc, Exception):
+                with suppress(Exception):
+                    self.error(
+                        category="execution_error",
+                        error_type=type(exc).__name__,
+                        message=str(exc),
+                        recoverable=False,
+                        span_id=opened,
+                    )
+            raise
+        else:
+            with suppress(Exception):
+                self.step_end(
+                    outcome="success",
+                    duration_ms=int((time.time() - start) * 1000),
+                    span_id=opened,
+                )
+
     def add_fact(
         self, fact_id: str, text: str, confidence: float = 1.0, source: str | None = None
     ) -> int:
@@ -461,33 +521,5 @@ def traced_step(session: LCTLSession, agent: str, intent: str, input_summary: st
 
     Note: If tracing itself fails, the original exception is still raised.
     """
-    import time
-
-    start = time.time()
-
-    try:
-        session.step_start(agent, intent, input_summary)
-    except Exception:
-        # If we can't even start tracing, just execute without tracing
+    with session.span(agent, intent, input_summary):
         yield
-        return
-
-    try:
-        yield
-        duration_ms = int((time.time() - start) * 1000)
-        # Don't fail if we can't record the end
-        with suppress(Exception):
-            session.step_end(agent, outcome="success", duration_ms=duration_ms)
-    except Exception as e:
-        duration_ms = int((time.time() - start) * 1000)
-        try:
-            session.step_end(agent, outcome="error", duration_ms=duration_ms)
-            session.error(
-                category="execution_error",
-                error_type=type(e).__name__,
-                message=str(e),
-                recoverable=False,
-            )
-        except Exception:  # noqa: S110  # tracing must never break the host application
-            pass  # Don't suppress original exception if tracing fails
-        raise
