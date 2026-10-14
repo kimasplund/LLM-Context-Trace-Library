@@ -267,7 +267,11 @@ All of these are verified with command output before the work is called done:
 4. **Extension dependency refresh,** including replacing `@vscode/webview-ui-toolkit`, which Microsoft archived.
 5. **mypy ratchet:** `check_untyped_defs`, then extending coverage to `tests/`.
 6. Re-evaluate **`ty`** once it reaches 1.0.
-7. Integration-test failures found by the all-extras run, if any (§4.3).
+7. **Integration-test failures with all extras installed** (probe 2026-10-14, py3.13): `3 failed, 1044 passed, 7 skipped, 1 error`.
+   - (a) `tests/test_sk_stream.py` collection error: `semantic_kernel` fails to import (`ImportError: cannot import name 'Url' from 'pydantic.networks'`) under the `lctl[all]` resolution, so `[all]` installs a broken semantic-kernel.
+   - (b) `tests/test_crewai_llm_trace.py::test_crewai_llm_trace_handler` and `::test_crewai_llm_trace_handler_missing_agent` fail against real CrewAI.
+   - (c) `tests/test_claude_code.py::TestLCTLClaudeCodeTracer::test_link_to_git_history` failed, probably because the probe directory was not a git repo. Verify before acting.
+   - Add an `integration` CI job once these are fixed.
 8. Anything the `S` rules or the leaky-test diagnosis surface as a real library defect (§4.2, §4.3).
 9. **`lctl/streaming/subscriber.py` polls with `asyncio.sleep` in a `while` loop** (ASYNC110). An `asyncio.Event`-based wait would cut latency and wakeups. This is a behavior change.
 10. **Examples' calculator tools `eval()` model output** (`examples/langchain_example.py`, `examples/openai_agents_example.py`). Users copy examples, so replace this with a safe arithmetic evaluator.

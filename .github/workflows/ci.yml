@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Lint, format, types
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.1"
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run pre-commit run --all-files --show-diff-on-failure
+
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # 3.15: the universal lock pins pydantic-core 2.41.5 (crewai caps pydantic<2.13),
+    # which has no cp315 wheel yet. Non-blocking until that cap lifts (spec follow-up 13).
+    continue-on-error: ${{ matrix.python-version == '3.15' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.1"
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --locked
+      - name: Confirm interpreter matches the matrix
+        run: uv run python --version
+      - run: uv run pytest
+
+  package:
+    name: Build and check wheel
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.1"
+          enable-cache: true
+      - run: uv build
+      - run: python3 scripts/check_wheel.py dist/*.whl
+      - name: Install the wheel into a clean env and run the CLI
+        run: |
+          uv venv "$RUNNER_TEMP/wheeltest"
+          uv pip install --python "$RUNNER_TEMP/wheeltest" dist/*.whl
+          "$RUNNER_TEMP/wheeltest/bin/lctl" --version | grep -F "4.1.0"
+
+  extension:
+    name: VS Code extension
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            vscode-lctl/package-lock.json
+            vscode-lctl/webview-ui/package-lock.json
+      - run: npm ci
+        working-directory: vscode-lctl/webview-ui
+      - run: npm ci
+        working-directory: vscode-lctl
+      - run: npm run lint
+        working-directory: vscode-lctl
+      - run: npm run compile
+        working-directory: vscode-lctl
+      - run: npm run build:webview
+        working-directory: vscode-lctl
