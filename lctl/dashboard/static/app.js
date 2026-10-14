@@ -72,11 +72,16 @@ document.addEventListener('DOMContentLoaded', init);
 async function init() {
     await loadChains();
     setupEventListeners();
+    initEvalFeatures();
 }
 
 function setupEventListeners() {
     elements.chainSelector.addEventListener('change', onChainSelect);
     elements.refreshBtn.addEventListener('click', loadChains);
+    document.getElementById('close-details').addEventListener('click', closeEventDetails);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeEventDetails();
+    });
     elements.timeSlider.addEventListener('input', onSliderChange);
     elements.playBtn.addEventListener('click', togglePlay);
     elements.stepBackBtn.addEventListener('click', stepBack);
@@ -280,11 +285,21 @@ function updateStats(replayState = null) {
     elements.statEvents.textContent = chain.events.length;
     elements.statAgents.textContent = chain.agents.length;
     elements.statFacts.textContent = Object.keys(stateData.facts).length;
-    elements.statDuration.textContent = formatDuration(stateData.metrics.total_duration_ms);
+    const upToSeq = replayState ? state.currentSeq : Infinity;
+    elements.statDuration.textContent = formatDuration(elapsedMs(chain.events, upToSeq));
     elements.statTokens.textContent = formatNumber(
         stateData.metrics.total_tokens_in + stateData.metrics.total_tokens_out
     );
     elements.statErrors.textContent = stateData.metrics.error_count;
+}
+
+// Wall-clock time from the first event to the last event at or before upToSeq.
+function elapsedMs(events, upToSeq) {
+    if (!events.length) return 0;
+    const reached = events.filter(e => e.seq <= upToSeq);
+    const last = reached.length ? reached[reached.length - 1] : events[0];
+    const ms = Date.parse(last.timestamp) - Date.parse(events[0].timestamp);
+    return Number.isFinite(ms) && ms > 0 ? ms : 0;
 }
 
 function renderTimeline() {
@@ -475,6 +490,7 @@ function selectEvent(event) {
 }
 
 function showEventDetails(event) {
+    document.querySelector('.panel-details').classList.add('drawer-open');
     const container = elements.eventDetails;
     elements.selectedEventLabel.textContent = `Event #${event.seq}`;
 
@@ -512,7 +528,12 @@ function showEventDetails(event) {
     container.innerHTML = detailsHtml;
 }
 
+function closeEventDetails() {
+    document.querySelector('.panel-details').classList.remove('drawer-open');
+}
+
 function clearEventDetails() {
+    closeEventDetails();
     elements.eventDetails.innerHTML = '<div class="no-selection">Click on any event in the timeline or swim lanes to view details</div>';
     elements.selectedEventLabel.textContent = 'Select an event to view details';
 }
@@ -584,7 +605,11 @@ function getEventSummary(event) {
 function formatDuration(ms) {
     if (ms < 1000) return `${ms}ms`;
     if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-    return `${(ms / 60000).toFixed(1)}m`;
+    if (ms < 3600000) return `${(ms / 60000).toFixed(1)}m`;
+    const hours = Math.floor(ms / 3600000);
+    const minutes = Math.floor((ms % 3600000) / 60000);
+    if (hours < 24) return `${hours}h ${minutes}m`;
+    return `${Math.floor(hours / 24)}d ${hours % 24}h`;
 }
 
 function formatNumber(n) {
@@ -677,13 +702,6 @@ function initEvalFeatures() {
         evalElements.compareBtn.addEventListener('click', openCompareModal);
     }
 }
-
-// Call init after main init
-const originalInit = init;
-init = async function() {
-    await originalInit();
-    initEvalFeatures();
-};
 
 // Tab Navigation
 function setupTabNavigation() {

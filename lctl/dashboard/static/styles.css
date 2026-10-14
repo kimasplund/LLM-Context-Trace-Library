@@ -359,6 +359,37 @@ body {
     }
 }
 
+/* Keep the page a couple of screens tall: panels scroll internally. */
+.panels > .panel {
+    max-height: 70vh;
+}
+
+/* Event details open as a drawer over the current view instead of far below it. */
+.details-close {
+    display: none;
+    margin-left: auto;
+}
+
+.panel-details.drawer-open {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(560px, 92vw);
+    max-height: none;
+    z-index: 150;
+    border-radius: 0;
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.45);
+}
+
+.panel-details.drawer-open .details-close {
+    display: inline-flex;
+}
+
+.panel-details .panel-header {
+    gap: var(--spacing-md);
+}
+
 .panel {
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-primary);

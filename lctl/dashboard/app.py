@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import hashlib
 import hmac
 import json
 import os
@@ -270,6 +271,14 @@ def _setup_static_files(app: FastAPI) -> None:
 # =============================================================================
 
 
+def _with_versioned_assets(html: str, static_dir: Path) -> str:
+    """Append a content hash to static asset URLs so browsers never reuse stale JS/CSS."""
+    for name in ("app.js", "styles.css"):
+        digest = hashlib.sha256((static_dir / name).read_bytes()).hexdigest()[:12]
+        html = html.replace(f'/static/{name}"', f'/static/{name}?v={digest}"')
+    return html
+
+
 def _register_health_endpoints(app: FastAPI) -> None:
     """Register health check and index endpoints."""
     dashboard_dir = Path(__file__).parent
@@ -281,7 +290,7 @@ def _register_health_endpoints(app: FastAPI) -> None:
         index_path = templates_dir / "index.html"
         if not index_path.exists():
             raise HTTPException(status_code=500, detail="Dashboard template not found")
-        return index_path.read_text()
+        return _with_versioned_assets(index_path.read_text(), dashboard_dir / "static")
 
     @app.get("/api/health", response_class=JSONResponse)
     async def health_check():

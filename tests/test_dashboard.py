@@ -248,6 +248,19 @@ class TestDashboardApp:
         assert "text/html" in response.headers["content-type"]
         assert "LCTL Dashboard" in response.text
 
+    def test_index_page_versions_static_assets(self, client):
+        """Asset URLs carry a content hash so browsers never run stale JS/CSS after an upgrade."""
+        import hashlib
+        from pathlib import Path
+
+        import lctl.dashboard
+
+        html = client.get("/").text
+        static_dir = Path(lctl.dashboard.__file__).parent / "static"
+        for name in ("app.js", "styles.css"):
+            digest = hashlib.sha256((static_dir / name).read_bytes()).hexdigest()[:12]
+            assert f"/static/{name}?v={digest}" in html
+
     def test_static_files(self, client):
         """Test that static files are served."""
         # CSS
