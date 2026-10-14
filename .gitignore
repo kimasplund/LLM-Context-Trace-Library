@@ -20,3 +20,4 @@ node_modules
 cli_test.lctl-report.html
 .mypy_cache/
 .superpowers/
+.coverage.*

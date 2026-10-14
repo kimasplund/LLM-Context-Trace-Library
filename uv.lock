@@ -3204,7 +3204,7 @@ semantic-kernel = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
+    { name = "httpx2" },
     { name = "lctl", extra = ["dashboard"] },
     { name = "mypy" },
     { name = "pre-commit" },
@@ -3251,7 +3251,7 @@ provides-extras = ["all", "autogen", "crewai", "dashboard", "dspy", "langchain",
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28" },
+    { name = "httpx2", specifier = ">=2.13" },
     { name = "lctl", extras = ["dashboard"] },
     { name = "mypy", specifier = ">=2.4" },
     { name = "pre-commit", specifier = ">=4.7" },

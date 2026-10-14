@@ -782,7 +782,12 @@ class TestConcurrentAgents:
                 del result.all_messages
                 return result
 
-            agent.run = AsyncMock(side_effect=lambda x, i=i: make_run(i))
+            # An async side_effect is awaited by AsyncMock; a sync lambda returning
+            # make_run(i) would hand back an un-awaited coroutine as the "result".
+            async def fake_run(prompt, idx=i):
+                return await make_run(idx)
+
+            agent.run = AsyncMock(side_effect=fake_run)
             agents.append(TracedAgent(agent, chain_id=f"chain_{i}"))
 
         # Run concurrently
@@ -791,7 +796,7 @@ class TestConcurrentAgents:
 
         results = await asyncio.gather(*[run_agent(agents[i], f"prompt_{i}") for i in range(3)])
 
-        assert len(results) == 3
+        assert [r.data for r in results] == ["result_0", "result_1", "result_2"]
         for agent in agents:
             events = agent.tracer.session.chain.events
             assert len([e for e in events if e.type == EventType.STEP_START]) == 1

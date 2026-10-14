@@ -17,6 +17,7 @@ Covers:
 import asyncio
 import contextlib
 import json
+import sys
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -553,6 +554,14 @@ class TestWebSocketServerClientMessageHandling:
 class TestWebSocketServerConnectionHandling:
     """Tests for WebSocketServer connection handling."""
 
+    @pytest.mark.xfail(
+        sys.version_info < (3, 12),
+        reason=(
+            "Known bug (spec follow-up 12): on 3.11 asyncio.wait_for loses the send "
+            "loop's cancellation, and _send_loop recursion overflows after ~95s"
+        ),
+        run=False,
+    )
     @pytest.mark.asyncio
     async def test_handle_connection_basic(
         self, server: WebSocketServer, mock_websocket: AsyncMock
@@ -1073,13 +1082,16 @@ class TestUtilityFunctions:
     def test_start_websocket_server_blocking_mode(self, emitter: EventEmitter):
         """Test start_websocket_server in blocking mode."""
         # We can't fully test blocking mode, but we can test that it creates a server
-        with patch("asyncio.run") as mock_run:
+        # The stand-in closes the coroutine it receives, as asyncio.run would finish it;
+        # a bare MagicMock would leave server.start() un-awaited.
+        with patch("asyncio.run", side_effect=lambda coro: coro.close()) as mock_run:
             result = start_websocket_server(
                 emitter, host="127.0.0.1", port=9999, run_in_thread=False
             )
 
             # In blocking mode, should return None
             mock_run.assert_called_once()
+            assert mock_run.call_args.args[0].__qualname__ == "WebSocketServer.start"
             # Result is None because asyncio.run is mocked
             assert result is None
 

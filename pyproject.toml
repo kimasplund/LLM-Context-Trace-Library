@@ -89,7 +89,7 @@ dev = [
     "pytest>=9.1",
     "pytest-asyncio>=1.4",
     "pytest-cov>=7.0",
-    "httpx>=0.28",
+    "httpx2>=2.13",
     "ruff>=0.17",
     "mypy>=2.4",
     "types-PyYAML",
@@ -131,4 +131,16 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --cov=lctl --cov-report=term-missing"
+addopts = ["-ra", "--strict-markers", "--strict-config", "--cov=lctl", "--cov-report=term-missing"]
+filterwarnings = ["error"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.coverage.run]
+source = ["lctl"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]
+fail_under = 78
