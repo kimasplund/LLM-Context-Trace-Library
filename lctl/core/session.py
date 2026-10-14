@@ -1,5 +1,6 @@
 """LCTL Session - Context manager for manual instrumentation."""
 
+import contextvars
 from collections.abc import Callable
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
@@ -8,10 +9,15 @@ from typing import TYPE_CHECKING, Any, Optional
 from uuid import uuid4
 
 from .events import Chain, Event, EventType
+from .ids import new_id
 from .redaction import get_redactor
 
 if TYPE_CHECKING:
     from ..streaming.emitter import EventEmitter
+
+
+# Sentinel: "attach to the innermost open span in the current context".
+_UNSET: Any = object()
 
 
 class LCTLSession:
@@ -51,6 +57,12 @@ class LCTLSession:
         self.chain = Chain(id=chain_id or str(uuid4())[:8])
         self._seq = 0
         self._current_agent: str | None = None
+        # Open spans per execution context, innermost last: ((span_id, agent), ...).
+        # Immutable tuples, so tasks that copy the context never share a stack.
+        self._span_stack: contextvars.ContextVar[tuple[tuple[str, str], ...]] = (
+            contextvars.ContextVar(f"lctl_span_stack_{id(self)}", default=())
+        )
+        self._span_agents: dict[str, str] = {}
         self._emitter: EventEmitter | None = emitter
         self._event_listeners: list[Callable[[Event], None]] = []
         self._redaction_enabled = redaction_enabled
@@ -83,13 +95,28 @@ class LCTLSession:
     def _now(self) -> datetime:
         return datetime.now(UTC)
 
-    def _add_event(self, event_type: EventType, agent: str, data: dict[str, Any]) -> Event:
+    def _add_event(
+        self,
+        event_type: EventType,
+        agent: str,
+        data: dict[str, Any],
+        *,
+        span_id: str | None = _UNSET,
+        parent_span_id: str | None = None,
+    ) -> Event:
         if self._redaction_enabled:
             redactor = get_redactor()
             data = redactor.redact_event_data(data)
 
         event = Event(
-            seq=self._next_seq(), type=event_type, timestamp=self._now(), agent=agent, data=data
+            seq=self._next_seq(),
+            type=event_type,
+            timestamp=self._now(),
+            agent=agent,
+            data=data,
+            id=new_id(),
+            span_id=self.current_span_id if span_id is _UNSET else span_id,
+            parent_span_id=parent_span_id,
         )
         self.chain.add_event(event)
 
@@ -136,12 +163,52 @@ class LCTLSession:
             return True
         return False
 
-    def step_start(self, agent: str, intent: str, input_summary: str = "") -> int:
-        """Record start of an agent step. Returns sequence number."""
+    @property
+    def current_span_id(self) -> str | None:
+        """The innermost open span in the current execution context, if any."""
+        stack = self._span_stack.get()
+        return stack[-1][0] if stack else None
+
+    def _resolve_agent(self, span_id: str | None = None) -> str:
+        """Agent for an event: the given span's agent, else the innermost open span's."""
+        if span_id is not None and span_id in self._span_agents:
+            return self._span_agents[span_id]
+        stack = self._span_stack.get()
+        if stack:
+            return stack[-1][1]
+        return self._current_agent or "unknown"
+
+    def _innermost_span(self, agent: str | None = None) -> str | None:
+        """Innermost open span, preferring one owned by ``agent`` when given."""
+        stack = self._span_stack.get()
+        if agent is not None:
+            for span_id, span_agent in reversed(stack):
+                if span_agent == agent:
+                    return span_id
+        return stack[-1][0] if stack else None
+
+    def step_start(
+        self,
+        agent: str,
+        intent: str,
+        input_summary: str = "",
+        *,
+        span_id: str | None = None,
+        parent_span_id: str | None = None,
+    ) -> int:
+        """Record start of an agent step (opens a span). Returns sequence number."""
+        new_span = span_id or new_id()
+        parent = parent_span_id if parent_span_id is not None else self.current_span_id
         self._current_agent = agent
+        self._span_agents[new_span] = agent
         event = self._add_event(
-            EventType.STEP_START, agent, {"intent": intent, "input_summary": input_summary}
+            EventType.STEP_START,
+            agent,
+            {"intent": intent, "input_summary": input_summary},
+            span_id=new_span,
+            parent_span_id=parent,
         )
+        self._span_stack.set((*self._span_stack.get(), (new_span, agent)))
         return event.seq
 
     def step_end(
@@ -152,19 +219,30 @@ class LCTLSession:
         duration_ms: int = 0,
         tokens_in: int = 0,
         tokens_out: int = 0,
+        *,
+        span_id: str | None = None,
     ) -> int:
-        """Record end of an agent step."""
-        agent = agent or self._current_agent or "unknown"
+        """Record end of an agent step (closes ``span_id`` or the innermost open span)."""
+        target = span_id if span_id is not None else self._innermost_span(agent)
+        resolved_agent = (
+            agent
+            or (self._span_agents.get(target) if target else None)
+            or self._current_agent
+            or "unknown"
+        )
         event = self._add_event(
             EventType.STEP_END,
-            agent,
+            resolved_agent,
             {
                 "outcome": outcome,
                 "output_summary": output_summary,
                 "duration_ms": duration_ms,
                 "tokens": {"input": tokens_in, "output": tokens_out},
             },
+            span_id=target,
         )
+        if target is not None:
+            self._span_stack.set(tuple(e for e in self._span_stack.get() if e[0] != target))
         self._current_agent = None
         return event.seq
 
@@ -172,7 +250,7 @@ class LCTLSession:
         self, fact_id: str, text: str, confidence: float = 1.0, source: str | None = None
     ) -> int:
         """Add a new fact."""
-        agent = source or self._current_agent or "unknown"
+        agent = source or self._resolve_agent()
         event = self._add_event(
             EventType.FACT_ADDED,
             agent,
@@ -188,7 +266,7 @@ class LCTLSession:
         reason: str = "",
     ) -> int:
         """Modify an existing fact."""
-        agent = self._current_agent or "unknown"
+        agent = self._resolve_agent()
         data: dict[str, Any] = {"id": fact_id, "reason": reason}
         if text is not None:
             data["text"] = text
@@ -205,13 +283,16 @@ class LCTLSession:
         output_data: Any,
         duration_ms: int = 0,
         agent: str | None = None,
+        *,
+        span_id: str | None = None,
     ) -> int:
         """Record a tool invocation."""
-        agent = agent or self._current_agent or "unknown"
+        agent = agent or self._resolve_agent(span_id)
         event = self._add_event(
             EventType.TOOL_CALL,
             agent,
             {"tool": tool, "input": input_data, "output": output_data, "duration_ms": duration_ms},
+            span_id=_UNSET if span_id is None else span_id,
         )
         return event.seq
 
@@ -222,9 +303,11 @@ class LCTLSession:
         model: str,
         usage: dict[str, int] | None = None,
         duration_ms: int = 0,
+        *,
+        span_id: str | None = None,
     ) -> int:
         """Record an LLM trace."""
-        agent = self._current_agent or "unknown"
+        agent = self._resolve_agent(span_id)
         event = self._add_event(
             EventType.LLM_TRACE,
             agent,
@@ -235,6 +318,7 @@ class LCTLSession:
                 "usage": usage or {},
                 "duration_ms": duration_ms,
             },
+            span_id=_UNSET if span_id is None else span_id,
         )
         return event.seq
 
@@ -245,9 +329,11 @@ class LCTLSession:
         message: str,
         recoverable: bool = True,
         suggested_action: str = "",
+        *,
+        span_id: str | None = None,
     ) -> int:
         """Record an error."""
-        agent = self._current_agent or "unknown"
+        agent = self._resolve_agent(span_id)
         event = self._add_event(
             EventType.ERROR,
             agent,
@@ -258,6 +344,7 @@ class LCTLSession:
                 "recoverable": recoverable,
                 "suggested_action": suggested_action,
             },
+            span_id=_UNSET if span_id is None else span_id,
         )
         return event.seq
 
@@ -288,7 +375,7 @@ class LCTLSession:
         Returns:
             Event sequence number
         """
-        agent = self._current_agent or "unknown"
+        agent = self._resolve_agent()
         event = self._add_event(
             EventType.STREAM_START, agent, {"stream_id": stream_id, "description": description}
         )
@@ -305,7 +392,7 @@ class LCTLSession:
         Returns:
             Event sequence number
         """
-        agent = self._current_agent or "unknown"
+        agent = self._resolve_agent()
         event = self._add_event(
             EventType.STREAM_CHUNK,
             agent,
@@ -327,7 +414,7 @@ class LCTLSession:
         Returns:
             Event sequence number
         """
-        agent = self._current_agent or "unknown"
+        agent = self._resolve_agent()
         event = self._add_event(
             EventType.STREAM_END,
             agent,
