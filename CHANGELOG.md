@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Web dashboard: `run_dashboard(reload=True)` works (import-string app factory)
 - Web dashboard: non-ASCII API keys are rejected with 403 instead of a 500
 - RPA webhooks are now actually delivered; previously they were registered but never sent
-- LlamaIndex: the callback handler is initialised correctly and wired through the callback manager; `llm_trace` carries the model and LLM agent; a warning is logged when a shared callback manager already holds another LCTL handler, and the "already being traced" error explains the shared-manager cause
+- LlamaIndex: the callback handler is initialised correctly and wired through the callback manager; `llm_trace` carries the model and LLM agent; the "already being traced" error explains that engines built from the same `Settings` share one callback manager
 - PydanticAI: results and usage from 1.x and 2.x are read correctly, `run_sync` is traced, attributes are proxied through the traced agent, and stream deltas are recorded
 - OpenAI Agents: `LCTLRunHooks.on_tool_start`/`on_tool_end` match the SDK signatures (the old ones crashed) and take tool input from `context.tool_arguments`
 - CrewAI: steps are attributed to agent roles (and the manager), durations are real and clamped to non-negative, no spurious `ToolResult` steps, `kickoff_for_each` is traced, and user step callbacks are chained and always restored; installing the tracer twice is a no-op
@@ -54,7 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dashboard API keys are enforced on every route except `/` (and `/static`), including `/ws` (checked before accept, close code 1008) and the SSE stream; `?api_key=` is accepted for `/ws` and SSE. Set `LCTL_LOCALHOST_BYPASS=false` to enforce keys for local clients too
 - `ReplayEngine.diff()` and `lctl diff` compare content only, ignoring ids, timestamps and `duration_ms`; pass `ignore_volatile=False` / `--strict` to compare every field
 - `LCTLOpenAIAgentTracer.run_config` is deprecated and emits a `DeprecationWarning`; use `hooks=tracer.create_hooks()`
-- RPA webhooks are HMAC-signed, retried on failure and recorded in a delivery log (new delivery-log route); `WebhookDispatcher.register` now takes `(webhook_id, registration)`
+- RPA webhooks are HMAC-signed, retried on failure and recorded in a delivery log (`GET /api/rpa/webhooks/{id}/deliveries`). Delivery runs on the dashboard app's lifespan event loop, so an app mounted without its lifespan does not deliver webhooks
 - `lctl claude init --chain-id` is now the chain-id prefix used by `SessionStart` (`<prefix>-<timestamp>-<session>`); passing it regenerates `SessionStart.sh` without `--force`
 - Minimum supported PydanticAI is `pydantic-ai>=1.0`
 - CI gains an `integrations` job running live smoke tests for each extra (new `integration` pytest marker)
@@ -74,7 +74,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `lctl claude init` refuses to overwrite a same-named script that LCTL did not generate (exit 1, nothing written); `--force` backs it up to `<script>.bak` and replaces it. `--force` only regenerates hook scripts and never replaces `settings.json`.
 - `lctl claude init --chain-id` now sets a chain-id prefix rather than a fixed chain id, because each session gets its own chain.
 - `lctl claude validate` exits non-zero for invalid or outdated installs and advises `lctl claude init --force` for stale scripts.
-- `WebhookDispatcher` delivers only on the dashboard app's lifespan event loop, and `WebhookDispatcher.register` takes `(webhook_id, registration)`.
 
 ## [4.1.0] - 2026-01-19
 
