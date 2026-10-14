@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Errors recorded by `traced_step` and `@lctl.traced` were attributed to agent "unknown"; they now carry the failing step's agent and span. `@lctl.traced` also no longer breaks the call if tracing itself fails.
 - Concurrent agents in one session (e.g. under `asyncio.gather`) no longer overwrite each other's agent attribution.
 - `ReplayEngine.diff()` ignores per-run identity fields.
+- A failing `EventEmitter` attached to an `LCTLSession` no longer raises out of the recording call; like event listeners, its errors are dropped so tracing never breaks the host application.
 
 - Web dashboard: the Metrics and Evaluation tabs and the Compare button never responded (their handlers were attached by an `init` reassignment that ran after the page-load listener had captured the original function)
 - Web dashboard: event details open in a drawer over the current view instead of rendering ~17,000px down the page; panels scroll internally so the page stays about two screens tall; `Esc` closes the drawer
