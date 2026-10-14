@@ -93,15 +93,15 @@ Every change is a keyword-only addition with a default, so existing names, posit
 |---|---|
 | `step_start(agent, intent, input_summary="", *, span_id=None, parent_span_id=None) -> int` | Opens a span: `span_id or new_id()`, with parent `parent_span_id` or the innermost open span. Pushes it and returns `seq`, as today. |
 | `step_end(agent=None, outcome=…, …, *, span_id=None) -> int` | Closes `span_id` if given, otherwise the innermost open span in the context, and pops it (searching the stack when an explicit ID isn't on top). With no open span, it records the event with `span_id=None`, which matches today's tolerance. |
-| `tool_call(…, *, span_id=None)`, `llm_trace(…, *, span_id=None)` | Attach to the given span, or to the innermost open span. |
-| `add_fact`, `modify_fact`, `error`, `checkpoint`, `stream_start`, `stream_chunk`, `stream_end` | Attach to the innermost open span automatically. Signatures are unchanged. |
+| `tool_call(…, *, span_id=None)`, `llm_trace(…, *, span_id=None)`, `error(…, *, span_id=None)` | Attach to the given span, or to the innermost open span. When `span_id` is given, the event's agent is that span's agent. |
+| `add_fact`, `modify_fact`, `checkpoint`, `stream_start`, `stream_chunk`, `stream_end` | Attach to the innermost open span automatically. Signatures are unchanged. |
 | `current_span_id` (new read-only property) | The innermost open span in the current context, or `None`. |
 | `span(agent, intent, input_summary="", *, span_id=None, parent_span_id=None)` (new context manager) | Yields `span_id` (see the behaviour below). |
 
 `session.span()` behaves as follows:
 - **On entry:** it calls `step_start(...)` and yields the span ID.
 - **On a normal exit:** it calls `step_end(outcome="success")` with the measured `duration_ms`.
-- **If an exception escapes:** it records `error(...)` and then `step_end(outcome="error")`, and re-raises the original exception.
+- **If an exception escapes:** it calls `step_end(outcome="error")` and then `error(..., span_id=<this span>)`, which is today's `traced_step` event order (pinned by `tests/test_session.py::test_traced_step_on_exception`). The error stays attributed to the failing span, and to its agent, where today it is recorded as `"unknown"`. Then it re-raises the original exception.
 - **If tracing itself fails:** the failure is suppressed, so it never masks or replaces the user's exception, nor breaks a normal exit.
 
 ### 4.3 Attribution
@@ -112,7 +112,7 @@ When a method gets no explicit `agent`, the agent comes from the innermost open 
 
 ### 4.5 Existing helpers and integrations
 - `traced_step(session, agent, intent, input_summary="")` becomes a wrapper around `session.span(...)`. Its outward behaviour is unchanged.
-- `@traced` keeps using `traced_step`.
+- `@traced` currently has its own inline copy of this logic. It is rewritten on top of `session.span()` with the same event order. It also gains the graceful handling of tracing failures that `traced_step` already has.
 - All nine integrations already call `step_start`/`step_end`, so they get spans and automatic parenting without code changes.
 
 ## 5. Replay and analysis (`ReplayEngine`)
@@ -154,7 +154,7 @@ Tests are written first and each is seen to fail before its implementation.
    - explicit `span_id` and `parent_span_id`;
    - `step_end` with an explicit ID that is not on top of the stack;
    - every event carries `id`, and non-step events carry the enclosing `span_id`;
-   - `span()` success path; `span()` error path (one `ERROR` event, an `outcome="error"` end, the original exception re-raised);
+   - `span()` success path; `span()` error path (`STEP_END` with `outcome="error"` followed by one `ERROR` event carrying the failing span's `span_id` and agent, and the original exception re-raised);
    - `traced_step` and `@traced` produce spans;
    - **two coroutines under `asyncio.gather`** inside an outer span get distinct spans, both parented to the outer span, each with the right agent attribution;
    - code run in a fresh `contextvars.Context()` (as on a new thread) starts with no parent; an explicit `parent_span_id` works.
@@ -172,7 +172,7 @@ Tests are written first and each is seen to fail before its implementation.
    - a 4.2 event dict passed through the 4.1-era `Event.from_dict` path ignores the new keys (forward compatibility).
 6. **CLI:**
    - `lctl trace --tree` output on a fixture;
-   - `lctl trace` and `lctl stats --json` on `examples/sample-chain.lctl.json` are byte-identical to the pre-change baseline.
+   - `lctl trace` on `examples/sample-chain.lctl.json` is byte-identical to the pre-change baseline. `lctl stats --json` is identical except `"version"`, which reports the migrated format version (`"4.2"` instead of `"4.1"`).
 7. **Gates:**
    - all existing tests pass, and coverage stays at or above `fail_under`;
    - CI is green on 3.11–3.14 and on the 3.15 core suite;
