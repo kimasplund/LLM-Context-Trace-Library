@@ -40,7 +40,7 @@ class ChainMetrics:
             engine = ReplayEngine(chain)
             state = engine.replay_all()
 
-        agents = list(set(e.agent for e in chain.events if e.agent != "system"))
+        agents = list({e.agent for e in chain.events if e.agent != "system"})
         step_starts = [e for e in chain.events if e.type == EventType.STEP_START]
         [e for e in chain.events if e.type == EventType.STEP_END]
 

@@ -317,7 +317,7 @@ def bootstrap_confidence_interval(
     if not sample_b:
         raise ValueError("Sample B must not be empty")
 
-    rng = random.Random(seed)
+    rng = random.Random(seed)  # noqa: S311  # statistical sampling, not cryptography
 
     observed_diff = _mean(sample_a) - _mean(sample_b)
 

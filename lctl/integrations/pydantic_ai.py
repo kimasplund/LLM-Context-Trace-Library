@@ -344,7 +344,7 @@ class TracedAgent:
                         model=getattr(self.agent, "model_name", "unknown"),
                         usage={"input": tokens_in, "output": tokens_out},
                     )
-                except Exception:
+                except Exception:  # noqa: S110  # tracing must never break the host application
                     pass
 
             return result
@@ -533,7 +533,7 @@ class TracedStreamedRunResult:
                     model=model_name,
                     usage={"input": tokens_in, "output": tokens_out},
                 )
-            except Exception:
+            except Exception:  # noqa: S110  # tracing must never break the host application
                 pass
 
 

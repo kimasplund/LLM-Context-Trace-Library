@@ -262,13 +262,14 @@ All of these are verified with command output before the work is called done:
 ## 6. Follow-ups (out of scope, record only)
 
 1. **Claude Agent SDK integration** (`claude-agent-sdk`) as sub-project 2. It's an in-process `BaseTracer`, distinct from the CLI-hook-based `claude_code.py`.
-2. **Dashboard binds `0.0.0.0` by default** (`lctl/cli/main.py:709`), which exposes it on the network. Consider defaulting to `127.0.0.1`. This is a behavior change.
+2. **Dashboard and WebSocket server bind `0.0.0.0` by default** (`lctl/cli/main.py` `dashboard --host`, `lctl/streaming/websocket.py` `WebSocketServer.start` and `start_websocket_server`), which exposes them on the network. Consider defaulting to `127.0.0.1`. This is a behavior change.
 3. **Timezone-aware timestamps (DTZ rules).** This needs a check that the serialized format stays compatible with the schema migration.
 4. **Extension dependency refresh,** including replacing `@vscode/webview-ui-toolkit`, which Microsoft archived.
 5. **mypy ratchet:** `check_untyped_defs`, then extending coverage to `tests/`.
 6. Re-evaluate **`ty`** once it reaches 1.0.
 7. Integration-test failures found by the all-extras run, if any (§4.3).
 8. Anything the `S` rules or the leaky-test diagnosis surface as a real library defect (§4.2, §4.3).
+9. **`lctl/streaming/subscriber.py` polls with `asyncio.sleep` in a `while` loop** (ASYNC110). An `asyncio.Event`-based wait would cut latency and wakeups. This is a behavior change.
 
 ## 7. Risks
 

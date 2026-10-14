@@ -24,6 +24,7 @@ Usage:
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import time
 from collections.abc import Callable
@@ -32,7 +33,6 @@ from uuid import uuid4
 
 from ..core.session import LCTLSession
 from .base import BaseTracer, truncate
-import contextlib
 
 try:
     import dspy

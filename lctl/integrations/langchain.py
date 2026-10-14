@@ -12,6 +12,7 @@ Usage:
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from collections.abc import Iterable, Sequence
@@ -20,7 +21,6 @@ from uuid import UUID
 
 from ..core.session import LCTLSession
 from .base import TracerDelegate, truncate
-import contextlib
 
 try:
     from langchain_core.agents import AgentAction, AgentFinish
@@ -285,7 +285,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
                 message=str(error),
                 recoverable=False,
             )
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
     def on_chat_model_start(
@@ -434,7 +434,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
                 message=str(error),
                 recoverable=False,
             )
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
         with self._lock:
@@ -516,7 +516,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
                 message=str(error),
                 recoverable=True,
             )
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
     def on_agent_action(
@@ -553,7 +553,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
                 confidence=1.0,
                 source="agent",
             )
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
     def on_retriever_start(
@@ -631,7 +631,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
                 message=str(error),
                 recoverable=True,
             )
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
 
@@ -692,7 +692,7 @@ class LCTLChain:
         existing_callbacks = config.get("callbacks", [])
         if not isinstance(existing_callbacks, list):
             existing_callbacks = [existing_callbacks]
-        config["callbacks"] = existing_callbacks + [self.handler]
+        config["callbacks"] = [*existing_callbacks, self.handler]
 
         return self._chain.invoke(input, config=config, **kwargs)
 
@@ -711,7 +711,7 @@ class LCTLChain:
         existing_callbacks = config.get("callbacks", [])
         if not isinstance(existing_callbacks, list):
             existing_callbacks = [existing_callbacks]
-        config["callbacks"] = existing_callbacks + [self.handler]
+        config["callbacks"] = [*existing_callbacks, self.handler]
 
         return await self._chain.ainvoke(input, config=config, **kwargs)
 
@@ -730,7 +730,7 @@ class LCTLChain:
         existing_callbacks = config.get("callbacks", [])
         if not isinstance(existing_callbacks, list):
             existing_callbacks = [existing_callbacks]
-        config["callbacks"] = existing_callbacks + [self.handler]
+        config["callbacks"] = [*existing_callbacks, self.handler]
 
         yield from self._chain.stream(input, config=config, **kwargs)
 
@@ -749,7 +749,7 @@ class LCTLChain:
         existing_callbacks = config.get("callbacks", [])
         if not isinstance(existing_callbacks, list):
             existing_callbacks = [existing_callbacks]
-        config["callbacks"] = existing_callbacks + [self.handler]
+        config["callbacks"] = [*existing_callbacks, self.handler]
 
         async for chunk in self._chain.astream(input, config=config, **kwargs):
             yield chunk
@@ -774,7 +774,7 @@ class LCTLChain:
         existing_callbacks = config.get("callbacks", [])
         if not isinstance(existing_callbacks, list):
             existing_callbacks = [existing_callbacks]
-        config["callbacks"] = existing_callbacks + [self.handler]
+        config["callbacks"] = [*existing_callbacks, self.handler]
 
         return self._chain.batch(inputs, config=config, **kwargs)
 
@@ -798,7 +798,7 @@ class LCTLChain:
         existing_callbacks = config.get("callbacks", [])
         if not isinstance(existing_callbacks, list):
             existing_callbacks = [existing_callbacks]
-        config["callbacks"] = existing_callbacks + [self.handler]
+        config["callbacks"] = [*existing_callbacks, self.handler]
 
         return await self._chain.abatch(inputs, config=config, **kwargs)
 

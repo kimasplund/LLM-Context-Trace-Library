@@ -1,6 +1,7 @@
 """Event subscriber patterns for flexible event handling."""
 
 import asyncio
+import contextlib
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -10,7 +11,6 @@ from datetime import datetime
 from typing import Any
 
 from .emitter import EventEmitter, StreamingEvent, StreamingEventType
-import contextlib
 
 
 class EventSubscriber(ABC):
@@ -144,10 +144,7 @@ class FilteredSubscriber(EventSubscriber):
             if lctl_type not in self._lctl_event_types:
                 return False
 
-        if self._filter_fn and not self._filter_fn(event):
-            return False
-
-        return True
+        return not (self._filter_fn and not self._filter_fn(event))
 
     def add_event_type(self, event_type: str) -> "FilteredSubscriber":
         """Add an event type to the filter.
@@ -390,7 +387,7 @@ class AsyncSubscriber(EventSubscriber):
         """Run the subscriber until stopped."""
         await self.start()
         try:
-            while self._running:
+            while self._running:  # noqa: ASYNC110  # polling loop; Event-based rewrite is a spec follow-up
                 await asyncio.sleep(0.1)
         except asyncio.CancelledError:
             pass
@@ -406,7 +403,7 @@ class AsyncSubscriber(EventSubscriber):
                     result = self._handler(event)
                     if asyncio.iscoroutine(result):
                         await result
-                except Exception:
+                except Exception:  # noqa: S110  # tracing must never break the host application
                     pass
             except TimeoutError:
                 continue

@@ -204,7 +204,7 @@ class LCTLRunHooks(RunHooks):
 
             if self._verbose:
                 print(f"[LCTL] Agent started: {agent_name}")
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
     async def on_agent_end(
@@ -247,7 +247,7 @@ class LCTLRunHooks(RunHooks):
 
             if self._verbose:
                 print(f"[LCTL] Agent ended: {agent_name} ({duration_ms}ms)")
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
     async def on_tool_start(
@@ -279,7 +279,7 @@ class LCTLRunHooks(RunHooks):
             if self._verbose:
                 agent_name = self._get_agent_name(agent)
                 print(f"[LCTL] Tool started: {tool_name} (agent: {agent_name})")
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
     async def on_tool_end(
@@ -299,10 +299,7 @@ class LCTLRunHooks(RunHooks):
 
             with self._lock:
                 tool_id = self._tool_context_map.pop(context_id, None)
-                if tool_id is not None:
-                    tool_info = self._tool_stack.pop(tool_id, None)
-                else:
-                    tool_info = None
+                tool_info = self._tool_stack.pop(tool_id, None) if tool_id is not None else None
 
             if tool_info is None:
                 tool_info = {"tool": tool_name, "start_time": time.time(), "input": ""}
@@ -323,7 +320,7 @@ class LCTLRunHooks(RunHooks):
 
             if self._verbose:
                 print(f"[LCTL] Tool ended: {tool_name} ({duration_ms}ms)")
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
     async def on_tool_error(
@@ -343,10 +340,7 @@ class LCTLRunHooks(RunHooks):
 
             with self._lock:
                 tool_id = self._tool_context_map.pop(context_id, None)
-                if tool_id is not None:
-                    tool_info = self._tool_stack.pop(tool_id, None)
-                else:
-                    tool_info = None
+                tool_info = self._tool_stack.pop(tool_id, None) if tool_id is not None else None
 
             if tool_info is None:
                 tool_info = {"tool": tool_name, "start_time": time.time(), "input": ""}
@@ -376,7 +370,7 @@ class LCTLRunHooks(RunHooks):
             if self._verbose:
                 agent_name = self._get_agent_name(agent)
                 print(f"[LCTL] Tool error: {tool_name} (agent: {agent_name}): {error}")
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
     async def on_handoff(
@@ -399,7 +393,7 @@ class LCTLRunHooks(RunHooks):
 
             if self._verbose:
                 print(f"[LCTL] Handoff: {from_name} -> {to_name}")
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
     async def on_error(
@@ -436,7 +430,7 @@ class LCTLRunHooks(RunHooks):
 
             if self._verbose:
                 print(f"[LCTL] Error in agent {agent_name}: {error}")
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
 
@@ -482,7 +476,7 @@ class LCTLTracingProcessor(TracingProcessor):
 
             if self._verbose:
                 print("[LCTL] Trace processed")
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
 
@@ -941,8 +935,10 @@ class TracedAgent:
         try:
             agent = object.__getattribute__(self, "_agent")
             return getattr(agent, name)
-        except AttributeError:
-            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+        except AttributeError as err:
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{name}'"
+            ) from err
 
 
 def is_available() -> bool:

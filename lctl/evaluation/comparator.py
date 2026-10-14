@@ -138,10 +138,7 @@ class ComparisonResult:
                 return is_significant(self.statistical_results[metric])
             return False
 
-        for tests in self.statistical_results.values():
-            if is_significant(tests):
-                return True
-        return False
+        return any(is_significant(tests) for tests in self.statistical_results.values())
 
     def to_dict(self) -> dict[str, Any]:
         """Convert comparison result to dictionary."""
@@ -270,12 +267,12 @@ class ChainComparator:
         if len(durations_a) >= 2 and len(durations_b) >= 2:
             results["latency"] = run_all_tests(durations_a, durations_b, self.alpha, bootstrap_seed)
 
-        confidences_a = list(
+        confidences_a = [
             self.metrics_a.facts.get(fid, {}).get("confidence", 1.0) for fid in self.metrics_a.facts
-        )
-        confidences_b = list(
+        ]
+        confidences_b = [
             self.metrics_b.facts.get(fid, {}).get("confidence", 1.0) for fid in self.metrics_b.facts
-        )
+        ]
 
         if len(confidences_a) >= 2 and len(confidences_b) >= 2:
             results["confidence"] = run_all_tests(
@@ -424,8 +421,8 @@ def compare_chain_sets(
         error_count=sum(m.error_count for m in metrics_list_a),
         fact_count=sum(m.fact_count for m in metrics_list_a),
         step_count=sum(m.step_count for m in metrics_list_a),
-        agent_count=len(set(a for m in metrics_list_a for a in m.agents)),
-        agents=list(set(a for m in metrics_list_a for a in m.agents)),
+        agent_count=len({a for m in metrics_list_a for a in m.agents}),
+        agents=list({a for m in metrics_list_a for a in m.agents}),
         avg_step_duration_ms=sum(m.avg_step_duration_ms for m in metrics_list_a)
         / len(metrics_list_a),
         avg_fact_confidence=sum(confidences_a) / len(confidences_a) if confidences_a else 0.0,
@@ -443,8 +440,8 @@ def compare_chain_sets(
         error_count=sum(m.error_count for m in metrics_list_b),
         fact_count=sum(m.fact_count for m in metrics_list_b),
         step_count=sum(m.step_count for m in metrics_list_b),
-        agent_count=len(set(a for m in metrics_list_b for a in m.agents)),
-        agents=list(set(a for m in metrics_list_b for a in m.agents)),
+        agent_count=len({a for m in metrics_list_b for a in m.agents}),
+        agents=list({a for m in metrics_list_b for a in m.agents}),
         avg_step_duration_ms=sum(m.avg_step_duration_ms for m in metrics_list_b)
         / len(metrics_list_b),
         avg_fact_confidence=sum(confidences_b) / len(confidences_b) if confidences_b else 0.0,

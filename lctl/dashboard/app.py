@@ -1,6 +1,7 @@
 """LCTL Dashboard - FastAPI web application for chain visualization."""
 
 import asyncio
+import contextlib
 import hmac
 import json
 import os
@@ -33,7 +34,6 @@ from .. import __version__
 from ..core.events import Chain, ReplayEngine
 from ..evaluation.metrics import ChainMetrics
 from ..streaming.emitter import EventEmitter, StreamingEvent, StreamingEventType
-import contextlib
 
 # =============================================================================
 # Request/Response Models
@@ -125,8 +125,8 @@ def _get_secure_path(app: FastAPI, filename: str) -> Path:
                 status_code=403, detail="Access denied: Path outside working directory"
             )
         return file_path
-    except ValueError:
-        raise HTTPException(status_code=403, detail="Access denied: Invalid path")
+    except ValueError as err:
+        raise HTTPException(status_code=403, detail="Access denied: Invalid path") from err
 
 
 def _get_cached_engine(app: FastAPI, file_path: Path) -> ReplayEngine:
@@ -150,9 +150,9 @@ def _get_cached_engine(app: FastAPI, file_path: Path) -> ReplayEngine:
         app.state.engine_cache[cache_key] = engine
         return engine
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid chain file: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid chain file: {e}") from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error loading chain: {e}")
+        raise HTTPException(status_code=500, detail=f"Error loading chain: {e}") from e
 
 
 def _is_localhost(request: Request) -> bool:
@@ -249,7 +249,7 @@ def _setup_app_state(app: FastAPI, working_dir: Path | None) -> None:
     # Load API keys from environment variable (comma-separated) or generate one
     env_keys = os.environ.get("LCTL_API_KEYS", "")
     if env_keys:
-        app.state.api_keys = set(k.strip() for k in env_keys.split(",") if k.strip())
+        app.state.api_keys = {k.strip() for k in env_keys.split(",") if k.strip()}
     else:
         app.state.api_keys = set()
 
@@ -347,7 +347,7 @@ def _register_core_endpoints(app: FastAPI, limiter: Limiter) -> None:
         trace = engine.get_trace()
 
         # Extract unique agents
-        agents = list(set(e.agent for e in chain.events))
+        agents = list({e.agent for e in chain.events})
 
         # Build events list with serializable data
         events = [e.to_dict() for e in chain.events]
@@ -426,8 +426,8 @@ def _register_core_endpoints(app: FastAPI, limiter: Limiter) -> None:
             return {
                 "id": chain.id,
                 "event_count": len(chain.events),
-                "agent_count": len(set(e.agent for e in chain.events)),
-                "agents": sorted(set(e.agent for e in chain.events)),
+                "agent_count": len({e.agent for e in chain.events}),
+                "agents": sorted({e.agent for e in chain.events}),
                 "fact_count": len(state.facts),
                 "error_count": state.metrics.get("error_count", 0),
                 "total_duration_ms": state.metrics.get("total_duration_ms", 0),
@@ -724,14 +724,14 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
                             "timestamp": datetime.now(UTC).isoformat(),
                         }
                         await websocket.send_text(json.dumps(heartbeat))
-            except Exception:
+            except Exception:  # noqa: S110  # tracing must never break the host application
                 pass
 
         try:
             receive_task = asyncio.create_task(receive_loop())
             send_task = asyncio.create_task(send_loop())
 
-            done, pending = await asyncio.wait(
+            _done, pending = await asyncio.wait(
                 [receive_task, send_task], return_when=asyncio.FIRST_COMPLETED
             )
 
@@ -824,8 +824,8 @@ def _register_event_endpoints(app: FastAPI) -> None:
         """
         try:
             data = await request.json()
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid JSON")
+        except json.JSONDecodeError as err:
+            raise HTTPException(status_code=400, detail="Invalid JSON") from err
 
         event_type = data.get("type", "custom")
         chain_id = data.get("chain_id")
@@ -908,7 +908,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
             "chain_id": chain.id,
             "filename": filename,
             "event_count": len(chain.events),
-            "agent_count": len(set(e.agent for e in chain.events)),
+            "agent_count": len({e.agent for e in chain.events}),
             "error_count": error_count,
             "has_errors": has_errors,
             "fact_count": len(state.facts),
@@ -1136,7 +1136,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
                             if len(results) >= search_req.limit:
                                 break
 
-                except Exception:
+                except Exception:  # noqa: S112  # search skips chain files that fail to load
                     continue
 
                 if len(results) >= search_req.limit:

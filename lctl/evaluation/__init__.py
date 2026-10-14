@@ -47,7 +47,7 @@ from .statistical import (
     welch_t_test,
 )
 
-__all__ = [
+__all__ = [  # noqa: RUF022  # grouped by topic; ruff's sort ignores group comments
     # Main comparison API
     "ChainComparator",
     "ComparisonResult",

@@ -94,7 +94,7 @@ from .semantic_kernel import (
     is_available as semantic_kernel_available,
 )
 
-__all__ = [
+__all__ = [  # noqa: RUF022  # grouped by topic; ruff's sort ignores group comments
     # Base classes and utilities
     "truncate",
     "check_availability",

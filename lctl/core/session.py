@@ -354,10 +354,10 @@ class LCTLSession:
 
         try:
             self.chain.save(export_path)
-        except PermissionError:
-            raise PermissionError(f"Permission denied writing to: {path}")
+        except PermissionError as err:
+            raise PermissionError(f"Permission denied writing to: {path}") from err
         except OSError as e:
-            raise OSError(f"Failed to export chain to {path}: {e}")
+            raise OSError(f"Failed to export chain to {path}: {e}") from e
 
     def to_dict(self) -> dict[str, Any]:
         """Export chain as dictionary."""
@@ -388,10 +388,9 @@ def traced_step(session: LCTLSession, agent: str, intent: str, input_summary: st
     try:
         yield
         duration_ms = int((time.time() - start) * 1000)
-        try:
+        # Don't fail if we can't record the end
+        with suppress(Exception):
             session.step_end(agent, outcome="success", duration_ms=duration_ms)
-        except Exception:
-            pass  # Don't fail if we can't record the end
     except Exception as e:
         duration_ms = int((time.time() - start) * 1000)
         try:
@@ -402,6 +401,6 @@ def traced_step(session: LCTLSession, agent: str, intent: str, input_summary: st
                 message=str(e),
                 recoverable=False,
             )
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass  # Don't suppress original exception if tracing fails
         raise

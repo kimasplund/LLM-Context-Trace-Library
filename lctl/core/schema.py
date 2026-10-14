@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, ClassVar
 
 from packaging import version
 
@@ -36,7 +36,7 @@ class SchemaVersionError(Exception):
 class SchemaMigrator:
     """Handles migration between schema versions."""
 
-    _migrations: dict[str, Callable[[dict], dict]] = {}
+    _migrations: ClassVar[dict[str, Callable[[dict], dict]]] = {}
 
     @classmethod
     def register(cls, from_version: str, to_version: str):

@@ -1,6 +1,7 @@
 """WebSocket and SSE server for real-time event streaming."""
 
 import asyncio
+import contextlib
 import json
 import threading
 from collections.abc import Iterator
@@ -10,7 +11,6 @@ from typing import Any
 from uuid import uuid4
 
 from .emitter import EventEmitter, StreamingEvent, StreamingEventType
-import contextlib
 
 
 @dataclass
@@ -178,7 +178,7 @@ class WebSocketServer:
             receive_task = asyncio.create_task(self._receive_loop(websocket, client))
             send_task = asyncio.create_task(self._send_loop(websocket, client))
 
-            done, pending = await asyncio.wait(
+            _done, pending = await asyncio.wait(
                 [receive_task, send_task], return_when=asyncio.FIRST_COMPLETED
             )
 
@@ -200,7 +200,7 @@ class WebSocketServer:
                     await self._handle_client_message(client, message)
                 except json.JSONDecodeError:
                     pass
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
     async def _send_loop(self, websocket: Any, client: WebSocketClient) -> None:
@@ -215,7 +215,7 @@ class WebSocketServer:
             heartbeat = StreamingEvent.heartbeat()
             await websocket.send_text(heartbeat.to_json())
             await self._send_loop(websocket, client)
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
     async def _handle_client_message(
@@ -251,7 +251,7 @@ class WebSocketServer:
                 with contextlib.suppress(asyncio.QueueFull):
                     client.send_queue.put_nowait(heartbeat)
 
-    async def start(self, host: str = "0.0.0.0", port: int = 8081) -> None:
+    async def start(self, host: str = "0.0.0.0", port: int = 8081) -> None:  # noqa: S104  # bind address is user-configurable; default tracked as spec follow-up
         """Start the WebSocket server (standalone mode).
 
         Args:
@@ -260,11 +260,11 @@ class WebSocketServer:
         """
         try:
             import websockets
-        except ImportError:
+        except ImportError as err:
             raise ImportError(
                 "websockets package required for standalone mode. "
                 "Install with: pip install websockets"
-            )
+            ) from err
 
         self._running = True
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
@@ -409,7 +409,10 @@ def create_sse_response(
 
 
 def start_websocket_server(
-    emitter: EventEmitter, host: str = "0.0.0.0", port: int = 8081, run_in_thread: bool = False
+    emitter: EventEmitter,
+    host: str = "0.0.0.0",  # noqa: S104  # bind address is user-configurable; default tracked as spec follow-up
+    port: int = 8081,
+    run_in_thread: bool = False,
 ) -> WebSocketServer | None:
     """Start a WebSocket server for event streaming.
 

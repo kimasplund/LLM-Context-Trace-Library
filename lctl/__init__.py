@@ -109,7 +109,7 @@ def export(path: str):
     print(f"[LCTL] Exported {len(session.chain.events)} events to {path}")
 
 
-__all__ = [
+__all__ = [  # noqa: RUF022  # grouped by topic; ruff's sort ignores group comments
     # Core
     "Chain",
     "Event",

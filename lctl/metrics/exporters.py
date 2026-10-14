@@ -32,8 +32,8 @@ def export_json(
     try:
         content = json.dumps(metrics.to_dict(), indent=indent, default=str)
         export_path.write_text(content)
-    except PermissionError:
-        raise PermissionError(f"Permission denied writing to: {path}")
+    except PermissionError as err:
+        raise PermissionError(f"Permission denied writing to: {path}") from err
 
 
 def export_prometheus(
@@ -66,8 +66,8 @@ def export_prometheus(
 
     try:
         export_path.write_text("\n".join(lines) + "\n")
-    except PermissionError:
-        raise PermissionError(f"Permission denied writing to: {path}")
+    except PermissionError as err:
+        raise PermissionError(f"Permission denied writing to: {path}") from err
 
 
 def _format_collected_prometheus(metrics: CollectedMetrics, prefix: str) -> list[str]:
@@ -293,8 +293,8 @@ def export_csv(
 
     try:
         export_path.write_text("\n".join(lines) + "\n")
-    except PermissionError:
-        raise PermissionError(f"Permission denied writing to: {path}")
+    except PermissionError as err:
+        raise PermissionError(f"Permission denied writing to: {path}") from err
 
 
 def _format_collected_csv(metrics: CollectedMetrics) -> list[str]:

@@ -111,7 +111,7 @@ def stats(chain_file: str, as_json: bool):
     state = engine.replay_all()
 
     # Get unique agents
-    agents = set(e.agent for e in chain.events)
+    agents = {e.agent for e in chain.events}
 
     stats_data = {
         "chain_id": chain.id,
@@ -734,7 +734,7 @@ def metrics(chain_file: str, output_format: str, as_json: bool):
 
 @cli.command()
 @click.option("--port", "-p", default=8080, help="Port to run dashboard on")
-@click.option("--host", "-h", default="0.0.0.0", help="Host to bind to")
+@click.option("--host", "-h", default="0.0.0.0", help="Host to bind to")  # noqa: S104  # bind address is user-configurable; default tracked as spec follow-up
 @click.option(
     "--dir",
     "-d",

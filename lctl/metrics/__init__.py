@@ -46,7 +46,7 @@ from .exporters import (
     to_prometheus,
 )
 
-__all__ = [
+__all__ = [  # noqa: RUF022  # grouped by topic; ruff's sort ignores group comments
     # Metric dataclasses
     "LatencyMetrics",
     "TokenMetrics",

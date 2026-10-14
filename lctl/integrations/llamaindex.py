@@ -190,7 +190,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
         try:
             method = getattr(self.session, method_name)
             method(*args, **kwargs)
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
     def _cleanup_stale_events(self, max_age_seconds: float = 3600.0) -> None:
@@ -254,7 +254,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
                     intent=event_name,
                     input_summary=f"Event: {event_name}",
                 )
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
         return event_id
@@ -304,7 +304,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
                     output_summary=f"Completed: {event_name}",
                     duration_ms=duration_ms,
                 )
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
     def on_event_error(
@@ -337,7 +337,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
                 message=str(error),
                 recoverable=False,
             )
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass
 
         with self._lock:
@@ -739,7 +739,7 @@ def _merge_callback_manager(
 
     existing_handlers = list(existing_manager.handlers) if existing_manager.handlers else []
 
-    new_manager = CallbackManager(existing_handlers + [new_handler])
+    new_manager = CallbackManager([*existing_handlers, new_handler])
 
     if hasattr(existing_manager, "trace_map"):
         new_manager.trace_map = existing_manager.trace_map

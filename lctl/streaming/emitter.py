@@ -1,6 +1,7 @@
 """EventEmitter - Publish/subscribe pattern for real-time event distribution."""
 
 import asyncio
+import contextlib
 import json
 import threading
 from collections.abc import Callable
@@ -11,10 +12,9 @@ from typing import Any
 from uuid import uuid4
 
 from ..core.events import Event
-import contextlib
 
 
-class StreamingEventType(str, Enum):
+class StreamingEventType(str, Enum):  # noqa: UP042  # StrEnum changes str() output used in serialized chains
     """Types of streaming events."""
 
     EVENT = "event"

@@ -56,7 +56,7 @@ class IntegrationNotAvailableError(ImportError):
         super().__init__(f"{framework} is not installed. Install with: {install_hint}")
 
 
-class BaseTracer(ABC):
+class BaseTracer(ABC):  # noqa: B024  # concrete base with shared defaults; subclasses override hooks
     """Base class for all LCTL integration tracers.
 
     Provides common functionality:

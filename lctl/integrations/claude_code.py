@@ -390,10 +390,7 @@ class LCTLClaudeCodeTracer:
         """
         # Infer agent from stack (default to claude-code for main session)
         if agent is None:
-            if self.agent_stack:
-                agent = self.agent_stack[-1]["agent_type"]
-            else:
-                agent = "claude-code"
+            agent = self.agent_stack[-1]["agent_type"] if self.agent_stack else "claude-code"
 
         # Track tool counts
         key = f"{agent}:{tool_name}"
@@ -434,10 +431,7 @@ class LCTLClaudeCodeTracer:
         """
         source = agent
         if source is None:
-            if self.agent_stack:
-                source = self.agent_stack[-1]["agent_type"]
-            else:
-                source = "claude-code"
+            source = self.agent_stack[-1]["agent_type"] if self.agent_stack else "claude-code"
 
         self.session.add_fact(
             fact_id=fact_id,
@@ -487,10 +481,7 @@ class LCTLClaudeCodeTracer:
         """
         source = agent
         if source is None:
-            if self.agent_stack:
-                source = self.agent_stack[-1]["agent_type"]
-            else:
-                source = "claude-code"
+            source = self.agent_stack[-1]["agent_type"] if self.agent_stack else "claude-code"
 
         # Record as tool call
         self.session.tool_call(
@@ -533,10 +524,7 @@ class LCTLClaudeCodeTracer:
         """
         source = agent
         if source is None:
-            if self.agent_stack:
-                source = self.agent_stack[-1]["agent_type"]
-            else:
-                source = "claude-code"
+            source = self.agent_stack[-1]["agent_type"] if self.agent_stack else "claude-code"
 
         # Track file change
         change_info = {
@@ -582,10 +570,7 @@ class LCTLClaudeCodeTracer:
         """
         source = agent
         if source is None:
-            if self.agent_stack:
-                source = self.agent_stack[-1]["agent_type"]
-            else:
-                source = "claude-code"
+            source = self.agent_stack[-1]["agent_type"] if self.agent_stack else "claude-code"
 
         self.session.tool_call(
             tool="WebFetch",
@@ -622,10 +607,7 @@ class LCTLClaudeCodeTracer:
         """
         source = agent
         if source is None:
-            if self.agent_stack:
-                source = self.agent_stack[-1]["agent_type"]
-            else:
-                source = "claude-code"
+            source = self.agent_stack[-1]["agent_type"] if self.agent_stack else "claude-code"
 
         self.session.tool_call(
             tool="WebSearch",
@@ -683,10 +665,7 @@ class LCTLClaudeCodeTracer:
         """
         source = agent
         if source is None:
-            if self.agent_stack:
-                source = self.agent_stack[-1]["agent_type"]
-            else:
-                source = "claude-code"
+            source = self.agent_stack[-1]["agent_type"] if self.agent_stack else "claude-code"
 
         # Analyze todo changes
         completed = 0
@@ -743,10 +722,7 @@ class LCTLClaudeCodeTracer:
         """
         source = agent
         if source is None:
-            if self.agent_stack:
-                source = self.agent_stack[-1]["agent_type"]
-            else:
-                source = "claude-code"
+            source = self.agent_stack[-1]["agent_type"] if self.agent_stack else "claude-code"
 
         self.session.tool_call(
             tool="Skill",
@@ -787,10 +763,7 @@ class LCTLClaudeCodeTracer:
         """
         source = agent
         if source is None:
-            if self.agent_stack:
-                source = self.agent_stack[-1]["agent_type"]
-            else:
-                source = "claude-code"
+            source = self.agent_stack[-1]["agent_type"] if self.agent_stack else "claude-code"
 
         full_tool_name = f"mcp__{server_name}__{tool_name}"
 
@@ -845,10 +818,7 @@ class LCTLClaudeCodeTracer:
         """
         source = agent
         if source is None:
-            if self.agent_stack:
-                source = self.agent_stack[-1]["agent_type"]
-            else:
-                source = "claude-code"
+            source = self.agent_stack[-1]["agent_type"] if self.agent_stack else "claude-code"
 
         # Record as tool call
         self.session.tool_call(
@@ -893,7 +863,7 @@ class LCTLClaudeCodeTracer:
         try:
             # Get recent commits during workflow
             cmd = ["git", "-C", repo_path, "log", "--oneline", "-20"]
-            output = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            output = subprocess.run(cmd, capture_output=True, text=True, timeout=5)  # noqa: S603  # list argv, no shell; paths passed after --
             if output.returncode == 0:
                 for line in output.stdout.strip().split("\n")[:10]:
                     if line:
@@ -910,7 +880,7 @@ class LCTLClaudeCodeTracer:
             for fc in self._file_changes:
                 file_path = fc.get("file_path", "")
                 cmd = ["git", "-C", repo_path, "status", "--porcelain", "--", file_path]
-                output = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
+                output = subprocess.run(cmd, capture_output=True, text=True, timeout=2)  # noqa: S603  # list argv, no shell; paths passed after --
                 if output.stdout.strip():
                     result["uncommitted_changes"].append(
                         {
@@ -919,7 +889,7 @@ class LCTLClaudeCodeTracer:
                         }
                     )
 
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass  # Git operations are optional
 
         return result
@@ -1649,23 +1619,32 @@ def get_session_metadata() -> dict[str, Any]:
     # Get git info
     try:
         result = subprocess.run(
-            ["git", "branch", "--show-current"], capture_output=True, text=True, timeout=5
+            ["git", "branch", "--show-current"],  # noqa: S607  # resolving git via PATH is intended
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if result.returncode == 0:
             metadata["git_branch"] = result.stdout.strip()
 
         result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=5
+            ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607  # resolving git via PATH is intended
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if result.returncode == 0:
             metadata["git_commit"] = result.stdout.strip()
 
         result = subprocess.run(
-            ["git", "status", "--porcelain"], capture_output=True, text=True, timeout=5
+            ["git", "status", "--porcelain"],  # noqa: S607  # resolving git via PATH is intended
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if result.returncode == 0:
             metadata["git_dirty"] = bool(result.stdout.strip())
-    except Exception:
+    except Exception:  # noqa: S110  # tracing must never break the host application
         pass  # Git not available
 
     return metadata

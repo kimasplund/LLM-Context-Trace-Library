@@ -81,7 +81,7 @@ class LRUCache:
         return list(self._cache.keys())
 
 
-class EventType(str, Enum):
+class EventType(str, Enum):  # noqa: UP042  # StrEnum changes str() output used in serialized chains
     """Standard LCTL event types."""
 
     STEP_START = "step_start"
@@ -153,7 +153,7 @@ class Event:
             try:
                 timestamp = datetime.fromisoformat(timestamp)
             except ValueError as e:
-                raise ValueError(f"Invalid timestamp format '{d['timestamp']}': {e}")
+                raise ValueError(f"Invalid timestamp format '{d['timestamp']}': {e}") from e
 
         return cls(
             seq=seq, type=event_type, timestamp=timestamp, agent=d["agent"], data=d.get("data", {})
@@ -217,8 +217,8 @@ class Chain:
 
         try:
             content = path.read_text()
-        except PermissionError:
-            raise PermissionError(f"Permission denied reading chain file: {path}")
+        except PermissionError as err:
+            raise PermissionError(f"Permission denied reading chain file: {path}") from err
 
         if not content.strip():
             raise ValueError(f"Chain file is empty: {path}")
@@ -229,7 +229,7 @@ class Chain:
             else:
                 data = json.loads(content)
         except (json.JSONDecodeError, yaml.YAMLError) as e:
-            raise ValueError(f"Invalid file format in {path}: {e}")
+            raise ValueError(f"Invalid file format in {path}: {e}") from e
 
         if data is None:
             raise ValueError(f"Chain file contains no data: {path}")

@@ -24,6 +24,7 @@ Usage:
     crew.export_trace("research_crew.lctl.json")
 """
 
+import contextlib
 import threading
 import time
 from typing import Any, Union
@@ -78,23 +79,19 @@ def _llm_event_handler(source: Any, event: Any) -> None:
     if not session:
         return
 
-    try:
+    with contextlib.suppress(Exception):
         session.llm_trace(
             messages=getattr(event, "messages", []) or [],
             response=str(getattr(event, "response", ""))[:2000],  # Truncate response
             model=getattr(event, "model", "unknown") or "unknown",
             usage={},  # Usage not available in this event
         )
-    except Exception:
-        pass
 
 
 if CREWAI_AVAILABLE:
-    try:
+    with contextlib.suppress(Exception):
         # Register global handler
         crewai_event_bus.register_handler(LLMCallCompletedEvent, _llm_event_handler)
-    except Exception:
-        pass
 
 
 class CrewAINotAvailableError(ImportError):
@@ -377,7 +374,6 @@ class LCTLCrew:
         Note: This callback is invoked after the step completes, so we estimate
         duration based on step timestamps if available, otherwise use 0.
         """
-        step_start_time = time.time()
         try:
             agent_name = "unknown"
             thought = ""

@@ -9,6 +9,7 @@ Requires:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
 from collections.abc import Callable
@@ -113,15 +114,14 @@ class LCTLSemanticKernelTracer(BaseTracer):
             # Or use 'tool_call' semantics? No, prompt is internal.
             # Adding as a high-confidence fact about the agent's "thought" process.
 
-            try:
+            # Don't break execution if tracing fails
+            with contextlib.suppress(Exception):
                 self.session.add_fact(
                     fact_id=f"prompt-{full_name}-{hash(context.rendered_prompt)}",
                     text=f"Rendered Prompt for {full_name}: {context.rendered_prompt}",
                     confidence=1.0,
                     source="sk-prompt-filter",
                 )
-            except Exception:
-                pass  # Don't break execution if tracing fails
 
     async def _function_invocation_filter(
         self, context: FunctionInvocationContext, next: Callable[..., Any]
@@ -136,12 +136,11 @@ class LCTLSemanticKernelTracer(BaseTracer):
         # Summarize inputs
         input_summary = truncate(str(context.arguments))
 
-        try:
+        # Don't break execution if tracing fails
+        with contextlib.suppress(Exception):
             self.session.step_start(
                 agent=full_name, intent="execute_function", input_summary=input_summary
             )
-        except Exception:
-            pass  # Don't break execution if tracing fails
 
         start_time = time.time()
 
@@ -192,7 +191,8 @@ class LCTLSemanticKernelTracer(BaseTracer):
                         # Stream finished successfully
                         stream_completed = True
                         duration_ms = int((time.time() - stream_start_time) * 1000)
-                        try:
+                        # Don't break execution if tracing fails
+                        with contextlib.suppress(Exception):
                             self.session.step_end(
                                 agent=full_name,
                                 outcome="success",
@@ -201,27 +201,23 @@ class LCTLSemanticKernelTracer(BaseTracer):
                                 tokens_in=tokens_in,
                                 tokens_out=tokens_out,
                             )
-                        except Exception:
-                            pass  # Don't break execution if tracing fails
 
                     except Exception as e:
                         # Stream error
-                        try:
+                        # Don't break execution if tracing fails
+                        with contextlib.suppress(Exception):
                             self.session.error(
                                 category="execution_error",
                                 error_type=type(e).__name__,
                                 message=str(e),
                                 recoverable=False,
                             )
-                        except Exception:
-                            pass  # Don't break execution if tracing fails
                         duration_ms = int((time.time() - stream_start_time) * 1000)
-                        try:
+                        # Don't break execution if tracing fails
+                        with contextlib.suppress(Exception):
                             self.session.step_end(
                                 agent=full_name, outcome="error", duration_ms=duration_ms
                             )
-                        except Exception:
-                            pass  # Don't break execution if tracing fails
                         raise
                     finally:
                         # Ensure step_end is called even if stream is abandoned
@@ -236,7 +232,7 @@ class LCTLSemanticKernelTracer(BaseTracer):
                                     tokens_in=tokens_in,
                                     tokens_out=tokens_out,
                                 )
-                            except Exception:
+                            except Exception:  # noqa: S110  # tracing must never break the host application
                                 pass  # Don't fail if cleanup fails
 
                 # Replace the stream with our wrapper
@@ -267,7 +263,8 @@ class LCTLSemanticKernelTracer(BaseTracer):
                             "output_tokens", 0
                         )
 
-            try:
+            # Don't break execution if tracing fails
+            with contextlib.suppress(Exception):
                 self.session.step_end(
                     agent=full_name,
                     outcome="success",
@@ -276,25 +273,21 @@ class LCTLSemanticKernelTracer(BaseTracer):
                     tokens_in=tokens_in,
                     tokens_out=tokens_out,
                 )
-            except Exception:
-                pass  # Don't break execution if tracing fails
 
         except Exception as e:
             # 4. Step End (Error) - only catches sync/setup errors, stream errors caught in wrapper
             duration_ms = int((time.time() - start_time) * 1000)
-            try:
+            # Don't break execution if tracing fails
+            with contextlib.suppress(Exception):
                 self.session.error(
                     category="execution_error",
                     error_type=type(e).__name__,
                     message=str(e),
                     recoverable=False,
                 )
-            except Exception:
-                pass  # Don't break execution if tracing fails
-            try:
+            # Don't break execution if tracing fails
+            with contextlib.suppress(Exception):
                 self.session.step_end(agent=full_name, outcome="error", duration_ms=duration_ms)
-            except Exception:
-                pass  # Don't break execution if tracing fails
             raise
 
 

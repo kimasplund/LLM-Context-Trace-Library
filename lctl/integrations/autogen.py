@@ -17,6 +17,7 @@ Usage:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import threading
 import time
@@ -179,7 +180,7 @@ class LCTLAutogenHandler(logging.Handler):
                     tokens_in=prompt_tokens,
                     tokens_out=completion_tokens,
                 )
-            except Exception:
+            except Exception:  # noqa: S110  # tracing must never break the host application
                 pass  # Graceful degradation - don't break execution if tracing fails
 
     def _handle_tool_call(self, event: ag_logging.ToolCallEvent) -> None:
@@ -188,16 +189,14 @@ class LCTLAutogenHandler(logging.Handler):
         args = str(self._get_event_field(event, "arguments", ""))
         result = str(self._get_event_field(event, "result", ""))
 
-        with self._lock:
-            try:
-                self.session.tool_call(
-                    tool=tool_name,
-                    input_data=truncate(args, 200),
-                    output_data=truncate(result, 200),
-                    duration_ms=0,
-                )
-            except Exception:
-                pass  # Graceful degradation
+        # Graceful degradation
+        with self._lock, contextlib.suppress(Exception):
+            self.session.tool_call(
+                tool=tool_name,
+                input_data=truncate(args, 200),
+                output_data=truncate(result, 200),
+                duration_ms=0,
+            )
 
     def _handle_message(self, event: ag_logging.MessageEvent) -> None:
         # MessageEvent -> payload, sender, receiver, kind, delivery_stage
@@ -213,7 +212,7 @@ class LCTLAutogenHandler(logging.Handler):
                 self.session.step_end(
                     agent=sender, outcome="success", output_summary="Message processed"
                 )
-            except Exception:
+            except Exception:  # noqa: S110  # tracing must never break the host application
                 pass  # Graceful degradation
 
 
@@ -271,15 +270,14 @@ class LCTLAutogenCallback(BaseTracer):
         self._logging_handler = LCTLAutogenHandler(self.session)
         logger.addHandler(self._logging_handler)
 
-        try:
+        # Graceful degradation
+        with contextlib.suppress(Exception):
             self.session.add_fact(
                 fact_id="tracing-enabled",
                 text="Enabled global AutoGen event tracing",
                 confidence=1.0,
                 source="lctl-autogen",
             )
-        except Exception:
-            pass  # Graceful degradation
 
     def detach_all(self) -> None:
         """Clean up logging handler and detach from all agents.
@@ -293,7 +291,7 @@ class LCTLAutogenCallback(BaseTracer):
                 try:
                     logger = logging.getLogger(EVENT_LOGGER_NAME)
                     logger.removeHandler(self._logging_handler)
-                except Exception:
+                except Exception:  # noqa: S110  # tracing must never break the host application
                     pass  # Ignore errors during cleanup
                 self._logging_handler = None
 
@@ -315,15 +313,14 @@ class LCTLAutogenCallback(BaseTracer):
             # Modern mode relies on global logging, attach does nothing/little
             # But we can log that we are 'watching' this agent
             name = _get_agent_name(agent)
-            try:
+            # Graceful degradation
+            with contextlib.suppress(Exception):
                 self.session.add_fact(
                     fact_id=f"agent-watched-{name}",
                     text=f"Watching agent {name}",
                     confidence=1.0,
                     source="lctl-autogen",
                 )
-            except Exception:
-                pass  # Graceful degradation
             return
 
         # Legacy Mode
@@ -357,18 +354,17 @@ class LCTLAutogenCallback(BaseTracer):
             )
             with self._lock:
                 self._attached_agents.append(agent)
-        except Exception:
+        except Exception:  # noqa: S110  # tracing must never break the host application
             pass  # Ignore if hooks not supported on this object
 
-        try:
+        # Graceful degradation
+        with contextlib.suppress(Exception):
             self.session.add_fact(
                 fact_id=f"agent-attached-{agent_name}",
                 text=f"Agent '{agent_name}' attached for tracing",
                 confidence=1.0,
                 source="lctl-autogen",
             )
-        except Exception:
-            pass  # Graceful degradation
 
     def _create_before_send_hook(self, sender_name: str):
         def hook(sender, message, recipient, silent):
@@ -383,30 +379,31 @@ class LCTLAutogenCallback(BaseTracer):
                         input_summary=f"To {recipient_name}: {truncate(content, 100)}",
                     )
 
-                    if isinstance(message, dict):
-                        if "tool_calls" in message or "function_call" in message:
-                            tool_calls = message.get("tool_calls", [])
-                            if not tool_calls and "function_call" in message:
-                                tool_calls = [{"function": message["function_call"]}]
+                    if isinstance(message, dict) and (
+                        "tool_calls" in message or "function_call" in message
+                    ):
+                        tool_calls = message.get("tool_calls", [])
+                        if not tool_calls and "function_call" in message:
+                            tool_calls = [{"function": message["function_call"]}]
 
-                            for tool_call in tool_calls:
-                                func_info = tool_call.get("function", {})
-                                tool_name = func_info.get("name", "unknown_tool")
-                                tool_args = func_info.get("arguments", "")
+                        for tool_call in tool_calls:
+                            func_info = tool_call.get("function", {})
+                            tool_name = func_info.get("name", "unknown_tool")
+                            tool_args = func_info.get("arguments", "")
 
-                                self.session.tool_call(
-                                    tool=tool_name,
-                                    input_data=truncate(str(tool_args), 200),
-                                    output_data="(pending)",
-                                    duration_ms=0,
-                                )
+                            self.session.tool_call(
+                                tool=tool_name,
+                                input_data=truncate(str(tool_args), 200),
+                                output_data="(pending)",
+                                duration_ms=0,
+                            )
 
                     self.session.step_end(
                         agent=sender_name,
                         outcome="success",
                         output_summary=f"Message sent to {recipient_name}",
                     )
-                except Exception:
+                except Exception:  # noqa: S110  # tracing must never break the host application
                     pass  # Graceful degradation
 
             return message
@@ -433,7 +430,7 @@ class LCTLAutogenCallback(BaseTracer):
                             "agent": agent_name,
                             "start_time": time.time(),
                         }
-                    except Exception:
+                    except Exception:  # noqa: S110  # tracing must never break the host application
                         pass  # Graceful degradation
             return messages
 
@@ -459,7 +456,7 @@ class LCTLAutogenCallback(BaseTracer):
                             output_summary=truncate(content, 100),
                             duration_ms=duration_ms,
                         )
-                    except Exception:
+                    except Exception:  # noqa: S110  # tracing must never break the host application
                         pass  # Graceful degradation
             return message
 
@@ -480,7 +477,8 @@ class LCTLAutogenCallback(BaseTracer):
         for agent in group_chat.agents:
             self.attach(agent)
 
-        try:
+        # Graceful degradation
+        with contextlib.suppress(Exception):
             self.session.add_fact(
                 fact_id="groupchat-config",
                 text=f"GroupChat configured with {len(group_chat.agents)} agents, "
@@ -488,8 +486,6 @@ class LCTLAutogenCallback(BaseTracer):
                 confidence=1.0,
                 source="lctl-autogen",
             )
-        except Exception:
-            pass  # Graceful degradation
 
         if manager is not None:
             self.attach(manager)
@@ -506,14 +502,13 @@ class LCTLAutogenCallback(BaseTracer):
                 }
             )
 
-        try:
+        # Graceful degradation
+        with contextlib.suppress(Exception):
             self.session.step_start(
                 agent=parent_agent,
                 intent="start_nested_chat",
                 input_summary=description or f"Nested chat at depth {self._nested_depth}",
             )
-        except Exception:
-            pass  # Graceful degradation
 
     def end_nested_chat(self, result_summary: str = "", outcome: str = "success") -> None:
         """Record the end of a nested conversation."""
@@ -528,15 +523,14 @@ class LCTLAutogenCallback(BaseTracer):
             current_depth = self._nested_depth
             self._nested_depth = max(0, self._nested_depth - 1)
 
-        try:
+        # Graceful degradation
+        with contextlib.suppress(Exception):
             self.session.step_end(
                 agent=parent_agent,
                 outcome=outcome,
                 output_summary=result_summary or f"Nested chat completed at depth {current_depth}",
                 duration_ms=duration_ms,
             )
-        except Exception:
-            pass  # Graceful degradation
 
     def record_tool_result(
         self,
@@ -555,7 +549,8 @@ class LCTLAutogenCallback(BaseTracer):
         """
         result_str = truncate(str(result), 500) if result else "(no result)"
 
-        try:
+        # Graceful degradation
+        with contextlib.suppress(Exception):
             self.session.tool_call(
                 tool=tool_name,
                 input_data="(recorded manually)",
@@ -563,8 +558,6 @@ class LCTLAutogenCallback(BaseTracer):
                 duration_ms=duration_ms,
                 agent=agent or "tool-executor",
             )
-        except Exception:
-            pass  # Graceful degradation
 
     def record_error(
         self,
@@ -573,7 +566,8 @@ class LCTLAutogenCallback(BaseTracer):
         recoverable: bool = True,
     ) -> None:
         """Record an error during conversation."""
-        try:
+        # Graceful degradation
+        with contextlib.suppress(Exception):
             self.session.error(
                 category="autogen_error",
                 error_type=type(error).__name__,
@@ -581,8 +575,6 @@ class LCTLAutogenCallback(BaseTracer):
                 recoverable=recoverable,
                 suggested_action="Check agent configuration and message format",
             )
-        except Exception:
-            pass  # Graceful degradation
 
 
 # Convenience wrappers
@@ -675,18 +667,19 @@ class LCTLConversableAgent:
         )
         recipient_name = _get_agent_name(recipient_agent)
 
-        if isinstance(recipient, LCTLConversableAgent):
-            if recipient_agent not in self._callback._attached_agents:
-                self._callback.attach(recipient_agent)
+        if (
+            isinstance(recipient, LCTLConversableAgent)
+            and recipient_agent not in self._callback._attached_agents
+        ):
+            self._callback.attach(recipient_agent)
 
-        try:
+        # Graceful degradation
+        with contextlib.suppress(Exception):
             self._callback.session.step_start(
                 agent=self._agent.name,
                 intent="initiate_chat",
                 input_summary=f"Starting chat with {recipient_name}",
             )
-        except Exception:
-            pass  # Graceful degradation
 
         start_time = time.time()
         try:
@@ -697,15 +690,14 @@ class LCTLConversableAgent:
             )
             duration_ms = int((time.time() - start_time) * 1000)
 
-            try:
+            # Graceful degradation
+            with contextlib.suppress(Exception):
                 self._callback.session.step_end(
                     agent=self._agent.name,
                     outcome="success",
                     output_summary=f"Chat with {recipient_name} completed",
                     duration_ms=duration_ms,
                 )
-            except Exception:
-                pass  # Graceful degradation
 
             return result
 
@@ -725,7 +717,7 @@ class LCTLConversableAgent:
                     message=str(e),
                     recoverable=False,
                 )
-            except Exception:
+            except Exception:  # noqa: S110  # tracing must never break the host application
                 pass  # Graceful degradation
             raise
 
@@ -766,15 +758,14 @@ class LCTLGroupChatManager:
         self._callback.attach_group_chat(groupchat, self._manager)
 
         agent_names = [_get_agent_name(a) for a in groupchat.agents]
-        try:
+        # Graceful degradation
+        with contextlib.suppress(Exception):
             self._callback.session.add_fact(
                 fact_id="groupchat-agents",
                 text=f"GroupChat agents: {', '.join(agent_names)}",
                 confidence=1.0,
                 source="lctl-autogen",
             )
-        except Exception:
-            pass  # Graceful degradation
 
     @property
     def manager(self) -> Any:
