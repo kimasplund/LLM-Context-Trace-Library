@@ -189,7 +189,8 @@ class TestLCTLOpenAIAgentTracerBasics:
 
     def test_run_config_returns_dict(self, tracer):
         """Test that run_config returns a dictionary with hooks."""
-        config = tracer.run_config
+        with pytest.warns(DeprecationWarning, match="hooks=tracer.create_hooks"):
+            config = tracer.run_config
         assert isinstance(config, dict)
         assert "hooks" in config
 
@@ -423,7 +424,8 @@ class TestTracedAgent:
 
     def test_traced_agent_provides_run_config(self, traced_agent):
         """Test that TracedAgent provides run_config."""
-        config = traced_agent.run_config
+        with pytest.warns(DeprecationWarning, match="hooks=tracer.create_hooks"):
+            config = traced_agent.run_config
         assert isinstance(config, dict)
         assert "hooks" in config
 
@@ -529,14 +531,16 @@ class TestLCTLRunHooks:
         context = MockRunContextWrapper()
         agent = MockAgent()
         tool = MockTool(name="search_tool")
+        context.tool_arguments = '{"query": "test"}'
 
-        await hooks.on_tool_start(context, agent, tool, {"query": "test"})
+        await hooks.on_tool_start(context, agent, tool)
         await hooks.on_tool_end(context, agent, tool, {"results": []})
 
         events = hooks._session.chain.events
         tool_events = [e for e in events if e.type == EventType.TOOL_CALL]
         assert len(tool_events) == 1
         assert tool_events[0].data["tool"] == "search_tool"
+        assert "query" in tool_events[0].data["input"]
 
     @skip_if_no_asyncio
     @pytest.mark.asyncio

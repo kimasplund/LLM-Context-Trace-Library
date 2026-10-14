@@ -9,7 +9,7 @@ Usage:
     tracer = LCTLOpenAIAgentTracer(chain_id="my-agent")
 
     # Use with Runner
-    result = await Runner.run(agent, input="Hello", run_config=tracer.run_config)
+    result = await Runner.run(agent, input="Hello", hooks=tracer.create_hooks())
 
     tracer.export("trace.lctl.json")
 """
@@ -19,6 +19,7 @@ from __future__ import annotations
 import threading
 import time
 import uuid
+import warnings
 from typing import Any
 
 from ..core.session import LCTLSession
@@ -48,6 +49,12 @@ except ImportError:
     Trace = None
     TracingProcessor = object
 
+
+_RUN_CONFIG_DEPRECATION = (
+    "tracer.run_config is deprecated: Runner.run(run_config=...) expects a RunConfig, "
+    "not this dict, and raises TypeError. "
+    "Use Runner.run(agent, input, hooks=tracer.create_hooks()) instead."
+)
 
 # Default timeout for stale entry cleanup (1 hour)
 DEFAULT_STALE_TIMEOUT_SECONDS: float = 3600.0
@@ -255,14 +262,17 @@ class LCTLRunHooks(RunHooks):
         context: RunContextWrapper,
         agent: Agent,
         tool: Tool,
-        input_data: Any,
     ) -> None:
         """Called when a tool invocation starts.
+
+        The SDK passes no tool input to this hook; the arguments are read from
+        ``context.tool_arguments`` (a ``ToolContext`` for function tools).
 
         Uses UUID-based tracking to prevent race conditions when multiple
         tools with the same name run concurrently.
         """
         try:
+            input_data = getattr(context, "tool_arguments", "")
             tool_name = getattr(tool, "name", str(tool))
             tool_id = str(uuid.uuid4())
             context_id = id(context)
@@ -287,7 +297,7 @@ class LCTLRunHooks(RunHooks):
         context: RunContextWrapper,
         agent: Agent,
         tool: Tool,
-        output: Any,
+        result: object,
     ) -> None:
         """Called when a tool invocation completes.
 
@@ -309,7 +319,7 @@ class LCTLRunHooks(RunHooks):
             input_data = tool_info.get("input", "")
 
             input_str = truncate(str(input_data)) if input_data else ""
-            output_str = truncate(str(output)) if output else ""
+            output_str = truncate(str(result)) if result else ""
 
             self._session.tool_call(
                 tool=tool_name,
@@ -492,16 +502,11 @@ class LCTLOpenAIAgentTracer(BaseTracer):
     Example:
         tracer = LCTLOpenAIAgentTracer(chain_id="my-agent")
 
-        # Option 1: Use run_config with Runner
         result = await Runner.run(
             agent,
             input="Hello",
-            run_config=tracer.run_config
+            hooks=tracer.create_hooks(),
         )
-
-        # Option 2: Use hooks directly
-        hooks = tracer.create_hooks()
-        # Pass hooks to your runner configuration
 
         tracer.export("trace.lctl.json")
     """
@@ -566,11 +571,14 @@ class LCTLOpenAIAgentTracer(BaseTracer):
     def run_config(self) -> dict[str, Any]:
         """Get run configuration with LCTL hooks.
 
-        Returns a configuration dictionary that can be passed to Runner.run().
+        Deprecated: ``Runner.run(run_config=...)`` expects a ``RunConfig``, not
+        this dict, and raises ``TypeError``. Use
+        ``Runner.run(agent, input, hooks=tracer.create_hooks())`` instead.
 
         Returns:
             Dictionary with hooks configuration.
         """
+        warnings.warn(_RUN_CONFIG_DEPRECATION, DeprecationWarning, stacklevel=2)
         return {
             "hooks": self.create_hooks(),
         }
@@ -904,9 +912,12 @@ class TracedAgent:
     def run_config(self) -> dict[str, Any]:
         """Get run configuration with LCTL hooks.
 
+        Deprecated: use ``Runner.run(agent, input, hooks=tracer.create_hooks())``.
+
         Returns:
             Dictionary with hooks configuration.
         """
+        warnings.warn(_RUN_CONFIG_DEPRECATION, DeprecationWarning, stacklevel=2)
         return self._tracer.run_config
 
     def export(self, path: str) -> None:
