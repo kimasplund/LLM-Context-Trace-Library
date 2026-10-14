@@ -98,7 +98,9 @@ class LCTLRunHooks(RunHooks):
     - Tool calls
     - Handoffs between agents
     - Streaming events
-    - Errors
+
+    Tool exceptions surface as the SDK's error string in the ``tool_call`` output;
+    run-level failures are not captured by hooks.
 
     Thread-safe implementation with UUID-based tool tracking to prevent
     race conditions when multiple tools run concurrently.
@@ -340,7 +342,10 @@ class LCTLRunHooks(RunHooks):
         tool: Tool,
         error: BaseException,
     ) -> None:
-        """Called when a tool invocation fails.
+        """Record a failed tool invocation.
+
+        LCTL helper: the OpenAI Agents SDK never calls this hook. Call it
+        yourself if you want error events.
 
         Records both the tool call (with error output) and an error event.
         """
@@ -412,7 +417,11 @@ class LCTLRunHooks(RunHooks):
         agent: Agent,
         error: BaseException,
     ) -> None:
-        """Called when an error occurs during agent execution."""
+        """Record an agent execution error.
+
+        LCTL helper: the OpenAI Agents SDK never calls this hook. Call it
+        yourself if you want error events.
+        """
         try:
             agent_name = self._get_agent_name(agent)
             run_id = str(id(context))
