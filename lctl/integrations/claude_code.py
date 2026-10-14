@@ -61,6 +61,7 @@ import sys
 import tempfile
 import threading
 import time
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -1573,14 +1574,33 @@ def build_hook_settings(project_root: Path, hooks_dir: str = ".claude/hooks") ->
     }
 
 
+def _redirect_to_backup(command: str, event: str, hooks_dir: str) -> str:
+    """Rewrite a command running ``<hooks_dir>/<event>.sh`` to run ``....sh.bak`` instead."""
+    script = f"{_normalize_hooks_dir(hooks_dir)}/{event}.sh"
+    for text in (shlex.quote(script), script):
+        if command.rstrip().endswith(text):
+            stripped = command.rstrip()
+            return stripped[: -len(text)] + shlex.quote(script + ".bak")
+    return f"bash {shlex.quote(script + '.bak')}"
+
+
 def merge_hook_settings(
-    existing: dict[str, Any], project_root: Path, hooks_dir: str = ".claude/hooks"
+    existing: dict[str, Any],
+    project_root: Path,
+    hooks_dir: str = ".claude/hooks",
+    backed_up: Sequence[str] = (),
+    redirected: list[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Return ``existing`` settings with LCTL hook entries replaced by the current ones.
 
     Earlier LCTL entries (commands running ``<hooks_dir>/<Event>.sh``) are removed
     and the current entry appended, so repeated calls never duplicate. Every other
     key, event and user hook is left as it was. ``existing`` is not modified.
+
+    ``backed_up`` names events whose script was not LCTL's and has been moved to
+    ``<script>.bak``: entries running that script are the user's, so they are kept and
+    rewritten to run the backup. Each such rewrite is appended to ``redirected`` as
+    ``(matcher, new_script_path)``.
 
     Raises:
         ValueError: ``hooks`` or an event's value has an unexpected shape, so that
@@ -1602,14 +1622,21 @@ def merge_hook_settings(
             if not isinstance(entries, list):
                 kept.append(group)
                 continue
-            remaining = [
-                h
-                for h in entries
-                if not (
-                    isinstance(h, dict) and is_lctl_hook_command(h.get("command"), event, hooks_dir)
-                )
-            ]
-            if len(remaining) == len(entries):
+            remaining = []
+            for h in entries:
+                if isinstance(h, dict) and is_lctl_hook_command(h.get("command"), event, hooks_dir):
+                    if event not in backed_up:
+                        continue
+                    h = {**h, "command": _redirect_to_backup(h["command"], event, hooks_dir)}
+                    if redirected is not None:
+                        redirected.append(
+                            (
+                                str(group.get("matcher", "")),
+                                f"{_normalize_hooks_dir(hooks_dir)}/{event}.sh.bak",
+                            )
+                        )
+                remaining.append(h)
+            if len(remaining) == len(entries) and remaining == entries:
                 kept.append(group)
             elif remaining:
                 kept.append({**group, "hooks": remaining})

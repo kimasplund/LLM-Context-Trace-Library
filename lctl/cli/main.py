@@ -954,7 +954,15 @@ def claude_init(hooks_dir: str, force: bool, chain_id: str):
             existing = json.loads(settings_path.read_text())
             if not isinstance(existing, dict):
                 raise ValueError(f"{settings_path} must contain a JSON object")
-        settings = merge_hook_settings(existing, Path.cwd().resolve(), hooks_dir)
+        # A foreign script moved to .bak keeps running: its settings entries now point at it.
+        redirected: list[tuple[str, str]] = []
+        settings = merge_hook_settings(
+            existing,
+            Path.cwd().resolve(),
+            hooks_dir,
+            backed_up=[p.stem for p in foreign],
+            redirected=redirected,
+        )
 
         if settings_path.exists():
             shutil.copy2(settings_path, settings_path.with_name(settings_path.name + ".bak"))
@@ -969,6 +977,10 @@ def claude_init(hooks_dir: str, force: bool, chain_id: str):
 
         click.echo(click.style("LCTL Claude Code tracing initialized!", fg="green"))
         click.echo()
+        for matcher, path in redirected:
+            click.echo(f"Your hook {matcher or '(all)'} now runs {path}")
+        if redirected:
+            click.echo()
         click.echo("Hooks:")
         for name, path in hooks.items():
             status = "kept existing" if name in kept else "generated"

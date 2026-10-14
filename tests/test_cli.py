@@ -1202,6 +1202,38 @@ class TestClaudeCommands:
         assert Path(".claude/hooks/PreToolUse.sh.bak").read_text() == original
         assert "LCTL Tracing Hook" in script.read_text()
 
+    def test_init_force_keeps_user_entry_pointing_at_the_backup(
+        self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        import subprocess
+
+        monkeypatch.chdir(tmp_path)
+        script, settings, _original = self._foreign_hook_setup(tmp_path)
+        script.write_text("#!/bin/bash\n# my own rm guard\nexit 2\n")
+        result = runner.invoke(cli, ["claude", "init", "--force"])
+        assert result.exit_code == 0, result.output
+        assert "PreToolUse.sh.bak" in result.output
+        groups = json.loads(settings.read_text())["hooks"]["PreToolUse"]
+        bash_groups = [g for g in groups if g["matcher"] == "Bash"]
+        assert len(bash_groups) == 1
+        command = bash_groups[0]["hooks"][0]["command"]
+        assert command.endswith("PreToolUse.sh.bak")
+        proc = subprocess.run(  # noqa: S603
+            ["bash", "-c", command],  # noqa: S607
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
+            timeout=30,
+        )
+        assert proc.returncode == 2
+        lctl = [g for g in groups if g["matcher"] == "Task|Agent"]
+        assert len(lctl) == 1
+        # Re-running keeps both, still once each.
+        assert runner.invoke(cli, ["claude", "init", "--force"]).exit_code == 0
+        groups = json.loads(settings.read_text())["hooks"]["PreToolUse"]
+        assert [g["matcher"] for g in groups].count("Bash") == 1
+        assert [g["matcher"] for g in groups].count("Task|Agent") == 1
+
     def test_hook_commands_survive_awkward_project_paths(
         self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
