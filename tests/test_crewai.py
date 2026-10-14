@@ -240,3 +240,90 @@ def test_task_complete_records_final_answer_step(mock_crewai_available):
 
     ends = [e for e in crew.session.chain.events if e.type == EventType.STEP_END]
     assert [e.agent for e in ends] == ["writer"]
+
+
+class _Action:
+    thought = "t"
+    tool = "search"
+    tool_input = "q"
+    result = "r"
+
+
+def _bare_crew(mock_crewai_available, **crew_attrs):
+    agent = LCTLAgent(role="Worker", goal="Work", backstory="Working")
+    task = LCTLTask(description="Do work", expected_output="Done", agent=agent)
+    crew = LCTLCrew(agents=[agent], tasks=[task])
+    for k, v in crew_attrs.items():
+        setattr(crew._crew, k, v)
+    return crew, agent
+
+
+def test_unresolved_agent_in_hierarchical_crew_is_the_manager(mock_crewai_available):
+    crew, _ = _bare_crew(mock_crewai_available, process="hierarchical")
+    crew._process = "hierarchical"
+    crew._on_step(_Action())
+    assert {e.agent for e in crew.session.chain.events} == {"manager"}
+
+    crew._crew.manager_agent = MagicMock(role="Project Lead")
+    crew._on_step(_Action())
+    assert crew.session.chain.events[-1].agent == "project-lead"
+
+
+def test_unresolved_agent_in_sequential_crew_stays_unknown(mock_crewai_available):
+    crew, _ = _bare_crew(mock_crewai_available)
+    crew._on_step(_Action())
+    assert {e.agent for e in crew.session.chain.events} == {"unknown"}
+
+
+def test_duplicate_roles_keep_separate_state(mock_crewai_available):
+    crew, _ = _bare_crew(mock_crewai_available)
+    a, b = MagicMock(role="Same"), MagicMock(role="Same")
+
+    class ToolResult:
+        result = "held"
+
+    class Quiet:
+        thought = "x"
+        tool = "t"
+        tool_input = None
+        result = ""
+
+    crew._on_step(ToolResult(), agent=a)
+    crew._on_step(Quiet(), agent=b)
+    assert crew.session.chain.events[-2].data["output"] is None
+    crew._on_step(Quiet(), agent=a)
+    assert crew.session.chain.events[-2].data["output"] == "held"
+
+
+def test_pending_tool_result_flushed_at_task_completion(mock_crewai_available):
+    crew, agent = _bare_crew(mock_crewai_available)
+
+    class ToolResult:
+        result = "dangling"
+
+    crew._on_step(ToolResult(), agent=agent.agent)
+    output = MagicMock()
+    output.description = "d"
+    output.raw = "r"
+    output.agent = "Worker"
+    crew._on_task_complete(output)
+    calls = [e for e in crew.session.chain.events if e.type == EventType.TOOL_CALL]
+    assert [c.data["output"] for c in calls] == ["dangling"]
+
+
+def test_user_agent_callback_chained_and_restored(mock_crewai_available):
+    crew, agent = _bare_crew(mock_crewai_available)
+    seen = []
+
+    def boom(step):
+        seen.append(step)
+        raise RuntimeError("user callback failed")
+
+    agent.agent.step_callback = boom
+    crew._begin_run()
+    with pytest.raises(RuntimeError, match="user callback failed"):
+        agent.agent.step_callback(_Action())
+    assert len(seen) == 1
+    assert any(e.type == EventType.STEP_END for e in crew.session.chain.events)
+    crew._end_run()
+    assert agent.agent.step_callback is boom

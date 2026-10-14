@@ -358,19 +358,50 @@ class LCTLCrew:
         # Store original callbacks if any
         self._original_step_callback = getattr(self._crew, "step_callback", None)
         self._original_task_callback = getattr(self._crew, "task_callback", None)
-        self._last_step_at: dict[str, float] = {}
-        self._pending_tool_result: dict[str, str] = {}
-        self._clock_start = time.monotonic()
+        self._state_lock = threading.Lock()
+        self._installed: list[tuple[Any, Any]] = []
+        self._reset_run_state()
 
         # Install LCTL callbacks
         self._crew.step_callback = self._on_step
         self._crew.task_callback = self._on_task_complete
 
-        # CrewAI step outputs carry no agent. Each agent gets its own callback that
-        # knows who it belongs to (CrewAI only fills agent.step_callback when unset).
-        for agent in getattr(self._crew, "agents", None) or []:
+    def _reset_run_state(self) -> None:
+        """Forget per-run timing so each kickoff measures from its own start."""
+        with self._state_lock:
+            now = time.monotonic()
+            self._clock_start = now
+            # Completion time of the latest task: the earliest an agent's next task can
+            # have started in a sequential crew. CrewAI has no task-start callback.
+            self._boundary = now
+            self._last_step_at: dict[Any, float] = {}
+            self._pending_tool_result: dict[Any, tuple[str, str]] = {}
+
+    def _begin_run(self) -> None:
+        """Reset run state and give each agent a callback that knows its owner.
+
+        CrewAI step outputs carry no agent. The callbacks are installed only for the
+        duration of a traced run, and the user's own agent callbacks are chained.
+        """
+        self._reset_run_state()
+        agents = list(getattr(self._crew, "agents", None) or [])
+        manager = getattr(self._crew, "manager_agent", None)
+        if manager is not None:
+            agents.append(manager)
+        for agent in agents:
+            try:
+                original = agent.step_callback
+                agent.step_callback = functools.partial(self._on_agent_step, agent, original)
+            except Exception:  # noqa: S112  # tracing must never break the run
+                continue
+            self._installed.append((agent, original))
+
+    def _end_run(self) -> None:
+        """Restore every agent's own step callback."""
+        installed, self._installed = self._installed, []
+        for agent, original in installed:
             with contextlib.suppress(Exception):
-                agent.step_callback = functools.partial(self._on_agent_step, agent)
+                agent.step_callback = original
 
     def _get_agent_name(self, agent: Any) -> str:
         """Get a readable name for an agent."""
@@ -382,26 +413,60 @@ class LCTLCrew:
     def _role_name(role: Any) -> str:
         return str(role).replace(" ", "-").lower()[:30]
 
-    def _on_agent_step(self, agent: Any, step_output: Any) -> None:
-        """Step callback bound to one agent, so steps are attributed to its role."""
-        self._on_step(step_output, agent=agent)
+    def _manager_name(self) -> str | None:
+        """Name for steps CrewAI reports without an agent in a hierarchical crew."""
+        process = str(getattr(self._crew, "process", "") or self._process)
+        if "hierarchical" not in process:
+            return None
+        manager = getattr(self._crew, "manager_agent", None)
+        role = getattr(manager, "role", None)
+        return self._role_name(role) if role else "manager"
+
+    def _on_agent_step(self, agent: Any, original: Any, step_output: Any) -> Any:
+        """Step callback bound to one agent: record it, then chain the user's callback."""
+        self._record_step(step_output, agent)
+        if original is not None:
+            return original(step_output)  # user errors propagate as without LCTL
+        return self._call_crew_original(step_output)
 
     def _on_step(self, step_output: Any, agent: Any = None) -> None:
-        """Callback for each agent step.
+        """Crew-level fallback callback, used for agents LCTL has not bound."""
+        self._record_step(step_output, agent)
+        self._call_crew_original(step_output)
 
-        CrewAI calls this after the step happened, so the duration is the time
-        since the same agent's previous step (or since kickoff for its first).
-        A ``ToolResult`` is not a step: it is held and attached to the tool call
-        of the step that follows it.
+    def _call_crew_original(self, step_output: Any) -> Any:
+        if self._original_step_callback:
+            try:
+                return self._original_step_callback(step_output)
+            except Exception as e:
+                if self._verbose:
+                    print(f"[LCTL] Warning: Error in original step callback: {e}")
+        return None
+
+    def _record_step(self, step_output: Any, agent: Any = None) -> None:
+        """Record one step.
+
+        CrewAI calls the callback after the step happened, so the duration is the time
+        since the agent's previous step, or since its task began. A ``ToolResult`` is
+        not a step: it is held and attached to the tool call of the step that follows.
         """
         try:
             now = time.monotonic()
             if agent is None and hasattr(step_output, "agent"):
                 agent = step_output.agent
-            agent_name = self._get_agent_name(agent) if agent is not None else "unknown"
+            if agent is not None:
+                agent_name = self._get_agent_name(agent)
+                key: Any = id(agent)
+            else:
+                agent_name = self._manager_name() or "unknown"
+                key = agent_name
 
             if type(step_output).__name__ == "ToolResult":
-                self._pending_tool_result[agent_name] = str(getattr(step_output, "result", ""))
+                with self._state_lock:
+                    self._pending_tool_result[key] = (
+                        agent_name,
+                        str(getattr(step_output, "result", "")),
+                    )
                 return
 
             thought = ""
@@ -420,13 +485,13 @@ class LCTLCrew:
 
             if hasattr(step_output, "result"):
                 tool_output = truncate(str(step_output.result), 500) if step_output.result else None
-            pending = self._pending_tool_result.pop(agent_name, None)
+            with self._state_lock:
+                pending = self._pending_tool_result.pop(key, None)
+                previous = max(self._last_step_at.get(key, self._clock_start), self._boundary)
+                self._last_step_at[key] = now
             if tool_output is None and pending:
-                tool_output = truncate(pending, 500)
-
-            previous = self._last_step_at.get(agent_name, self._clock_start)
+                tool_output = truncate(pending[1], 500)
             duration_ms = int((now - previous) * 1000)
-            self._last_step_at[agent_name] = now
 
             # Record step start
             self._session.step_start(
@@ -457,14 +522,6 @@ class LCTLCrew:
             if self._verbose:
                 print(f"[LCTL] Warning: Error in step callback: {e}")
 
-        # Call original callback if present - wrap in try/except
-        if self._original_step_callback:
-            try:
-                self._original_step_callback(step_output)
-            except Exception as e:
-                if self._verbose:
-                    print(f"[LCTL] Warning: Error in original step callback: {e}")
-
     def _on_task_complete(self, task_output: Any) -> None:
         """Callback for task completion."""
         try:
@@ -484,22 +541,40 @@ class LCTLCrew:
             agent_role = getattr(task_output, "agent", None)
             if isinstance(agent_role, str) and agent_role:
                 agent_name = self._role_name(agent_role)
-                now = time.monotonic()
-                duration_ms = int(
-                    (now - self._last_step_at.get(agent_name, self._clock_start)) * 1000
+                owner = next(
+                    (a for a in getattr(self._crew, "agents", []) or [] if a.role == agent_role),
+                    None,
                 )
-                self._last_step_at[agent_name] = now
+                key: Any = id(owner) if owner is not None else agent_name
+                now = time.monotonic()
+                with self._state_lock:
+                    previous = max(self._last_step_at.get(key, self._clock_start), self._boundary)
+                    self._last_step_at[key] = now
+                    flushed = self._pending_tool_result.pop(key, None)
+                    for k, (name, _) in list(self._pending_tool_result.items()):
+                        if name == agent_name and owner is None:
+                            flushed = self._pending_tool_result.pop(k)
+                duration_ms = int((now - previous) * 1000)
                 self._session.step_start(
                     agent=agent_name,
                     intent="final_answer",
                     input_summary=task_description[:100] or "Task",
                 )
+                if flushed:
+                    self._session.tool_call(
+                        tool="tool_result",
+                        input_data=None,
+                        output_data=truncate(flushed[1], 500),
+                        duration_ms=duration_ms,
+                    )
                 self._session.step_end(
                     agent=agent_name,
                     outcome="success",
                     output_summary=truncate(task_output_text, 100) or "Task completed",
                     duration_ms=duration_ms,
                 )
+            with self._state_lock:
+                self._boundary = time.monotonic()
 
             # Add fact about task completion
             fact_id = f"task-{len(self._session.chain.events)}"
@@ -532,6 +607,7 @@ class LCTLCrew:
             The crew execution result.
         """
         start_time = time.time()
+        self._begin_run()
 
         # Register agents for LLM tracing with thread safety
         with _agent_map_lock:
@@ -624,6 +700,7 @@ class LCTLCrew:
 
             raise
         finally:
+            self._end_run()
             # Cleanup agent registration with thread safety
             with _agent_map_lock:
                 for agent in self._crew.agents:
@@ -643,6 +720,7 @@ class LCTLCrew:
             Async result of crew execution.
         """
         start_time = time.time()
+        self._begin_run()
 
         # Register agents for LLM tracing with thread safety
         with _agent_map_lock:
@@ -712,6 +790,7 @@ class LCTLCrew:
             )
             raise
         finally:
+            self._end_run()
             # Cleanup agent registration with thread safety
             with _agent_map_lock:
                 for agent in self._crew.agents:
