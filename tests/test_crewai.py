@@ -327,3 +327,35 @@ def test_user_agent_callback_chained_and_restored(mock_crewai_available):
     assert any(e.type == EventType.STEP_END for e in crew.session.chain.events)
     crew._end_run()
     assert agent.agent.step_callback is boom
+
+
+def test_callbacks_restored_when_kickoff_setup_raises(mock_crewai_available):
+    crew, agent = _bare_crew(mock_crewai_available)
+    original = MagicMock()
+    agent.agent.step_callback = original
+    with (
+        patch.object(crew.session, "step_start", side_effect=RuntimeError("boom")),
+        pytest.raises(RuntimeError, match="boom"),
+    ):
+        crew.kickoff()
+    assert agent.agent.step_callback is original
+
+
+def test_same_agent_listed_twice_is_restored(mock_crewai_available):
+    agent = LCTLAgent(role="Worker", goal="Work", backstory="Working")
+    task = LCTLTask(description="Do work", expected_output="Done", agent=agent)
+    crew = LCTLCrew(agents=[agent, agent], tasks=[task])
+    original = MagicMock()
+    agent.agent.step_callback = original
+    crew.kickoff()
+    assert agent.agent.step_callback is original
+
+
+def test_duration_never_negative(mock_crewai_available):
+    import time
+
+    crew, agent = _bare_crew(mock_crewai_available)
+    crew._boundary = time.monotonic() + 100
+    crew._on_step(_Action(), agent=agent.agent)
+    ends = [e for e in crew.session.chain.events if e.type == EventType.STEP_END]
+    assert ends[-1].data["duration_ms"] == 0

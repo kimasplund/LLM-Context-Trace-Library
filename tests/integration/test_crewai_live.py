@@ -264,3 +264,17 @@ def test_hierarchical_auto_manager_steps_are_not_unknown():
     crew.kickoff()
     events = crew.session.chain.events
     assert "unknown" not in {e.agent for e in events}
+
+
+# Upstream: Crew.copy() warns about any method or partial callback; LCTL's callbacks need state,
+# so they cannot be module-level functions. It only concerns CrewAI checkpointing.
+@pytest.mark.filterwarnings("ignore:(method|partial) callbacks cannot be serialized:UserWarning")
+def test_kickoff_for_each_is_attributed_and_restored():
+    r, w = _agents(runs=2)
+    original = r.agent.step_callback
+    crew = LCTLCrew(agents=[r, w], tasks=_tasks(r, w))
+    crew.kickoff_for_each([{"topic": "a"}, {"topic": "b"}])
+    agents = {e.agent for e in crew.session.chain.events}
+    assert "unknown" not in agents
+    assert {"researcher", "writer"} <= agents
+    assert r.agent.step_callback is original

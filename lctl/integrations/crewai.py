@@ -391,15 +391,17 @@ class LCTLCrew:
         for agent in agents:
             try:
                 original = agent.step_callback
+                if getattr(original, "func", None) == self._on_agent_step:
+                    continue  # already carries this crew's callback (agent listed twice)
                 agent.step_callback = functools.partial(self._on_agent_step, agent, original)
             except Exception:  # noqa: S112  # tracing must never break the run
                 continue
             self._installed.append((agent, original))
 
     def _end_run(self) -> None:
-        """Restore every agent's own step callback."""
+        """Restore every agent's own step callback, last installed first."""
         installed, self._installed = self._installed, []
-        for agent, original in installed:
+        for agent, original in reversed(installed):
             with contextlib.suppress(Exception):
                 agent.step_callback = original
 
@@ -491,7 +493,7 @@ class LCTLCrew:
                 self._last_step_at[key] = now
             if tool_output is None and pending:
                 tool_output = truncate(pending[1], 500)
-            duration_ms = int((now - previous) * 1000)
+            duration_ms = max(0, int((now - previous) * 1000))
 
             # Record step start
             self._session.step_start(
@@ -554,7 +556,7 @@ class LCTLCrew:
                     for k, (name, _) in list(self._pending_tool_result.items()):
                         if name == agent_name and owner is None:
                             flushed = self._pending_tool_result.pop(k)
-                duration_ms = int((now - previous) * 1000)
+                duration_ms = max(0, int((now - previous) * 1000))
                 self._session.step_start(
                     agent=agent_name,
                     intent="final_answer",
@@ -606,8 +608,22 @@ class LCTLCrew:
         Returns:
             The crew execution result.
         """
+        try:
+            self._begin_run()
+            return self._kickoff_traced(inputs)
+        finally:
+            self._end_run()
+
+    def _kickoff_traced(self, inputs: dict[str, Any] | None = None) -> Any:
+        """Execute the crew with LCTL tracing.
+
+        Args:
+            inputs: Optional inputs to pass to the crew.
+
+        Returns:
+            The crew execution result.
+        """
         start_time = time.time()
-        self._begin_run()
 
         # Register agents for LLM tracing with thread safety
         with _agent_map_lock:
@@ -700,7 +716,6 @@ class LCTLCrew:
 
             raise
         finally:
-            self._end_run()
             # Cleanup agent registration with thread safety
             with _agent_map_lock:
                 for agent in self._crew.agents:
@@ -719,8 +734,22 @@ class LCTLCrew:
         Returns:
             Async result of crew execution.
         """
+        try:
+            self._begin_run()
+            return await self._kickoff_async_traced(inputs)
+        finally:
+            self._end_run()
+
+    async def _kickoff_async_traced(self, inputs: dict[str, Any] | None = None) -> Any:
+        """Execute the crew asynchronously with LCTL tracing.
+
+        Args:
+            inputs: Optional inputs to pass to the crew.
+
+        Returns:
+            Async result of crew execution.
+        """
         start_time = time.time()
-        self._begin_run()
 
         # Register agents for LLM tracing with thread safety
         with _agent_map_lock:
@@ -790,7 +819,6 @@ class LCTLCrew:
             )
             raise
         finally:
-            self._end_run()
             # Cleanup agent registration with thread safety
             with _agent_map_lock:
                 for agent in self._crew.agents:
@@ -799,6 +827,41 @@ class LCTLCrew:
                         # Only remove if it points to this session
                         if _agent_id_session_map.get(agent_id) is self._session:
                             del _agent_id_session_map[agent_id]
+
+    def kickoff_for_each(self, inputs: list[dict[str, Any]], **kwargs: Any) -> Any:
+        """Run the crew once per input; one traced run wraps the whole batch.
+
+        CrewAI copies the crew per input, and the copies carry the callbacks installed here.
+        """
+        try:
+            self._begin_run()
+            return self._crew.kickoff_for_each(inputs, **kwargs)
+        finally:
+            self._end_run()
+
+    async def kickoff_for_each_async(self, inputs: list[dict[str, Any]], **kwargs: Any) -> Any:
+        """Async variant of :meth:`kickoff_for_each`."""
+        try:
+            self._begin_run()
+            return await self._crew.kickoff_for_each_async(inputs, **kwargs)
+        finally:
+            self._end_run()
+
+    async def akickoff(self, inputs: dict[str, Any] | None = None, **kwargs: Any) -> Any:
+        """Native async kickoff, traced."""
+        try:
+            self._begin_run()
+            return await self._crew.akickoff(inputs=inputs, **kwargs)
+        finally:
+            self._end_run()
+
+    async def akickoff_for_each(self, inputs: list[dict[str, Any]], **kwargs: Any) -> Any:
+        """Native async per-input kickoff, traced."""
+        try:
+            self._begin_run()
+            return await self._crew.akickoff_for_each(inputs, **kwargs)
+        finally:
+            self._end_run()
 
     def export_trace(self, path: str) -> None:
         """Export the LCTL trace to a file.
