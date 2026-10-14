@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Trace format 4.2: optional UUIDv7 event `id`, `span_id` and `parent_span_id` on events, and a chain-level `trace_id`, giving an exact call tree and parallel lanes. Older traces still load, and LCTL 4.1 reads 4.2 files.
+- `LCTLSession.span()` context manager and `current_span_id`. Spans nest per execution context, so concurrent asyncio tasks get separate parents. `step_start`/`step_end`/`tool_call`/`llm_trace`/`error` accept keyword-only span ids.
+- `ReplayEngine.get_span_tree()`, with deterministic inference for older traces (orphan step ends kept as `orphan-<seq>` nodes).
+- `lctl trace --tree` prints the span call tree.
+
 ### Fixed
+
+- Errors recorded by `traced_step` and `@lctl.traced` were attributed to agent "unknown"; they now carry the failing step's agent and span. `@lctl.traced` also no longer breaks the call if tracing itself fails.
+- Concurrent agents in one session (e.g. under `asyncio.gather`) no longer overwrite each other's agent attribution.
+- `ReplayEngine.diff()` ignores per-run identity fields.
 
 - Web dashboard: the Metrics and Evaluation tabs and the Compare button never responded (their handlers were attached by an `init` reassignment that ran after the page-load listener had captured the original function)
 - Web dashboard: event details open in a drawer over the current view instead of rendering ~17,000px down the page; panels scroll internally so the page stays about two screens tall; `Esc` closes the drawer

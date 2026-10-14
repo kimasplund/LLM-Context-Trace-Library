@@ -130,6 +130,11 @@ A single LCTL event representing an atomic action in the workflow.
 | `timestamp` | `datetime` | When the event occurred (UTC) |
 | `agent` | `str` | Name of the agent that produced the event |
 | `data` | `Dict[str, Any]` | Event-specific payload data |
+| `id` | `Optional[str]` | Format 4.2: unique UUIDv7 for this event (`None` in older traces) |
+| `span_id` | `Optional[str]` | Format 4.2: the span this event belongs to. On `step_start` it is the span opened, on `step_end` the span closed |
+| `parent_span_id` | `Optional[str]` | Format 4.2, `step_start` only: the enclosing span (`None` for a root) |
+
+`to_dict()` writes `id`, `span_id` and `parent_span_id` only when they are set, so traces without spans serialize exactly as before.
 
 #### Methods
 
@@ -187,13 +192,14 @@ A collection of events representing a complete execution trace.
 #### Constructor
 
 ```python
-Chain(id: str, events: List[Event] = [], version: str = "4.0")
+Chain(id: str, events: List[Event] = [], version: str = CURRENT_VERSION, trace_id: Optional[str] = <new UUIDv7>)
 ```
 
 **Parameters**:
-- `id` (`str`): Unique identifier for the chain.
+- `id` (`str`): Human-readable identifier for the chain.
 - `events` (`List[Event]`): Initial list of events (default: empty).
-- `version` (`str`): LCTL version string (default: "4.0").
+- `version` (`str`): LCTL format version (default: the current version, `"4.2"`).
+- `trace_id` (`Optional[str]`): Machine identifier (UUIDv7) for the whole trace. New chains get one automatically; chains loaded from pre-4.2 files have `None` until `save()` assigns one.
 
 #### Attributes
 
@@ -202,6 +208,7 @@ Chain(id: str, events: List[Event] = [], version: str = "4.0")
 | `id` | `str` | Chain identifier |
 | `events` | `List[Event]` | List of events in the chain |
 | `version` | `str` | LCTL format version |
+| `trace_id` | `Optional[str]` | UUIDv7 identifying the trace (format 4.2) |
 
 #### Methods
 
@@ -387,9 +394,27 @@ for step in trace:
     print(f"[{step['seq']}] {step['agent']}: {step['type']}")
 ```
 
+Entries include `span_id` / `parent_span_id` when the events carry them.
+
+##### `get_span_tree() -> List[Dict[str, Any]]`
+
+Build the call tree of spans (steps), roots first, children ordered by start.
+
+Each node has: `span_id`, `parent_span_id`, `agent`, `intent`, `start_seq`, `end_seq`, `start_time`, `end_time`, `duration_ms`, `outcome`, `event_count` (non-step events in the span), `children`, and `inferred`.
+
+- Format 4.2 events use their recorded span ids (`inferred: False`).
+- Older events are paired by inference: a `step_end` closes the most recent open step of the same agent, and a step's parent is the step open when it started. Inferred ids are deterministic: `inferred-<start_seq>`.
+- A `step_end` with no matching start becomes a root node `orphan-<end_seq>` with `start_seq: None`. A step that never ended keeps `end_seq: None`.
+- `duration_ms` is the recorded duration, else end minus start time, else `None`.
+
+```python
+for root in engine.get_span_tree():
+    print(root["agent"], root["duration_ms"], [c["agent"] for c in root["children"]])
+```
+
 ##### `diff(other: ReplayEngine) -> List[Dict[str, Any]]`
 
-Compare two chains and find divergence points.
+Compare two chains and find divergence points. Identity fields (`id`, `span_id`, `parent_span_id`) are ignored, since they differ between any two runs.
 
 **Parameters**:
 - `other` (`ReplayEngine`): Another replay engine to compare against.
@@ -475,20 +500,40 @@ with LCTLSession(chain_id="my-workflow") as session:
 
 #### Methods
 
-##### `step_start(agent: str, intent: str, input_summary: str = "") -> int`
+##### `span(agent: str, intent: str, input_summary: str = "", *, span_id: Optional[str] = None, parent_span_id: Optional[str] = None)` (context manager)
 
-Record the start of an agent step.
+Trace a block as a span and yield its `span_id`. On exit it records `step_end(outcome="success")`, or, if an exception escapes, `step_end(outcome="error")` followed by an `error` event attributed to the span. The exception is always re-raised, and a failure inside tracing never masks it.
+
+```python
+with session.span("planner", "plan") as planner_span:
+    with session.span("coder", "write code"):  # parent: planner_span
+        session.tool_call("editor", {"file": "app.py"}, {"ok": True})
+```
+
+Spans nest automatically per execution context: concurrent `asyncio` tasks get their own stack, so parallel agents get separate parents. A new thread starts without a parent unless you pass `parent_span_id`.
+
+##### `current_span_id -> Optional[str]` (property)
+
+The innermost open span in the current execution context, or `None`.
+
+##### `step_start(agent: str, intent: str, input_summary: str = "", *, span_id: Optional[str] = None, parent_span_id: Optional[str] = None) -> int`
+
+Record the start of an agent step. This opens a span (format 4.2).
 
 **Parameters**:
 - `agent` (`str`): Name of the agent.
 - `intent` (`str`): What the agent intends to do.
 - `input_summary` (`str`): Summary of the input (optional).
+- `span_id` (`Optional[str]`): Use this id for the span (any UUID string, e.g. a framework's own run id). Default: a new UUIDv7.
+- `parent_span_id` (`Optional[str]`): Explicit parent. Default: the innermost open span in this context.
 
 **Returns**: Sequence number of the event.
 
 ```python
 seq = session.step_start("analyzer", "analyze", "input.txt")
 ```
+
+`step_end(...)`, `tool_call(...)`, `llm_trace(...)` and `error(...)` also accept a keyword-only `span_id=`. `step_end` closes that span, or by default the innermost open span (of `agent`, when given). The other three attach the event to that span and attribute it to the span's agent.
 
 ##### `step_end(agent: Optional[str] = None, outcome: str = "success", output_summary: str = "", duration_ms: int = 0, tokens_in: int = 0, tokens_out: int = 0) -> int`
 
@@ -2051,6 +2096,7 @@ lctl replay chain.lctl.json      # Time-travel debugging
 lctl stats chain.lctl.json       # Performance statistics
 lctl bottleneck chain.lctl.json  # Find slow steps
 lctl trace chain.lctl.json       # Execution flow visualization
+lctl trace --tree chain.lctl.json  # Span call tree with durations, (open) and (orphan end) markers
 lctl diff v1.json v2.json        # Compare two chains
 ```
 
@@ -2064,9 +2110,10 @@ LCTL supports both JSON and YAML formats:
 
 ```json
 {
-  "lctl": "4.0",
+  "lctl": "4.2",
   "chain": {
-    "id": "my-chain"
+    "id": "my-chain",
+    "trace_id": "0199e3a1-7c2e-7b4f-9a1d-3f5c2b8e6d10"
   },
   "events": [
     {
@@ -2077,16 +2124,22 @@ LCTL supports both JSON and YAML formats:
       "data": {
         "intent": "analyze",
         "input_summary": "code.py"
-      }
+      },
+      "id": "0199e3a1-7c2f-7d10-8c44-1a2b3c4d5e6f",
+      "span_id": "0199e3a1-7c2f-7e21-b0f3-9e8d7c6b5a40"
     }
   ]
 }
 ```
 
+`id`, `span_id`, `parent_span_id` and `trace_id` are optional (format 4.2). Older files load unchanged and their structure is inferred; LCTL 4.1 readers also load 4.2 files and ignore the new keys.
+
+**OpenTelemetry mapping (convention):** LCTL ids stay LCTL ids. When importing from or exporting to OpenTelemetry, OTel's identifiers are carried in the event payload as `data["otel"] = {"trace_id": ..., "span_id": ...}`.
+
 ### YAML Format
 
 ```yaml
-lctl: "4.0"
+lctl: "4.2"
 chain:
   id: my-chain
 events:

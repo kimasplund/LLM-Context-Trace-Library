@@ -495,6 +495,29 @@ lctl trace chain.lctl.json
 # +- [17] success (15.0s)
 ```
 
+For the call hierarchy, `--tree` shows each span nested under the span that started it:
+
+```bash
+lctl trace --tree chain.lctl.json
+# Span tree for security-review-001:
+#
+# code-analyzer: analyze  [15.0s] success
+#   security-reviewer: assess  [22.5s] success
+#     fix-implementer: fix  [7.7s] success
+```
+
+Record nested spans with `session.span()`. Each block becomes a span, and blocks opened inside it become its children, including concurrent asyncio tasks:
+
+```python
+from lctl import LCTLSession
+
+session = LCTLSession(chain_id="review")
+with session.span("planner", "plan"):
+    with session.span("coder", "write code"):
+        session.tool_call("editor", {"file": "app.py"}, {"ok": True})
+session.export("review.lctl.json")
+```
+
 ### bottleneck - Performance Analysis
 
 ```bash

@@ -187,6 +187,22 @@ session.add_fact("F1", "Hypothesis A", confidence=0.7)
 session.modify_fact("F1", confidence=0.9, reason="verified by tests")
 ```
 
+### Spans (format 4.2)
+
+Every step is a span. Events carry an optional UUIDv7 `id`; steps carry `span_id` and `parent_span_id`, and chains a `trace_id`. These give an exact call tree and parallel lanes.
+
+```python
+with session.span("planner", "plan") as planner_span:
+    with session.span("coder", "write code"):  # parent: planner_span
+        session.tool_call("editor", {}, {})
+
+tree = ReplayEngine(session.chain).get_span_tree()
+```
+
+- Spans nest per execution context (a `ContextVar` holding an immutable tuple stack), so concurrent `asyncio` tasks get separate parents. `step_start`/`step_end` also open and close spans; integrations can pass their own ids with `span_id=`.
+- Older traces have no ids: `get_span_tree()` infers spans (`inferred-<seq>`), and an unmatched end becomes `orphan-<seq>`.
+- `lctl trace --tree` prints the tree. `diff()` ignores the id fields.
+
 ### Confidence Thresholds
 
 | Confidence | Action |
@@ -520,6 +536,7 @@ lctl stats chain.lctl.json          # Show statistics
 lctl stats --json chain.lctl.json   # JSON output
 lctl bottleneck chain.lctl.json     # Find slow steps
 lctl trace chain.lctl.json          # Show execution flow
+lctl trace --tree chain.lctl.json   # Show the span call tree
 lctl confidence chain.lctl.json     # Show fact confidence
 lctl diff v1.json v2.json           # Compare chains
 lctl debug chain.lctl.json          # Launch web debugger
@@ -536,9 +553,10 @@ lctl dashboard --dir ./traces       # Specific directory
 
 ```json
 {
-  "lctl": "4.0",
+  "lctl": "4.2",
   "chain": {
-    "id": "my-workflow"
+    "id": "my-workflow",
+    "trace_id": "0199e3a1-7c2e-7b4f-9a1d-3f5c2b8e6d10"
   },
   "events": [
     {
@@ -549,7 +567,9 @@ lctl dashboard --dir ./traces       # Specific directory
       "data": {
         "intent": "analyze",
         "input_summary": "code.py"
-      }
+      },
+      "id": "0199e3a1-7c2f-7d10-8c44-1a2b3c4d5e6f",
+      "span_id": "0199e3a1-7c2f-7e21-b0f3-9e8d7c6b5a40"
     }
   ]
 }
@@ -558,7 +578,7 @@ lctl dashboard --dir ./traces       # Specific directory
 ### YAML Format (.lctl.yaml)
 
 ```yaml
-lctl: "4.0"
+lctl: "4.2"
 chain:
   id: my-workflow
 events:
