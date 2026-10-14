@@ -303,7 +303,7 @@ def example_analyze_trace():
 
 def print_example_code():
     """Print example code when DSPy is not installed."""
-    code = '''
+    code = """
 import dspy
 from dspy import ChainOfThought, Module, Predict
 from dspy.teleprompt import BootstrapFewShot
@@ -365,7 +365,7 @@ state = engine.replay_all()
 print(f"Total events: {state.metrics['event_count']}")
 print(f"Total duration: {state.metrics['total_duration_ms']}ms")
 print(f"Facts discovered: {len(state.facts)}")
-'''
+"""
     print(code)
 
 

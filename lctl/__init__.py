@@ -67,9 +67,11 @@ def traced(agent: str, intent: str = "execute"):
         def analyze_code(code):
             return findings
     """
+
     def decorator(func):
         def wrapper(*args, **kwargs):
             import time
+
             session = get_session()
             start = time.time()
 
@@ -89,13 +91,14 @@ def traced(agent: str, intent: str = "execute"):
                     category="execution_error",
                     error_type=type(e).__name__,
                     message=str(e),
-                    recoverable=False
+                    recoverable=False,
                 )
                 raise
 
         wrapper.__name__ = func.__name__
         wrapper.__doc__ = func.__doc__
         return wrapper
+
     return decorator
 
 

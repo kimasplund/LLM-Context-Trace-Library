@@ -10,7 +10,16 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, Optional
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import (
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -32,23 +41,27 @@ from ..streaming.emitter import EventEmitter, StreamingEvent, StreamingEventType
 
 class ReplayRequest(BaseModel):
     """Request model for replay endpoint."""
+
     filename: str
     target_seq: int
 
 
 class CompareRequest(BaseModel):
     """Request model for chain comparison endpoint."""
+
     filename1: str
     filename2: str
 
 
 class BatchMetricsRequest(BaseModel):
     """Request model for batch metrics endpoint."""
+
     filenames: list[str] = Field(..., max_length=100)
 
 
 class SearchRequest(BaseModel):
     """Request model for cross-chain search."""
+
     query: str
     event_types: list[str] | None = None
     agents: list[str] | None = None
@@ -57,6 +70,7 @@ class SearchRequest(BaseModel):
 
 class WebhookRegistration(BaseModel):
     """Request model for webhook registration."""
+
     url: str
     events: list[str] = ["error", "step_end"]
     chain_id: str | None = None
@@ -65,6 +79,7 @@ class WebhookRegistration(BaseModel):
 
 class RpaEventSubmission(BaseModel):
     """Request model for submitting RPA workflow events."""
+
     chain_id: str
     agent: str
     event_type: str
@@ -102,15 +117,11 @@ def _get_secure_path(app: FastAPI, filename: str) -> Path:
 
         # Security: Check for symlinks pointing outside working dir
         if file_path.is_symlink():
-            raise HTTPException(
-                status_code=403,
-                detail="Access denied: Symbolic links not allowed"
-            )
+            raise HTTPException(status_code=403, detail="Access denied: Symbolic links not allowed")
 
         if not file_path.is_relative_to(working_dir):
             raise HTTPException(
-                status_code=403,
-                detail="Access denied: Path outside working directory"
+                status_code=403, detail="Access denied: Path outside working directory"
             )
         return file_path
     except ValueError:
@@ -151,9 +162,9 @@ def _is_localhost(request: Request) -> bool:
 
 def _create_verify_api_key(app: FastAPI) -> Callable:
     """Create an API key verification dependency for the given app."""
+
     async def verify_api_key(
-        request: Request,
-        x_api_key: Optional[str] = Header(None, alias="X-API-Key")
+        request: Request, x_api_key: Optional[str] = Header(None, alias="X-API-Key")
     ) -> bool:
         """Verify API key for protected endpoints.
 
@@ -176,20 +187,16 @@ def _create_verify_api_key(app: FastAPI) -> Callable:
                 raise HTTPException(
                     status_code=401,
                     detail="API key required. Set X-API-Key header.",
-                    headers={"WWW-Authenticate": "ApiKey"}
+                    headers={"WWW-Authenticate": "ApiKey"},
                 )
 
             # Constant-time comparison to prevent timing attacks
             key_valid = any(
-                hmac.compare_digest(x_api_key, valid_key)
-                for valid_key in app.state.api_keys
+                hmac.compare_digest(x_api_key, valid_key) for valid_key in app.state.api_keys
             )
 
             if not key_valid:
-                raise HTTPException(
-                    status_code=403,
-                    detail="Invalid API key"
-                )
+                raise HTTPException(status_code=403, detail="Invalid API key")
 
         return True
 
@@ -295,23 +302,27 @@ def _register_core_endpoints(app: FastAPI, limiter: Limiter) -> None:
             for file_path in working_dir.glob(pattern):
                 try:
                     chain = Chain.load(file_path)
-                    chains.append({
-                        "filename": file_path.name,
-                        "path": str(file_path),
-                        "id": chain.id,
-                        "version": chain.version,
-                        "event_count": len(chain.events)
-                    })
+                    chains.append(
+                        {
+                            "filename": file_path.name,
+                            "path": str(file_path),
+                            "id": chain.id,
+                            "version": chain.version,
+                            "event_count": len(chain.events),
+                        }
+                    )
                 except Exception as e:
                     # Include file but mark as having errors
-                    chains.append({
-                        "filename": file_path.name,
-                        "path": str(file_path),
-                        "id": "error",
-                        "version": "unknown",
-                        "event_count": 0,
-                        "error": str(e)
-                    })
+                    chains.append(
+                        {
+                            "filename": file_path.name,
+                            "path": str(file_path),
+                            "id": "error",
+                            "version": "unknown",
+                            "event_count": 0,
+                            "error": str(e),
+                        }
+                    )
 
         return {"chains": chains, "working_dir": str(working_dir)}
 
@@ -341,27 +352,22 @@ def _register_core_endpoints(app: FastAPI, limiter: Limiter) -> None:
         events = [e.to_dict() for e in chain.events]
 
         # Find errors
-        [e.to_dict() for e in chain.events
-                  if (e.type.value if hasattr(e.type, 'value') else e.type) == "error"]
+        [
+            e.to_dict()
+            for e in chain.events
+            if (e.type.value if hasattr(e.type, "value") else e.type) == "error"
+        ]
 
         return {
-            "chain": {
-                "id": chain.id,
-                "version": chain.version,
-                "filename": filename
-            },
+            "chain": {"id": chain.id, "version": chain.version, "filename": filename},
             "events": events,
             "agents": sorted(agents),
-            "state": {
-                "facts": state.facts,
-                "errors": state.errors,
-                "metrics": state.metrics
-            },
+            "state": {"facts": state.facts, "errors": state.errors, "metrics": state.metrics},
             "analysis": {
                 "bottlenecks": bottlenecks,
                 "confidence_timeline": confidence_timeline,
-                "trace": trace
-            }
+                "trace": trace,
+            },
         }
 
     @app.post("/api/replay", response_class=JSONResponse)
@@ -377,7 +383,7 @@ def _register_core_endpoints(app: FastAPI, limiter: Limiter) -> None:
         if chain.events and request.target_seq > chain.events[-1].seq:
             raise HTTPException(
                 status_code=400,
-                detail=f"target_seq {request.target_seq} exceeds max seq {chain.events[-1].seq}"
+                detail=f"target_seq {request.target_seq} exceeds max seq {chain.events[-1].seq}",
             )
 
         state = engine.replay_to(request.target_seq)
@@ -393,8 +399,8 @@ def _register_core_endpoints(app: FastAPI, limiter: Limiter) -> None:
                 "errors": state.errors,
                 "metrics": state.metrics,
                 "current_agent": state.current_agent,
-                "current_step": state.current_step
-            }
+                "current_step": state.current_step,
+            },
         }
 
     @app.post("/api/compare", response_class=JSONResponse)
@@ -424,16 +430,12 @@ def _register_core_endpoints(app: FastAPI, limiter: Limiter) -> None:
                 "fact_count": len(state.facts),
                 "error_count": state.metrics.get("error_count", 0),
                 "total_duration_ms": state.metrics.get("total_duration_ms", 0),
-                "total_tokens": state.metrics.get("total_tokens_in", 0) + state.metrics.get("total_tokens_out", 0),
-                "top_bottleneck": bottlenecks[0] if bottlenecks else None
+                "total_tokens": state.metrics.get("total_tokens_in", 0)
+                + state.metrics.get("total_tokens_out", 0),
+                "top_bottleneck": bottlenecks[0] if bottlenecks else None,
             }
 
-        fact_comparison = {
-            "only_in_first": [],
-            "only_in_second": [],
-            "different": [],
-            "same": []
-        }
+        fact_comparison = {"only_in_first": [], "only_in_second": [], "different": [], "same": []}
 
         all_fact_ids = set(state1.facts.keys()) | set(state2.facts.keys())
         for fact_id in all_fact_ids:
@@ -445,12 +447,12 @@ def _register_core_endpoints(app: FastAPI, limiter: Limiter) -> None:
             elif fact2 and not fact1:
                 fact_comparison["only_in_second"].append({"id": fact_id, **fact2})
             elif fact1 and fact2:
-                if fact1.get("text") != fact2.get("text") or fact1.get("confidence") != fact2.get("confidence"):
-                    fact_comparison["different"].append({
-                        "id": fact_id,
-                        "first": fact1,
-                        "second": fact2
-                    })
+                if fact1.get("text") != fact2.get("text") or fact1.get("confidence") != fact2.get(
+                    "confidence"
+                ):
+                    fact_comparison["different"].append(
+                        {"id": fact_id, "first": fact1, "second": fact2}
+                    )
                 else:
                     fact_comparison["same"].append(fact_id)
 
@@ -460,7 +462,7 @@ def _register_core_endpoints(app: FastAPI, limiter: Limiter) -> None:
             "event_diffs": diffs[:50],
             "diff_count": len(diffs),
             "fact_comparison": fact_comparison,
-            "divergence_point": diffs[0]["seq"] if diffs else None
+            "divergence_point": diffs[0]["seq"] if diffs else None,
         }
 
 
@@ -483,40 +485,39 @@ def _register_analysis_endpoints(app: FastAPI) -> None:
 
         error_timeline = []
         for event in chain.events:
-            event_type = event.type.value if hasattr(event.type, 'value') else event.type
+            event_type = event.type.value if hasattr(event.type, "value") else event.type
             if event_type == "error":
-                error_timeline.append({
-                    "seq": event.seq,
-                    "timestamp": event.timestamp.isoformat(),
-                    "agent": event.agent,
-                    "category": event.data.get("category", "unknown"),
-                    "type": event.data.get("type", "unknown"),
-                    "message": event.data.get("message", ""),
-                    "recoverable": event.data.get("recoverable", False)
-                })
+                error_timeline.append(
+                    {
+                        "seq": event.seq,
+                        "timestamp": event.timestamp.isoformat(),
+                        "agent": event.agent,
+                        "category": event.data.get("category", "unknown"),
+                        "type": event.data.get("type", "unknown"),
+                        "message": event.data.get("message", ""),
+                        "recoverable": event.data.get("recoverable", False),
+                    }
+                )
 
         token_distribution = {
             "input": state.metrics.get("total_tokens_in", 0),
-            "output": state.metrics.get("total_tokens_out", 0)
+            "output": state.metrics.get("total_tokens_out", 0),
         }
 
         return {
-            "chain": {
-                "id": chain.id,
-                "filename": filename
-            },
+            "chain": {"id": chain.id, "filename": filename},
             "summary": {
                 "total_events": metrics.total_events,
                 "total_agents": metrics.agent_count,
                 "total_duration_ms": metrics.total_duration_ms,
                 "total_tokens": metrics.total_tokens,
                 "total_errors": metrics.error_count,
-                "total_facts": metrics.fact_count
+                "total_facts": metrics.fact_count,
             },
             "agent_metrics": agent_metrics,
             "token_distribution": token_distribution,
             "error_timeline": error_timeline,
-            "bottlenecks": bottlenecks[:10]
+            "bottlenecks": bottlenecks[:10],
         }
 
     @app.get("/api/evaluation/{filename}", response_class=JSONResponse)
@@ -530,7 +531,9 @@ def _register_analysis_endpoints(app: FastAPI) -> None:
         confidence_timeline = engine.get_confidence_timeline()
 
         total_duration = state.metrics.get("total_duration_ms", 0)
-        total_tokens = state.metrics.get("total_tokens_in", 0) + state.metrics.get("total_tokens_out", 0)
+        total_tokens = state.metrics.get("total_tokens_in", 0) + state.metrics.get(
+            "total_tokens_out", 0
+        )
         error_count = state.metrics.get("error_count", 0)
         fact_count = len(state.facts)
 
@@ -564,62 +567,72 @@ def _register_analysis_endpoints(app: FastAPI) -> None:
         fact_heatmap = []
         for fact_id, timeline in confidence_timeline.items():
             for point in timeline:
-                fact_heatmap.append({
-                    "fact_id": fact_id,
-                    "seq": point["seq"],
-                    "confidence": point["confidence"],
-                    "agent": point["agent"]
-                })
+                fact_heatmap.append(
+                    {
+                        "fact_id": fact_id,
+                        "seq": point["seq"],
+                        "confidence": point["confidence"],
+                        "agent": point["agent"],
+                    }
+                )
         fact_heatmap.sort(key=lambda x: x["seq"])
 
         issues = []
         warnings = []
 
         if error_count > 0:
-            issues.append({
-                "type": "errors",
-                "severity": "high" if error_count > 3 else "medium",
-                "message": f"{error_count} error(s) occurred during execution",
-                "details": state.errors[:5]
-            })
+            issues.append(
+                {
+                    "type": "errors",
+                    "severity": "high" if error_count > 3 else "medium",
+                    "message": f"{error_count} error(s) occurred during execution",
+                    "details": state.errors[:5],
+                }
+            )
 
         if bottlenecks and bottlenecks[0].get("percentage", 0) > 50:
-            warnings.append({
-                "type": "bottleneck",
-                "severity": "medium",
-                "message": f"Agent '{bottlenecks[0]['agent']}' consumed {bottlenecks[0]['percentage']:.0f}% of total time",
-                "details": bottlenecks[0]
-            })
+            warnings.append(
+                {
+                    "type": "bottleneck",
+                    "severity": "medium",
+                    "message": f"Agent '{bottlenecks[0]['agent']}' consumed {bottlenecks[0]['percentage']:.0f}% of total time",
+                    "details": bottlenecks[0],
+                }
+            )
 
         if low_confidence_facts:
-            warnings.append({
-                "type": "low_confidence",
-                "severity": "low",
-                "message": f"{len(low_confidence_facts)} fact(s) have confidence below 70%",
-                "details": low_confidence_facts[:5]
-            })
+            warnings.append(
+                {
+                    "type": "low_confidence",
+                    "severity": "low",
+                    "message": f"{len(low_confidence_facts)} fact(s) have confidence below 70%",
+                    "details": low_confidence_facts[:5],
+                }
+            )
 
         if total_tokens > 100000:
-            warnings.append({
-                "type": "high_token_usage",
-                "severity": "medium",
-                "message": f"High token consumption: {total_tokens:,} tokens",
-                "details": {"total": total_tokens, "input": state.metrics.get("total_tokens_in", 0), "output": state.metrics.get("total_tokens_out", 0)}
-            })
+            warnings.append(
+                {
+                    "type": "high_token_usage",
+                    "severity": "medium",
+                    "message": f"High token consumption: {total_tokens:,} tokens",
+                    "details": {
+                        "total": total_tokens,
+                        "input": state.metrics.get("total_tokens_in", 0),
+                        "output": state.metrics.get("total_tokens_out", 0),
+                    },
+                }
+            )
 
         overall_score = int((perf_score * 0.3 + reliability_score * 0.4 + quality_score * 0.3))
 
         return {
-            "chain": {
-                "id": chain.id,
-                "filename": filename,
-                "version": chain.version
-            },
+            "chain": {"id": chain.id, "filename": filename, "version": chain.version},
             "scores": {
                 "overall": overall_score,
                 "performance": perf_score,
                 "reliability": reliability_score,
-                "quality": quality_score
+                "quality": quality_score,
             },
             "metrics": {
                 "total_events": len(chain.events),
@@ -629,14 +642,14 @@ def _register_analysis_endpoints(app: FastAPI) -> None:
                 "tokens_out": state.metrics.get("total_tokens_out", 0),
                 "error_count": error_count,
                 "fact_count": fact_count,
-                "average_confidence": round(avg_confidence, 3)
+                "average_confidence": round(avg_confidence, 3),
             },
             "issues": issues,
             "warnings": warnings,
             "bottlenecks": bottlenecks[:5],
             "low_confidence_facts": low_confidence_facts,
             "fact_confidence_heatmap": fact_heatmap,
-            "confidence_timeline": confidence_timeline
+            "confidence_timeline": confidence_timeline,
         }
 
 
@@ -661,7 +674,7 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
         welcome_msg = {
             "type": "connected",
             "client_id": client_id,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         await websocket.send_text(json.dumps(welcome_msg))
 
@@ -690,7 +703,10 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
                         elif msg_type == "unsubscribe":
                             filters = {}  # noqa: F841 - used via nonlocal
                         elif msg_type == "ping":
-                            pong = {"type": "pong", "timestamp": datetime.now(timezone.utc).isoformat()}
+                            pong = {
+                                "type": "pong",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            }
                             await websocket.send_text(json.dumps(pong))
                     except json.JSONDecodeError:
                         pass
@@ -704,7 +720,10 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
                         event = await asyncio.wait_for(queue.get(), timeout=30.0)
                         await websocket.send_text(event.to_json())
                     except asyncio.TimeoutError:
-                        heartbeat = {"type": "heartbeat", "timestamp": datetime.now(timezone.utc).isoformat()}
+                        heartbeat = {
+                            "type": "heartbeat",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }
                         await websocket.send_text(json.dumps(heartbeat))
             except Exception:
                 pass
@@ -714,8 +733,7 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
             send_task = asyncio.create_task(send_loop())
 
             done, pending = await asyncio.wait(
-                [receive_task, send_task],
-                return_when=asyncio.FIRST_COMPLETED
+                [receive_task, send_task], return_when=asyncio.FIRST_COMPLETED
             )
 
             for task in pending:
@@ -731,7 +749,7 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
     async def sse_endpoint(
         chain_id: Optional[str] = Query(None, description="Filter by chain ID"),
         event_types: Optional[str] = Query(None, description="Comma-separated event types"),
-        include_history: bool = Query(False, description="Include historical events")
+        include_history: bool = Query(False, description="Include historical events"),
     ):
         """Server-Sent Events endpoint for real-time event streaming.
 
@@ -783,8 +801,8 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
-                "X-Accel-Buffering": "no"
-            }
+                "X-Accel-Buffering": "no",
+            },
         )
 
     @app.get("/api/streaming/status", response_class=JSONResponse)
@@ -796,7 +814,7 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
             "chain_id": emitter.chain_id,
             "event_count": emitter.event_count,
             "handler_count": emitter.handler_count(),
-            "history_size": len(emitter.history)
+            "history_size": len(emitter.history),
         }
 
 
@@ -823,7 +841,7 @@ def _register_event_endpoints(app: FastAPI) -> None:
             type=StreamingEventType.EVENT,
             timestamp=datetime.now(timezone.utc),
             chain_id=chain_id,
-            payload={"type": event_type, **payload}
+            payload={"type": event_type, **payload},
         )
 
         app.state.emitter.emit(streaming_event)
@@ -847,17 +865,17 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
             "is_localhost": _is_localhost(request),
             "api_keys_configured": len(app.state.api_keys) > 0,
             "auth_required": (
-                app.state.require_api_key or
-                (app.state.api_keys and not (app.state.localhost_bypass and _is_localhost(request)))
-            )
+                app.state.require_api_key
+                or (
+                    app.state.api_keys
+                    and not (app.state.localhost_bypass and _is_localhost(request))
+                )
+            ),
         }
 
     @app.post("/api/rpa/auth/generate-key", response_class=JSONResponse)
     @limiter.limit("5/minute")
-    async def rpa_generate_api_key(
-        request: Request,
-        _auth: bool = Depends(verify_api_key)
-    ):
+    async def rpa_generate_api_key(request: Request, _auth: bool = Depends(verify_api_key)):
         """Generate a new API key (requires existing auth or localhost).
 
         For initial setup on localhost, this can be called without auth.
@@ -865,8 +883,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
         # Only allow from localhost if no keys exist yet
         if not app.state.api_keys and not _is_localhost(request):
             raise HTTPException(
-                status_code=403,
-                detail="Initial key generation only allowed from localhost"
+                status_code=403, detail="Initial key generation only allowed from localhost"
             )
 
         new_key = secrets.token_urlsafe(32)
@@ -875,14 +892,11 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
         return {
             "api_key": new_key,
             "message": "Store this key securely. It cannot be retrieved later.",
-            "usage": "Set header: X-API-Key: " + new_key
+            "usage": "Set header: X-API-Key: " + new_key,
         }
 
     @app.get("/api/rpa/summary/{filename}", response_class=JSONResponse)
-    async def rpa_summary(
-        filename: str,
-        _auth: bool = Depends(verify_api_key)
-    ):
+    async def rpa_summary(filename: str, _auth: bool = Depends(verify_api_key)):
         """Get minimal summary for quick RPA checks.
 
         Returns flat structure optimized for UiPath DataTable mapping.
@@ -904,9 +918,10 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
             "has_errors": has_errors,
             "fact_count": len(state.facts),
             "total_duration_ms": state.metrics.get("total_duration_ms", 0),
-            "total_tokens": state.metrics.get("total_tokens_in", 0) + state.metrics.get("total_tokens_out", 0),
+            "total_tokens": state.metrics.get("total_tokens_in", 0)
+            + state.metrics.get("total_tokens_out", 0),
             "status": "error" if has_errors else "success",
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     @app.get("/api/rpa/events/{filename}", response_class=JSONResponse)
@@ -916,7 +931,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
         agent: Optional[str] = Query(None, description="Filter by agent"),
         limit: int = Query(1000, description="Max events to return"),
         offset: int = Query(0, description="Skip first N events"),
-        _auth: bool = Depends(verify_api_key)
+        _auth: bool = Depends(verify_api_key),
     ):
         """Get flattened events list optimized for RPA DataTable.
 
@@ -929,7 +944,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
         events = []
         for e in chain.events:
             # Apply filters
-            e_type = e.type.value if hasattr(e.type, 'value') else e.type
+            e_type = e.type.value if hasattr(e.type, "value") else e.type
             if event_type and e_type != event_type:
                 continue
             if agent and e.agent != agent:
@@ -963,14 +978,14 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
 
         # Apply pagination
         total = len(events)
-        events = events[offset:offset + limit]
+        events = events[offset : offset + limit]
 
         return {
             "events": events,
             "total": total,
             "limit": limit,
             "offset": offset,
-            "has_more": offset + len(events) < total
+            "has_more": offset + len(events) < total,
         }
 
     @app.get("/api/rpa/export/{filename}")
@@ -978,7 +993,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
         filename: str,
         format: str = Query("csv", description="Export format: csv, json"),
         event_type: Optional[str] = Query(None, description="Filter by event type"),
-        _auth: bool = Depends(verify_api_key)
+        _auth: bool = Depends(verify_api_key),
     ):
         """Export chain data in RPA-friendly formats (CSV or JSON).
 
@@ -990,7 +1005,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
 
         events = []
         for e in chain.events:
-            e_type = e.type.value if hasattr(e.type, 'value') else e.type
+            e_type = e.type.value if hasattr(e.type, "value") else e.type
             if event_type and e_type != event_type:
                 continue
 
@@ -1021,7 +1036,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
             return StreamingResponse(
                 iter([output.getvalue()]),
                 media_type="text/csv",
-                headers={"Content-Disposition": f"attachment; filename={filename}.csv"}
+                headers={"Content-Disposition": f"attachment; filename={filename}.csv"},
             )
         else:
             return JSONResponse({"events": events, "chain_id": chain.id})
@@ -1031,7 +1046,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
     async def rpa_batch_metrics(
         request: Request,  # noqa: ARG001 - required by rate limiter
         batch_req: BatchMetricsRequest,
-        _auth: bool = Depends(verify_api_key)
+        _auth: bool = Depends(verify_api_key),
     ):
         """Get metrics for multiple chains in one request.
 
@@ -1047,28 +1062,27 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
                 chain = engine.chain
                 state = engine.replay_all()
 
-                results.append({
-                    "filename": filename,
-                    "chain_id": chain.id,
-                    "event_count": len(chain.events),
-                    "error_count": state.metrics.get("error_count", 0),
-                    "duration_ms": state.metrics.get("total_duration_ms", 0),
-                    "tokens": state.metrics.get("total_tokens_in", 0) + state.metrics.get("total_tokens_out", 0),
-                    "fact_count": len(state.facts),
-                    "status": "success"
-                })
+                results.append(
+                    {
+                        "filename": filename,
+                        "chain_id": chain.id,
+                        "event_count": len(chain.events),
+                        "error_count": state.metrics.get("error_count", 0),
+                        "duration_ms": state.metrics.get("total_duration_ms", 0),
+                        "tokens": state.metrics.get("total_tokens_in", 0)
+                        + state.metrics.get("total_tokens_out", 0),
+                        "fact_count": len(state.facts),
+                        "status": "success",
+                    }
+                )
             except Exception as e:
-                errors.append({
-                    "filename": filename,
-                    "error": str(e),
-                    "status": "error"
-                })
+                errors.append({"filename": filename, "error": str(e), "status": "error"})
 
         return {
             "results": results,
             "errors": errors,
             "total_processed": len(results),
-            "total_errors": len(errors)
+            "total_errors": len(errors),
         }
 
     @app.post("/api/rpa/search", response_class=JSONResponse)
@@ -1076,7 +1090,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
     async def rpa_search(
         request: Request,  # noqa: ARG001 - required by rate limiter
         search_req: SearchRequest,
-        _auth: bool = Depends(verify_api_key)
+        _auth: bool = Depends(verify_api_key),
     ):
         """Search across all chains for specific events or patterns.
 
@@ -1092,7 +1106,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
                     chain = Chain.load(file_path)
 
                     for event in chain.events:
-                        e_type = event.type.value if hasattr(event.type, 'value') else event.type
+                        e_type = event.type.value if hasattr(event.type, "value") else event.type
 
                         # Apply type filter
                         if search_req.event_types and e_type not in search_req.event_types:
@@ -1112,15 +1126,17 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
                             match = True
 
                         if match:
-                            results.append({
-                                "filename": file_path.name,
-                                "chain_id": chain.id,
-                                "seq": event.seq,
-                                "type": e_type,
-                                "agent": event.agent,
-                                "timestamp": event.timestamp.isoformat(),
-                                "preview": str(event.data)[:100] if event.data else ""
-                            })
+                            results.append(
+                                {
+                                    "filename": file_path.name,
+                                    "chain_id": chain.id,
+                                    "seq": event.seq,
+                                    "type": e_type,
+                                    "agent": event.agent,
+                                    "timestamp": event.timestamp.isoformat(),
+                                    "preview": str(event.data)[:100] if event.data else "",
+                                }
+                            )
 
                             if len(results) >= search_req.limit:
                                 break
@@ -1135,14 +1151,11 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
             "results": results,
             "total": len(results),
             "query": search_req.query,
-            "truncated": len(results) >= search_req.limit
+            "truncated": len(results) >= search_req.limit,
         }
 
     @app.post("/api/rpa/webhooks", response_class=JSONResponse)
-    async def register_webhook(
-        webhook: WebhookRegistration,
-        _auth: bool = Depends(verify_api_key)
-    ):
+    async def register_webhook(webhook: WebhookRegistration, _auth: bool = Depends(verify_api_key)):
         """Register a webhook for event notifications.
 
         UiPath can receive callbacks when specific events occur.
@@ -1154,7 +1167,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
             "webhook_id": webhook_id,
             "url": webhook.url,
             "events": webhook.events,
-            "status": "registered"
+            "status": "registered",
         }
 
     @app.get("/api/rpa/webhooks", response_class=JSONResponse)
@@ -1162,12 +1175,14 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
         """List all registered webhooks."""
         webhooks = []
         for wid, webhook in app.state.webhooks.items():
-            webhooks.append({
-                "webhook_id": wid,
-                "url": webhook.url,
-                "events": webhook.events,
-                "chain_id": webhook.chain_id
-            })
+            webhooks.append(
+                {
+                    "webhook_id": wid,
+                    "url": webhook.url,
+                    "events": webhook.events,
+                    "chain_id": webhook.chain_id,
+                }
+            )
         return {"webhooks": webhooks, "total": len(webhooks)}
 
     @app.delete("/api/rpa/webhooks/{webhook_id}", response_class=JSONResponse)
@@ -1179,10 +1194,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
         raise HTTPException(status_code=404, detail="Webhook not found")
 
     @app.post("/api/rpa/submit", response_class=JSONResponse)
-    async def rpa_submit_event(
-        event: RpaEventSubmission,
-        _auth: bool = Depends(verify_api_key)
-    ):
+    async def rpa_submit_event(event: RpaEventSubmission, _auth: bool = Depends(verify_api_key)):
         """Submit an event from RPA workflow.
 
         Allows UiPath to log its own workflow steps to LCTL.
@@ -1196,8 +1208,8 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
                 "type": event.event_type,
                 "agent": event.agent,
                 "source": "rpa",
-                **(event.data or {})
-            }
+                **(event.data or {}),
+            },
         )
 
         app.state.emitter.emit(streaming_event)
@@ -1206,15 +1218,17 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
             "status": "submitted",
             "event_id": streaming_event.id,
             "chain_id": event.chain_id,
-            "timestamp": streaming_event.timestamp.isoformat()
+            "timestamp": streaming_event.timestamp.isoformat(),
         }
 
     @app.get("/api/rpa/poll/{filename}", response_class=JSONResponse)
     async def rpa_poll(
         filename: str,
         since_seq: int = Query(0, description="Return events after this sequence"),
-        _timeout_ms: int = Query(0, description="Long-poll timeout (0 = immediate, reserved for future use)"),
-        _auth: bool = Depends(verify_api_key)
+        _timeout_ms: int = Query(
+            0, description="Long-poll timeout (0 = immediate, reserved for future use)"
+        ),
+        _auth: bool = Depends(verify_api_key),
     ):
         """Poll for new events (alternative to streaming for RPA).
 
@@ -1227,18 +1241,19 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
         new_events = [
             {
                 "seq": e.seq,
-                "type": e.type.value if hasattr(e.type, 'value') else e.type,
+                "type": e.type.value if hasattr(e.type, "value") else e.type,
                 "timestamp": e.timestamp.isoformat(),
                 "agent": e.agent or "",
             }
-            for e in chain.events if e.seq > since_seq
+            for e in chain.events
+            if e.seq > since_seq
         ]
 
         return {
             "events": new_events,
             "count": len(new_events),
             "last_seq": chain.events[-1].seq if chain.events else 0,
-            "has_new": len(new_events) > 0
+            "has_new": len(new_events) > 0,
         }
 
     @app.get("/api/rpa/errors/{filename}", response_class=JSONResponse)
@@ -1253,23 +1268,25 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
 
         errors = []
         for e in chain.events:
-            e_type = e.type.value if hasattr(e.type, 'value') else e.type
+            e_type = e.type.value if hasattr(e.type, "value") else e.type
             if e_type == "error":
-                errors.append({
-                    "seq": e.seq,
-                    "timestamp": e.timestamp.isoformat(),
-                    "agent": e.agent or "",
-                    "category": e.data.get("category", "unknown") if e.data else "unknown",
-                    "error_type": e.data.get("type", "unknown") if e.data else "unknown",
-                    "message": e.data.get("message", "") if e.data else "",
-                    "recoverable": e.data.get("recoverable", False) if e.data else False,
-                })
+                errors.append(
+                    {
+                        "seq": e.seq,
+                        "timestamp": e.timestamp.isoformat(),
+                        "agent": e.agent or "",
+                        "category": e.data.get("category", "unknown") if e.data else "unknown",
+                        "error_type": e.data.get("type", "unknown") if e.data else "unknown",
+                        "message": e.data.get("message", "") if e.data else "",
+                        "recoverable": e.data.get("recoverable", False) if e.data else False,
+                    }
+                )
 
         return {
             "errors": errors,
             "count": len(errors),
             "has_errors": len(errors) > 0,
-            "chain_id": chain.id
+            "chain_id": chain.id,
         }
 
 
@@ -1290,7 +1307,7 @@ def create_app(working_dir: Optional[Path] = None) -> FastAPI:
     app = FastAPI(
         title="LCTL Dashboard",
         description="Web-based visualization for multi-agent LLM workflows",
-        version=__version__
+        version=__version__,
     )
 
     # Setup middleware
@@ -1325,7 +1342,7 @@ def run_dashboard(
     host: str = "127.0.0.1",
     port: int = 8080,
     working_dir: Optional[Path] = None,
-    reload: bool = False
+    reload: bool = False,
 ) -> None:
     """Run the dashboard server.
 
@@ -1340,10 +1357,4 @@ def run_dashboard(
     # Create app with working directory
     app = create_app(working_dir)
 
-    uvicorn.run(
-        app,
-        host=host,
-        port=port,
-        reload=reload,
-        log_level="info"
-    )
+    uvicorn.run(app, host=host, port=port, reload=reload, log_level="info")

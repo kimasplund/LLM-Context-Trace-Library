@@ -14,6 +14,7 @@ import os
 
 try:
     from agents import Agent, Runner, Tool, function_tool
+
     OPENAI_AGENTS_INSTALLED = True
 except ImportError:
     OPENAI_AGENTS_INSTALLED = False

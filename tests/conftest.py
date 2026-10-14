@@ -27,21 +27,21 @@ def sample_events(base_timestamp: datetime) -> List[Event]:
             type=EventType.STEP_START,
             timestamp=base_timestamp,
             agent="planner",
-            data={"intent": "plan", "input_summary": "task description"}
+            data={"intent": "plan", "input_summary": "task description"},
         ),
         Event(
             seq=2,
             type=EventType.FACT_ADDED,
             timestamp=base_timestamp + timedelta(milliseconds=100),
             agent="planner",
-            data={"id": "F1", "text": "Initial requirement identified", "confidence": 0.9}
+            data={"id": "F1", "text": "Initial requirement identified", "confidence": 0.9},
         ),
         Event(
             seq=3,
             type=EventType.TOOL_CALL,
             timestamp=base_timestamp + timedelta(milliseconds=200),
             agent="planner",
-            data={"tool": "search", "input": "query", "output": "results", "duration_ms": 50}
+            data={"tool": "search", "input": "query", "output": "results", "duration_ms": 50},
         ),
         Event(
             seq=4,
@@ -52,22 +52,22 @@ def sample_events(base_timestamp: datetime) -> List[Event]:
                 "outcome": "success",
                 "output_summary": "plan created",
                 "duration_ms": 500,
-                "tokens": {"input": 100, "output": 50}
-            }
+                "tokens": {"input": 100, "output": 50},
+            },
         ),
         Event(
             seq=5,
             type=EventType.STEP_START,
             timestamp=base_timestamp + timedelta(milliseconds=600),
             agent="executor",
-            data={"intent": "execute", "input_summary": "plan"}
+            data={"intent": "execute", "input_summary": "plan"},
         ),
         Event(
             seq=6,
             type=EventType.FACT_MODIFIED,
             timestamp=base_timestamp + timedelta(milliseconds=700),
             agent="executor",
-            data={"id": "F1", "confidence": 0.95, "reason": "verified"}
+            data={"id": "F1", "confidence": 0.95, "reason": "verified"},
         ),
         Event(
             seq=7,
@@ -78,8 +78,8 @@ def sample_events(base_timestamp: datetime) -> List[Event]:
                 "outcome": "success",
                 "output_summary": "executed",
                 "duration_ms": 500,
-                "tokens": {"input": 200, "output": 100}
-            }
+                "tokens": {"input": 200, "output": 100},
+            },
         ),
     ]
     return events
@@ -104,7 +104,7 @@ def sample_chain_with_errors(base_timestamp: datetime) -> Chain:
             type=EventType.STEP_START,
             timestamp=base_timestamp,
             agent="agent1",
-            data={"intent": "process", "input_summary": "data"}
+            data={"intent": "process", "input_summary": "data"},
         ),
         Event(
             seq=2,
@@ -116,15 +116,15 @@ def sample_chain_with_errors(base_timestamp: datetime) -> Chain:
                 "type": "ValueError",
                 "message": "Invalid input data",
                 "recoverable": True,
-                "suggested_action": "Retry with corrected input"
-            }
+                "suggested_action": "Retry with corrected input",
+            },
         ),
         Event(
             seq=3,
             type=EventType.STEP_END,
             timestamp=base_timestamp + timedelta(milliseconds=200),
             agent="agent1",
-            data={"outcome": "error", "duration_ms": 200, "tokens": {"input": 50, "output": 10}}
+            data={"outcome": "error", "duration_ms": 200, "tokens": {"input": 50, "output": 10}},
         ),
     ]
     for event in events:
@@ -178,21 +178,21 @@ def divergent_chain(base_timestamp: datetime) -> Chain:
             type=EventType.STEP_START,
             timestamp=base_timestamp,
             agent="planner",
-            data={"intent": "plan", "input_summary": "task description"}
+            data={"intent": "plan", "input_summary": "task description"},
         ),
         Event(
             seq=2,
             type=EventType.FACT_ADDED,
             timestamp=base_timestamp + timedelta(milliseconds=100),
             agent="planner",
-            data={"id": "F1", "text": "Initial requirement identified", "confidence": 0.9}
+            data={"id": "F1", "text": "Initial requirement identified", "confidence": 0.9},
         ),
         Event(
             seq=3,
             type=EventType.TOOL_CALL,
             timestamp=base_timestamp + timedelta(milliseconds=200),
             agent="planner",
-            data={"tool": "search", "input": "query", "output": "results", "duration_ms": 50}
+            data={"tool": "search", "input": "query", "output": "results", "duration_ms": 50},
         ),
         Event(
             seq=4,
@@ -203,15 +203,15 @@ def divergent_chain(base_timestamp: datetime) -> Chain:
                 "outcome": "success",
                 "output_summary": "plan created",
                 "duration_ms": 500,
-                "tokens": {"input": 100, "output": 50}
-            }
+                "tokens": {"input": 100, "output": 50},
+            },
         ),
         Event(
             seq=5,
             type=EventType.STEP_START,
             timestamp=base_timestamp + timedelta(milliseconds=600),
             agent="different_agent",
-            data={"intent": "alternate_action", "input_summary": "alternate plan"}
+            data={"intent": "alternate_action", "input_summary": "alternate plan"},
         ),
     ]
     for event in events:
@@ -229,28 +229,28 @@ def chain_for_confidence_test(base_timestamp: datetime) -> Chain:
             type=EventType.FACT_ADDED,
             timestamp=base_timestamp,
             agent="agent1",
-            data={"id": "F1", "text": "Hypothesis A", "confidence": 0.5}
+            data={"id": "F1", "text": "Hypothesis A", "confidence": 0.5},
         ),
         Event(
             seq=2,
             type=EventType.FACT_MODIFIED,
             timestamp=base_timestamp + timedelta(milliseconds=100),
             agent="agent2",
-            data={"id": "F1", "confidence": 0.7, "reason": "partial verification"}
+            data={"id": "F1", "confidence": 0.7, "reason": "partial verification"},
         ),
         Event(
             seq=3,
             type=EventType.FACT_MODIFIED,
             timestamp=base_timestamp + timedelta(milliseconds=200),
             agent="agent3",
-            data={"id": "F1", "confidence": 0.9, "reason": "full verification"}
+            data={"id": "F1", "confidence": 0.9, "reason": "full verification"},
         ),
         Event(
             seq=4,
             type=EventType.FACT_ADDED,
             timestamp=base_timestamp + timedelta(milliseconds=300),
             agent="agent1",
-            data={"id": "F2", "text": "Hypothesis B", "confidence": 0.3}
+            data={"id": "F2", "text": "Hypothesis B", "confidence": 0.3},
         ),
     ]
     for event in events:

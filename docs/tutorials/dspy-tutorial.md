@@ -62,6 +62,7 @@ dspy.configure(lm=lm)
 # Create the callback handler
 callback = LCTLDSPyCallback(chain_id="qa-dspy")
 
+
 # Define a simple module
 class SimpleQA(dspy.Module):
     def __init__(self):
@@ -70,6 +71,7 @@ class SimpleQA(dspy.Module):
 
     def forward(self, question):
         return self.predictor(question=question)
+
 
 # Wrap with tracing
 qa = SimpleQA()
@@ -121,10 +123,12 @@ from lctl.integrations.dspy import LCTLDSPyCallback, trace_module
 lm = dspy.LM("openai/gpt-3.5-turbo")
 dspy.configure(lm=lm)
 
+
 # Define tools
 def search(query: str) -> str:
     """Search for information."""
     return f"Results for '{query}': Python is a programming language."
+
 
 def calculate(expression: str) -> str:
     """Calculate a math expression."""
@@ -133,11 +137,9 @@ def calculate(expression: str) -> str:
     except Exception as e:
         return f"Error: {e}"
 
+
 # Create ReAct module with tools
-react = dspy.ReAct(
-    signature="question -> answer",
-    tools=[search, calculate]
-)
+react = dspy.ReAct(signature="question -> answer", tools=[search, calculate])
 
 # Trace it
 callback = LCTLDSPyCallback(chain_id="react-agent")
@@ -162,6 +164,7 @@ from lctl.integrations.dspy import LCTLDSPyCallback, trace_module
 lm = dspy.LM("openai/gpt-3.5-turbo")
 dspy.configure(lm=lm)
 
+
 class MultiStepReasoner(dspy.Module):
     def __init__(self):
         super().__init__()
@@ -182,8 +185,9 @@ class MultiStepReasoner(dspy.Module):
         return dspy.Prediction(
             analysis=analysis.analysis,
             solution=solution.solution,
-            verification=verification.verification
+            verification=verification.verification,
         )
+
 
 # Trace the multi-step module
 callback = LCTLDSPyCallback(chain_id="multi-step-reasoner")
@@ -209,6 +213,7 @@ from lctl.integrations.dspy import LCTLDSPyCallback, trace_module
 lm = dspy.LM("openai/gpt-3.5-turbo")
 dspy.configure(lm=lm)
 
+
 # Define your module
 class QAModule(dspy.Module):
     def __init__(self):
@@ -218,15 +223,18 @@ class QAModule(dspy.Module):
     def forward(self, question):
         return self.predictor(question=question)
 
+
 # Create training examples
 trainset = [
     dspy.Example(question="What is 2+2?", answer="4").with_inputs("question"),
     dspy.Example(question="What color is the sky?", answer="Blue").with_inputs("question"),
 ]
 
+
 # Define metric
 def exact_match(example, prediction, trace=None):
     return example.answer.lower() == prediction.answer.lower()
+
 
 # Trace the optimization
 callback = LCTLDSPyCallback(chain_id="teleprompter-optimization")
@@ -259,6 +267,7 @@ dspy.configure(lm=lm)
 
 callback = LCTLDSPyCallback(chain_id="decorator-demo")
 
+
 @trace_module(callback)
 class SummarizeModule(dspy.Module):
     def __init__(self):
@@ -267,6 +276,7 @@ class SummarizeModule(dspy.Module):
 
     def forward(self, text):
         return self.summarize(text=text)
+
 
 # Use the decorated module
 summarizer = SummarizeModule()

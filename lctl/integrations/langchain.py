@@ -140,7 +140,8 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         now = time.monotonic()
         with self._lock:
             stale_ids = [
-                run_id for run_id, info in self._run_stack.items()
+                run_id
+                for run_id, info in self._run_stack.items()
                 if now - info.get("start_time", now) > max_age_seconds
             ]
             for run_id in stale_ids:

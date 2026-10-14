@@ -62,10 +62,12 @@ from lctl.integrations.langchain import LCTLCallbackHandler
 handler = LCTLCallbackHandler(chain_id="qa-assistant")
 
 # Build your LangChain chain
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant that answers questions concisely."),
-    ("human", "{input}"),
-])
+prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", "You are a helpful assistant that answers questions concisely."),
+        ("human", "{input}"),
+    ]
+)
 llm = ChatOpenAI(model="gpt-3.5-turbo")
 chain = prompt | llm
 
@@ -92,10 +94,12 @@ from langchain_openai import ChatOpenAI
 from lctl.integrations.langchain import LCTLChain
 
 # Build your chain
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a math tutor. Show your work."),
-    ("human", "{question}"),
-])
+prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", "You are a math tutor. Show your work."),
+        ("human", "{question}"),
+    ]
+)
 llm = ChatOpenAI(model="gpt-3.5-turbo")
 chain = prompt | llm
 
@@ -120,10 +124,12 @@ from langchain_openai import ChatOpenAI
 from lctl.integrations.langchain import trace_chain
 
 # Build and trace in one step
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant."),
-    ("human", "{input}"),
-])
+prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", "You are a helpful assistant."),
+        ("human", "{input}"),
+    ]
+)
 llm = ChatOpenAI(model="gpt-3.5-turbo")
 chain = prompt | llm
 
@@ -144,12 +150,14 @@ from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from lctl.integrations.langchain import LCTLCallbackHandler
 
+
 # Define tools
 @tool
 def get_weather(city: str) -> str:
     """Get the current weather for a city."""
     # Simulated response
     return f"The weather in {city} is sunny, 72F"
+
 
 @tool
 def calculate(expression: str) -> str:
@@ -158,6 +166,7 @@ def calculate(expression: str) -> str:
         return str(eval(expression))
     except Exception as e:
         return f"Error: {e}"
+
 
 # Bind tools to the LLM
 llm = ChatOpenAI(model="gpt-3.5-turbo").bind_tools([get_weather, calculate])
@@ -186,10 +195,12 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from lctl.integrations.langchain import trace_chain
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a creative storyteller."),
-    ("human", "{request}"),
-])
+prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", "You are a creative storyteller."),
+        ("human", "{request}"),
+    ]
+)
 llm = ChatOpenAI(model="gpt-3.5-turbo", streaming=True)
 chain = prompt | llm
 
@@ -213,11 +224,14 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from lctl.integrations.langchain import LCTLChain
 
+
 async def main():
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "You translate text to French."),
-        ("human", "{text}"),
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", "You translate text to French."),
+            ("human", "{text}"),
+        ]
+    )
     llm = ChatOpenAI(model="gpt-3.5-turbo")
     chain = prompt | llm
 
@@ -228,6 +242,7 @@ async def main():
     print(f"Translation: {result.content}")
 
     traced.export("async_trace.lctl.json")
+
 
 asyncio.run(main())
 ```
@@ -269,8 +284,10 @@ Question: {question}
 
 llm = ChatOpenAI(model="gpt-3.5-turbo")
 
+
 def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
+
 
 rag_chain = (
     {"context": retriever | format_docs, "question": RunnablePassthrough()}
@@ -282,10 +299,7 @@ rag_chain = (
 # Trace the RAG pipeline
 handler = LCTLCallbackHandler(chain_id="rag-qa")
 
-result = rag_chain.invoke(
-    "What is LCTL used for?",
-    config={"callbacks": [handler]}
-)
+result = rag_chain.invoke("What is LCTL used for?", config={"callbacks": [handler]})
 
 print(f"Answer: {result}")
 print(f"Events: {len(handler.chain.events)}")
@@ -312,10 +326,7 @@ from lctl.integrations.langchain import LCTLCallbackHandler
 loader = TextLoader("knowledge_base.txt")
 documents = loader.load()
 
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=500,
-    chunk_overlap=50
-)
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
 splits = text_splitter.split_documents(documents)
 
 # Create vector store
@@ -337,8 +348,10 @@ Answer:""")
 
 llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
 
+
 def format_docs(docs):
     return "\n---\n".join(doc.page_content for doc in docs)
+
 
 rag_chain = (
     {"context": retriever | format_docs, "question": RunnablePassthrough()}
@@ -392,16 +405,20 @@ vectorstore = FAISS.from_documents(docs, embeddings)
 retriever = vectorstore.as_retriever()
 
 # Conversational prompt with history
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "Answer based on context. Context: {context}"),
-    MessagesPlaceholder(variable_name="history"),
-    ("human", "{question}"),
-])
+prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", "Answer based on context. Context: {context}"),
+        MessagesPlaceholder(variable_name="history"),
+        ("human", "{question}"),
+    ]
+)
 
 llm = ChatOpenAI(model="gpt-3.5-turbo")
 
+
 def format_docs(docs):
     return "\n".join(doc.page_content for doc in docs)
+
 
 # Build chain
 rag_chain = (
@@ -428,8 +445,7 @@ turns = [
 
 for question in turns:
     result = rag_chain.invoke(
-        {"question": question, "history": history},
-        config={"callbacks": [handler]}
+        {"question": question, "history": history}, config={"callbacks": [handler]}
     )
     print(f"User: {question}")
     print(f"Assistant: {result}\n")
@@ -586,6 +602,7 @@ trace_data = handler.to_dict()
 
 # Send to monitoring system
 import json
+
 print(json.dumps(trace_data, indent=2))
 ```
 
@@ -618,7 +635,7 @@ pip install langchain langchain-core langchain-openai
    ```python
    traced = LCTLChain(chain)
    traced.invoke(input)  # Correct - uses wrapper
-   chain.invoke(input)   # Wrong - bypasses tracing
+   chain.invoke(input)  # Wrong - bypasses tracing
    ```
 
 ### Issue: Token Counts Show 0
@@ -645,7 +662,7 @@ result = llm.invoke(prompt, config={"callbacks": [handler]})
 ```python
 traced = LCTLChain(chain)
 result = await traced.ainvoke(input)  # Correct
-result = await chain.ainvoke(input)   # Wrong - bypasses tracing
+result = await chain.ainvoke(input)  # Wrong - bypasses tracing
 ```
 
 ### Issue: Retriever Events Not Captured
@@ -663,6 +680,7 @@ result = await chain.ainvoke(input)   # Wrong - bypasses tracing
 2. If using custom retriever wrappers, ensure they inherit from `BaseRetriever`:
    ```python
    from langchain_core.retrievers import BaseRetriever
+
 
    class MyRetriever(BaseRetriever):
        # Callbacks will work automatically
@@ -689,9 +707,7 @@ result = await chain.ainvoke(input)   # Wrong - bypasses tracing
 
 3. Adjust retriever search parameters:
    ```python
-   retriever = vectorstore.as_retriever(
-       search_kwargs={"k": 5, "score_threshold": 0.5}
-   )
+   retriever = vectorstore.as_retriever(search_kwargs={"k": 5, "score_threshold": 0.5})
    ```
 
 ## What LCTL Captures

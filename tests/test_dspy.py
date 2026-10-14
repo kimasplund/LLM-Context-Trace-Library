@@ -127,9 +127,7 @@ class TestLCTLDSPyCallbackBasics:
 
     def test_callback_creation(self, mock_dspy):
         """Test basic callback creation."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback
 
             callback = LCTLDSPyCallback()
@@ -139,9 +137,7 @@ class TestLCTLDSPyCallbackBasics:
 
     def test_callback_creation_with_chain_id(self, mock_dspy):
         """Test callback creation with custom chain ID."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback
 
             callback = LCTLDSPyCallback(chain_id="custom-chain")
@@ -149,9 +145,7 @@ class TestLCTLDSPyCallbackBasics:
 
     def test_callback_creation_with_existing_session(self, mock_dspy):
         """Test callback creation with existing session."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback
 
             session = LCTLSession(chain_id="existing-session")
@@ -161,9 +155,7 @@ class TestLCTLDSPyCallbackBasics:
 
     def test_callback_verbose_mode(self, mock_dspy):
         """Test callback with verbose mode enabled."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback
 
             callback = LCTLDSPyCallback(verbose=True)
@@ -175,9 +167,7 @@ class TestLCTLDSPyCallbackModuleEvents:
 
     def test_on_module_start(self, mock_dspy):
         """Test on_module_start records step_start event."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback
 
             callback = LCTLDSPyCallback()
@@ -188,18 +178,14 @@ class TestLCTLDSPyCallbackModuleEvents:
             assert len(callback._module_stack) == 1
             assert callback._current_module == "TestModule"
 
-            step_starts = [
-                e for e in callback.chain.events if e.type == EventType.STEP_START
-            ]
+            step_starts = [e for e in callback.chain.events if e.type == EventType.STEP_START]
             assert len(step_starts) == 1
             assert step_starts[0].agent == "TestModule"
             assert step_starts[0].data["intent"] == "module_forward"
 
     def test_on_module_end_success(self, mock_dspy):
         """Test on_module_end records step_end event on success."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback
 
             callback = LCTLDSPyCallback()
@@ -212,18 +198,14 @@ class TestLCTLDSPyCallbackModuleEvents:
             assert len(callback._module_stack) == 0
             assert callback._current_module is None
 
-            step_ends = [
-                e for e in callback.chain.events if e.type == EventType.STEP_END
-            ]
+            step_ends = [e for e in callback.chain.events if e.type == EventType.STEP_END]
             assert len(step_ends) == 1
             assert step_ends[0].data["outcome"] == "success"
             assert "42" in step_ends[0].data["output_summary"]
 
     def test_on_module_end_error(self, mock_dspy):
         """Test on_module_end records error event on failure."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback
 
             callback = LCTLDSPyCallback()
@@ -233,23 +215,17 @@ class TestLCTLDSPyCallbackModuleEvents:
             callback.on_module_start(module, {"question": "test"})
             callback.on_module_end(module, None, error=error)
 
-            step_ends = [
-                e for e in callback.chain.events if e.type == EventType.STEP_END
-            ]
+            step_ends = [e for e in callback.chain.events if e.type == EventType.STEP_END]
             assert len(step_ends) == 1
             assert step_ends[0].data["outcome"] == "error"
 
-            error_events = [
-                e for e in callback.chain.events if e.type == EventType.ERROR
-            ]
+            error_events = [e for e in callback.chain.events if e.type == EventType.ERROR]
             assert len(error_events) == 1
             assert error_events[0].data["type"] == "ValueError"
 
     def test_nested_module_execution(self, mock_dspy):
         """Test nested module execution tracking."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback
 
             callback = LCTLDSPyCallback()
@@ -274,9 +250,7 @@ class TestLCTLDSPyCallbackLLMCalls:
 
     def test_on_llm_call(self, mock_dspy):
         """Test on_llm_call records llm_trace event."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback
 
             callback = LCTLDSPyCallback()
@@ -292,9 +266,7 @@ class TestLCTLDSPyCallbackLLMCalls:
 
             assert callback._llm_call_count == 1
 
-            llm_events = [
-                e for e in callback.chain.events if e.type == EventType.LLM_TRACE
-            ]
+            llm_events = [e for e in callback.chain.events if e.type == EventType.LLM_TRACE]
             assert len(llm_events) == 1
             assert llm_events[0].data["model"] == "gpt-4"
             assert llm_events[0].data["duration_ms"] == 100
@@ -303,9 +275,7 @@ class TestLCTLDSPyCallbackLLMCalls:
 
     def test_on_llm_call_records_usage_fact(self, mock_dspy):
         """Test on_llm_call records token usage as fact."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback
 
             callback = LCTLDSPyCallback()
@@ -317,12 +287,8 @@ class TestLCTLDSPyCallbackLLMCalls:
                 tokens_out=50,
             )
 
-            fact_events = [
-                e for e in callback.chain.events if e.type == EventType.FACT_ADDED
-            ]
-            usage_facts = [
-                e for e in fact_events if "LLM call" in e.data.get("text", "")
-            ]
+            fact_events = [e for e in callback.chain.events if e.type == EventType.FACT_ADDED]
+            usage_facts = [e for e in fact_events if "LLM call" in e.data.get("text", "")]
             assert len(usage_facts) == 1
             assert "100 tokens in" in usage_facts[0].data["text"]
             assert "50 tokens out" in usage_facts[0].data["text"]
@@ -333,9 +299,7 @@ class TestLCTLDSPyCallbackPredictions:
 
     def test_on_prediction(self, mock_dspy):
         """Test on_prediction records fact."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback
 
             callback = LCTLDSPyCallback()
@@ -343,9 +307,7 @@ class TestLCTLDSPyCallbackPredictions:
 
             callback.on_prediction(prediction, source="TestModule", confidence=0.9)
 
-            fact_events = [
-                e for e in callback.chain.events if e.type == EventType.FACT_ADDED
-            ]
+            fact_events = [e for e in callback.chain.events if e.type == EventType.FACT_ADDED]
             assert len(fact_events) == 1
             assert "Test prediction result" in fact_events[0].data["text"]
             assert fact_events[0].data["confidence"] == 0.9
@@ -356,9 +318,7 @@ class TestLCTLDSPyCallbackOptimization:
 
     def test_on_optimization_start(self, mock_dspy):
         """Test on_optimization_start records step_start."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback
 
             callback = LCTLDSPyCallback()
@@ -368,18 +328,14 @@ class TestLCTLDSPyCallbackOptimization:
                 {"max_bootstrapped_demos": 4, "max_labeled_demos": 8},
             )
 
-            step_starts = [
-                e for e in callback.chain.events if e.type == EventType.STEP_START
-            ]
+            step_starts = [e for e in callback.chain.events if e.type == EventType.STEP_START]
             assert len(step_starts) == 1
             assert step_starts[0].agent == "BootstrapFewShot"
             assert step_starts[0].data["intent"] == "optimization"
 
     def test_on_optimization_iteration(self, mock_dspy):
         """Test on_optimization_iteration records checkpoint."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback
 
             callback = LCTLDSPyCallback()
@@ -393,24 +349,16 @@ class TestLCTLDSPyCallbackOptimization:
 
             assert callback._optimization_iteration == 5
 
-            checkpoint_events = [
-                e for e in callback.chain.events if e.type == EventType.CHECKPOINT
-            ]
+            checkpoint_events = [e for e in callback.chain.events if e.type == EventType.CHECKPOINT]
             assert len(checkpoint_events) == 1
 
-            fact_events = [
-                e for e in callback.chain.events if e.type == EventType.FACT_ADDED
-            ]
-            iteration_facts = [
-                e for e in fact_events if "iteration 5" in e.data.get("text", "")
-            ]
+            fact_events = [e for e in callback.chain.events if e.type == EventType.FACT_ADDED]
+            iteration_facts = [e for e in fact_events if "iteration 5" in e.data.get("text", "")]
             assert len(iteration_facts) == 1
 
     def test_on_optimization_end(self, mock_dspy):
         """Test on_optimization_end records step_end."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback
 
             callback = LCTLDSPyCallback()
@@ -422,9 +370,7 @@ class TestLCTLDSPyCallbackOptimization:
                 total_iterations=10,
             )
 
-            step_ends = [
-                e for e in callback.chain.events if e.type == EventType.STEP_END
-            ]
+            step_ends = [e for e in callback.chain.events if e.type == EventType.STEP_END]
             assert len(step_ends) == 1
             assert step_ends[0].data["outcome"] == "success"
             assert "10 iterations" in step_ends[0].data["output_summary"]
@@ -435,9 +381,7 @@ class TestLCTLDSPyCallbackExport:
 
     def test_export_json(self, tmp_path: Path, mock_dspy):
         """Test exporting callback to JSON file."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback
 
             callback = LCTLDSPyCallback(chain_id="export-test")
@@ -454,9 +398,7 @@ class TestLCTLDSPyCallbackExport:
 
     def test_to_dict(self, mock_dspy):
         """Test to_dict returns chain dictionary."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback
 
             callback = LCTLDSPyCallback(chain_id="dict-test")
@@ -471,9 +413,7 @@ class TestTracedDSPyModule:
 
     def test_traced_module_creation(self, mock_dspy):
         """Test TracedDSPyModule creation."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, TracedDSPyModule
 
             callback = LCTLDSPyCallback(chain_id="traced-test")
@@ -484,17 +424,13 @@ class TestTracedDSPyModule:
             assert traced.module is module
             assert traced.callback is callback
 
-            fact_events = [
-                e for e in callback.chain.events if e.type == EventType.FACT_ADDED
-            ]
+            fact_events = [e for e in callback.chain.events if e.type == EventType.FACT_ADDED]
             assert len(fact_events) == 1
             assert "TestModule" in fact_events[0].data["text"]
 
     def test_traced_module_call(self, mock_dspy):
         """Test TracedDSPyModule __call__ traces execution."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, TracedDSPyModule
 
             callback = LCTLDSPyCallback(chain_id="call-test")
@@ -505,20 +441,14 @@ class TestTracedDSPyModule:
 
             assert "LCTL" in result.answer
 
-            step_starts = [
-                e for e in callback.chain.events if e.type == EventType.STEP_START
-            ]
-            step_ends = [
-                e for e in callback.chain.events if e.type == EventType.STEP_END
-            ]
+            step_starts = [e for e in callback.chain.events if e.type == EventType.STEP_START]
+            step_ends = [e for e in callback.chain.events if e.type == EventType.STEP_END]
             assert len(step_starts) >= 1
             assert len(step_ends) >= 1
 
     def test_traced_module_forward(self, mock_dspy):
         """Test TracedDSPyModule forward() traces execution."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, TracedDSPyModule
 
             callback = LCTLDSPyCallback()
@@ -531,9 +461,7 @@ class TestTracedDSPyModule:
 
     def test_traced_module_error_handling(self, mock_dspy):
         """Test TracedDSPyModule handles errors correctly."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, TracedDSPyModule
 
             callback = LCTLDSPyCallback()
@@ -548,16 +476,12 @@ class TestTracedDSPyModule:
             with pytest.raises(RuntimeError, match="Module failed"):
                 traced(question="test")
 
-            error_events = [
-                e for e in callback.chain.events if e.type == EventType.ERROR
-            ]
+            error_events = [e for e in callback.chain.events if e.type == EventType.ERROR]
             assert len(error_events) == 1
 
     def test_traced_module_export(self, tmp_path: Path, mock_dspy):
         """Test TracedDSPyModule export."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, TracedDSPyModule
 
             callback = LCTLDSPyCallback(chain_id="module-export")
@@ -570,9 +494,7 @@ class TestTracedDSPyModule:
 
     def test_traced_module_proxies_attributes(self, mock_dspy):
         """Test TracedDSPyModule proxies attribute access."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, TracedDSPyModule
 
             callback = LCTLDSPyCallback()
@@ -588,9 +510,7 @@ class TestTraceModuleFunction:
 
     def test_trace_module_with_instance(self, mock_dspy):
         """Test trace_module wrapping a module instance."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, trace_module
 
             callback = LCTLDSPyCallback()
@@ -603,9 +523,7 @@ class TestTraceModuleFunction:
 
     def test_trace_module_as_decorator(self, mock_dspy):
         """Test trace_module as a decorator."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, trace_module
 
             callback = LCTLDSPyCallback()
@@ -619,9 +537,7 @@ class TestTraceModuleFunction:
 
     def test_trace_module_requires_callback(self, mock_dspy):
         """Test trace_module requires callback for instance wrapping."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import trace_module
 
             module = MockModule()
@@ -635,9 +551,7 @@ class TestLCTLDSPyTeleprompter:
 
     def test_teleprompter_creation(self, mock_dspy):
         """Test LCTLDSPyTeleprompter creation."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, LCTLDSPyTeleprompter
 
             callback = LCTLDSPyCallback(chain_id="teleprompter-test")
@@ -648,17 +562,13 @@ class TestLCTLDSPyTeleprompter:
             assert tracer.teleprompter is teleprompter
             assert tracer.callback is callback
 
-            fact_events = [
-                e for e in callback.chain.events if e.type == EventType.FACT_ADDED
-            ]
+            fact_events = [e for e in callback.chain.events if e.type == EventType.FACT_ADDED]
             assert len(fact_events) == 1
             assert "MockTeleprompter" in fact_events[0].data["text"]
 
     def test_teleprompter_compile(self, mock_dspy):
         """Test LCTLDSPyTeleprompter compile traces optimization."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, LCTLDSPyTeleprompter
 
             callback = LCTLDSPyCallback()
@@ -672,20 +582,14 @@ class TestLCTLDSPyTeleprompter:
 
             assert result is student
 
-            step_starts = [
-                e for e in callback.chain.events if e.type == EventType.STEP_START
-            ]
-            step_ends = [
-                e for e in callback.chain.events if e.type == EventType.STEP_END
-            ]
+            step_starts = [e for e in callback.chain.events if e.type == EventType.STEP_START]
+            step_ends = [e for e in callback.chain.events if e.type == EventType.STEP_END]
             assert len(step_starts) >= 1
             assert len(step_ends) >= 1
 
     def test_teleprompter_compile_error(self, mock_dspy):
         """Test LCTLDSPyTeleprompter handles compile errors."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, LCTLDSPyTeleprompter
 
             callback = LCTLDSPyCallback()
@@ -700,16 +604,12 @@ class TestLCTLDSPyTeleprompter:
             with pytest.raises(RuntimeError, match="Optimization failed"):
                 tracer.compile(MockModule())
 
-            error_events = [
-                e for e in callback.chain.events if e.type == EventType.ERROR
-            ]
+            error_events = [e for e in callback.chain.events if e.type == EventType.ERROR]
             assert len(error_events) == 1
 
     def test_teleprompter_record_iteration(self, mock_dspy):
         """Test LCTLDSPyTeleprompter record_iteration."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, LCTLDSPyTeleprompter
 
             callback = LCTLDSPyCallback()
@@ -718,16 +618,12 @@ class TestLCTLDSPyTeleprompter:
 
             tracer.record_iteration(5, score=0.85, best_score=0.90)
 
-            checkpoint_events = [
-                e for e in callback.chain.events if e.type == EventType.CHECKPOINT
-            ]
+            checkpoint_events = [e for e in callback.chain.events if e.type == EventType.CHECKPOINT]
             assert len(checkpoint_events) >= 1
 
     def test_teleprompter_export(self, tmp_path: Path, mock_dspy):
         """Test LCTLDSPyTeleprompter export."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, LCTLDSPyTeleprompter
 
             callback = LCTLDSPyCallback(chain_id="tp-export")
@@ -740,9 +636,7 @@ class TestLCTLDSPyTeleprompter:
 
     def test_teleprompter_proxies_attributes(self, mock_dspy):
         """Test LCTLDSPyTeleprompter proxies attribute access."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, LCTLDSPyTeleprompter
 
             callback = LCTLDSPyCallback()
@@ -757,9 +651,7 @@ class TestDSPyModuleContext:
 
     def test_context_manager_records_start_end(self, mock_dspy):
         """Test context manager records start and end events."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, DSPyModuleContext
 
             callback = LCTLDSPyCallback()
@@ -767,20 +659,14 @@ class TestDSPyModuleContext:
             with DSPyModuleContext(callback, "TestModule", {"input": "test"}):
                 pass
 
-            step_starts = [
-                e for e in callback.chain.events if e.type == EventType.STEP_START
-            ]
-            step_ends = [
-                e for e in callback.chain.events if e.type == EventType.STEP_END
-            ]
+            step_starts = [e for e in callback.chain.events if e.type == EventType.STEP_START]
+            step_ends = [e for e in callback.chain.events if e.type == EventType.STEP_END]
             assert len(step_starts) >= 1
             assert len(step_ends) >= 1
 
     def test_context_manager_set_result(self, mock_dspy):
         """Test context manager set_result."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, DSPyModuleContext
 
             callback = LCTLDSPyCallback()
@@ -788,16 +674,12 @@ class TestDSPyModuleContext:
             with DSPyModuleContext(callback, "TestModule") as ctx:
                 ctx.set_result(MockPrediction("my result"))
 
-            step_ends = [
-                e for e in callback.chain.events if e.type == EventType.STEP_END
-            ]
+            step_ends = [e for e in callback.chain.events if e.type == EventType.STEP_END]
             assert len(step_ends) >= 1
 
     def test_context_manager_handles_error(self, mock_dspy):
         """Test context manager handles errors."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import LCTLDSPyCallback, DSPyModuleContext
 
             callback = LCTLDSPyCallback()
@@ -806,9 +688,7 @@ class TestDSPyModuleContext:
                 with DSPyModuleContext(callback, "FailingModule"):
                     raise ValueError("Test error")
 
-            step_ends = [
-                e for e in callback.chain.events if e.type == EventType.STEP_END
-            ]
+            step_ends = [e for e in callback.chain.events if e.type == EventType.STEP_END]
             error_ends = [e for e in step_ends if e.data.get("outcome") == "error"]
             assert len(error_ends) >= 1
 
@@ -910,9 +790,7 @@ class TestIntegration:
 
     def test_full_workflow(self, tmp_path: Path, mock_dspy):
         """Test complete workflow: create, trace, export."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import (
                 LCTLDSPyCallback,
                 TracedDSPyModule,
@@ -945,9 +823,7 @@ class TestIntegration:
 
     def test_optimization_workflow(self, mock_dspy):
         """Test optimization workflow with teleprompter."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import (
                 LCTLDSPyCallback,
                 LCTLDSPyTeleprompter,
@@ -969,9 +845,7 @@ class TestIntegration:
 
     def test_error_recovery_workflow(self, mock_dspy):
         """Test workflow with error recovery."""
-        with patch(
-            "lctl.integrations.dspy.DSPY_AVAILABLE", True
-        ):
+        with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import (
                 LCTLDSPyCallback,
                 TracedDSPyModule,

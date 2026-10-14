@@ -153,9 +153,7 @@ class TestWebSocketServerBasicOperations:
         client = await server.register_client()
 
         # Should have emitted a connected event
-        connected_events = [
-            e for e in events_received if e.type == StreamingEventType.CONNECTED
-        ]
+        connected_events = [e for e in events_received if e.type == StreamingEventType.CONNECTED]
         assert len(connected_events) == 1
         assert connected_events[0].payload["client_id"] == client.id
 
@@ -256,17 +254,13 @@ class TestWebSocketServerEventFiltering:
     @pytest.mark.asyncio
     async def test_should_send_to_client_no_filters(self, server: WebSocketServer):
         """Test _should_send_to_client with no filters."""
-        client = WebSocketClient(
-            id="test", connected_at=datetime.now(timezone.utc), filters={}
-        )
+        client = WebSocketClient(id="test", connected_at=datetime.now(timezone.utc), filters={})
 
         event = StreamingEvent.heartbeat()
         assert server._should_send_to_client(event, client) is True
 
     @pytest.mark.asyncio
-    async def test_should_send_to_client_chain_id_filter_match(
-        self, server: WebSocketServer
-    ):
+    async def test_should_send_to_client_chain_id_filter_match(self, server: WebSocketServer):
         """Test _should_send_to_client with matching chain_id filter."""
         client = WebSocketClient(
             id="test",
@@ -284,9 +278,7 @@ class TestWebSocketServerEventFiltering:
         assert server._should_send_to_client(event, client) is True
 
     @pytest.mark.asyncio
-    async def test_should_send_to_client_chain_id_filter_no_match(
-        self, server: WebSocketServer
-    ):
+    async def test_should_send_to_client_chain_id_filter_no_match(self, server: WebSocketServer):
         """Test _should_send_to_client with non-matching chain_id filter."""
         client = WebSocketClient(
             id="test",
@@ -304,9 +296,7 @@ class TestWebSocketServerEventFiltering:
         assert server._should_send_to_client(event, client) is False
 
     @pytest.mark.asyncio
-    async def test_should_send_to_client_event_types_filter_match(
-        self, server: WebSocketServer
-    ):
+    async def test_should_send_to_client_event_types_filter_match(self, server: WebSocketServer):
         """Test _should_send_to_client with matching event_types filter."""
         client = WebSocketClient(
             id="test",
@@ -325,9 +315,7 @@ class TestWebSocketServerEventFiltering:
         assert server._should_send_to_client(event, client) is True
 
     @pytest.mark.asyncio
-    async def test_should_send_to_client_event_types_filter_no_match(
-        self, server: WebSocketServer
-    ):
+    async def test_should_send_to_client_event_types_filter_no_match(self, server: WebSocketServer):
         """Test _should_send_to_client with non-matching event_types filter."""
         client = WebSocketClient(
             id="test",
@@ -346,9 +334,7 @@ class TestWebSocketServerEventFiltering:
         assert server._should_send_to_client(event, client) is False
 
     @pytest.mark.asyncio
-    async def test_should_send_to_client_streaming_event_type_filter(
-        self, server: WebSocketServer
-    ):
+    async def test_should_send_to_client_streaming_event_type_filter(self, server: WebSocketServer):
         """Test _should_send_to_client with streaming event type filter."""
         client = WebSocketClient(
             id="test",
@@ -365,9 +351,7 @@ class TestWebSocketServerEventFiltering:
         assert server._should_send_to_client(event2, client) is False
 
     @pytest.mark.asyncio
-    async def test_should_send_to_client_combined_filters(
-        self, server: WebSocketServer
-    ):
+    async def test_should_send_to_client_combined_filters(self, server: WebSocketServer):
         """Test _should_send_to_client with combined chain_id and event_types filters."""
         client = WebSocketClient(
             id="test",
@@ -435,9 +419,7 @@ class TestWebSocketServerEventDispatch:
         assert client2.send_queue.qsize() == 1
 
     @pytest.mark.asyncio
-    async def test_on_event_respects_filters(
-        self, server: WebSocketServer, emitter: EventEmitter
-    ):
+    async def test_on_event_respects_filters(self, server: WebSocketServer, emitter: EventEmitter):
         """Test that events respect client filters."""
         client1 = await server.register_client(filters={"chain_id": "chain-1"})
         client2 = await server.register_client(filters={"chain_id": "chain-2"})
@@ -461,9 +443,7 @@ class TestWebSocketServerEventDispatch:
         assert client2.send_queue.qsize() == 0
 
     @pytest.mark.asyncio
-    async def test_on_event_queue_full(
-        self, server: WebSocketServer, emitter: EventEmitter
-    ):
+    async def test_on_event_queue_full(self, server: WebSocketServer, emitter: EventEmitter):
         """Test _on_event handles QueueFull gracefully."""
         # Create a client with a small queue
         client = await server.register_client()
@@ -534,9 +514,7 @@ class TestWebSocketServerClientMessageHandling:
         assert pong_event.payload.get("pong") is True
 
     @pytest.mark.asyncio
-    async def test_handle_client_message_ping_queue_full(
-        self, server: WebSocketServer
-    ):
+    async def test_handle_client_message_ping_queue_full(self, server: WebSocketServer):
         """Test handling ping message when queue is full."""
         client = await server.register_client()
 
@@ -590,9 +568,7 @@ class TestWebSocketServerConnectionHandling:
         mock_websocket.send_text = AsyncMock(side_effect=track_send)
 
         # Make receive_text raise to exit the loop
-        mock_websocket.receive_text = AsyncMock(
-            side_effect=Exception("Connection closed")
-        )
+        mock_websocket.receive_text = AsyncMock(side_effect=Exception("Connection closed"))
 
         await server.handle_connection(mock_websocket)
 
@@ -610,16 +586,12 @@ class TestWebSocketServerConnectionHandling:
         assert server.client_count == 0
 
     @pytest.mark.asyncio
-    async def test_receive_loop_handles_json_decode_error(
-        self, server: WebSocketServer
-    ):
+    async def test_receive_loop_handles_json_decode_error(self, server: WebSocketServer):
         """Test _receive_loop handles invalid JSON gracefully."""
         mock_ws = AsyncMock()
 
         # First return invalid JSON, then raise to exit
-        mock_ws.receive_text = AsyncMock(
-            side_effect=["not valid json", Exception("done")]
-        )
+        mock_ws.receive_text = AsyncMock(side_effect=["not valid json", Exception("done")])
 
         client = await server.register_client()
 
@@ -627,19 +599,13 @@ class TestWebSocketServerConnectionHandling:
         await server._receive_loop(mock_ws, client)
 
     @pytest.mark.asyncio
-    async def test_receive_loop_processes_valid_messages(
-        self, server: WebSocketServer
-    ):
+    async def test_receive_loop_processes_valid_messages(self, server: WebSocketServer):
         """Test _receive_loop processes valid JSON messages."""
         mock_ws = AsyncMock()
 
         # Return subscribe message, then raise to exit
-        subscribe_msg = json.dumps(
-            {"type": "subscribe", "filters": {"chain_id": "test"}}
-        )
-        mock_ws.receive_text = AsyncMock(
-            side_effect=[subscribe_msg, Exception("done")]
-        )
+        subscribe_msg = json.dumps({"type": "subscribe", "filters": {"chain_id": "test"}})
+        mock_ws.receive_text = AsyncMock(side_effect=[subscribe_msg, Exception("done")])
 
         client = await server.register_client()
 
@@ -677,9 +643,7 @@ class TestWebSocketServerConnectionHandling:
         assert len(sent_messages) == 2
 
     @pytest.mark.asyncio
-    async def test_send_loop_sends_heartbeat_on_timeout(
-        self, emitter: EventEmitter
-    ):
+    async def test_send_loop_sends_heartbeat_on_timeout(self, emitter: EventEmitter):
         """Test _send_loop sends heartbeat when queue times out."""
         # Use very short heartbeat interval
         server = WebSocketServer(emitter, heartbeat_interval=0.05)
@@ -704,9 +668,7 @@ class TestWebSocketServerConnectionHandling:
 
         # Don't queue any events - should trigger heartbeat
         try:
-            await asyncio.wait_for(
-                server._send_loop(mock_ws, client), timeout=0.2
-            )
+            await asyncio.wait_for(server._send_loop(mock_ws, client), timeout=0.2)
         except Exception:
             pass  # Expected to exit via exception
 
@@ -780,9 +742,7 @@ class TestWebSocketServerHeartbeatLoop:
         assert small_queue.qsize() == 1
 
     @pytest.mark.asyncio
-    async def test_heartbeat_loop_stops_when_not_running(
-        self, emitter: EventEmitter
-    ):
+    async def test_heartbeat_loop_stops_when_not_running(self, emitter: EventEmitter):
         """Test _heartbeat_loop exits when _running is False."""
         server = WebSocketServer(emitter, heartbeat_interval=0.01)
         server._running = False
@@ -802,6 +762,7 @@ class TestWebSocketServerStartStop:
     @pytest.mark.asyncio
     async def test_stop_cancels_heartbeat_task(self, server: WebSocketServer):
         """Test stop() cancels heartbeat task."""
+
         # Create a mock heartbeat task
         async def dummy_heartbeat():
             await asyncio.sleep(10)
@@ -841,17 +802,13 @@ class TestWebSocketServerStartStop:
         """Test start() raises ImportError if websockets not installed."""
         with patch.dict("sys.modules", {"websockets": None}):
             # Force re-import check
-            with patch(
-                "lctl.streaming.websocket.WebSocketServer.start"
-            ) as mock_start:
+            with patch("lctl.streaming.websocket.WebSocketServer.start") as mock_start:
                 # Create a new server to test the import check
                 async def raise_import():
                     try:
                         import websockets  # noqa
                     except ImportError:
-                        raise ImportError(
-                            "websockets package required for standalone mode"
-                        )
+                        raise ImportError("websockets package required for standalone mode")
 
                 mock_start.side_effect = raise_import
                 with pytest.raises(ImportError, match="websockets"):
@@ -963,9 +920,7 @@ class TestSSEHandler:
         assert handler._should_send(event, {"event_types": ["connected"]}) is False
 
     @pytest.mark.asyncio
-    async def test_event_stream_yields_connected_message(
-        self, emitter: EventEmitter
-    ):
+    async def test_event_stream_yields_connected_message(self, emitter: EventEmitter):
         """Test event_stream yields connected message first."""
         handler = SSEHandler(emitter, heartbeat_interval=0.1)
 
@@ -1035,9 +990,7 @@ class TestSSEHandler:
 
         async def collect():
             filters = {"chain_id": "chain-1"}
-            async for msg in handler.event_stream(
-                filters=filters, include_history=True
-            ):
+            async for msg in handler.event_stream(filters=filters, include_history=True):
                 messages.append(msg)
                 if len(messages) >= 2:  # connected + 1 filtered history
                     break
@@ -1048,9 +1001,7 @@ class TestSSEHandler:
         assert len(messages) == 2
 
     @pytest.mark.asyncio
-    async def test_event_stream_yields_heartbeat_on_timeout(
-        self, emitter: EventEmitter
-    ):
+    async def test_event_stream_yields_heartbeat_on_timeout(self, emitter: EventEmitter):
         """Test event_stream yields heartbeat comment on timeout."""
         handler = SSEHandler(emitter, heartbeat_interval=0.05)
 
@@ -1164,9 +1115,7 @@ class TestWebSocketClient:
 
     def test_create_client(self):
         """Test creating a WebSocketClient."""
-        client = WebSocketClient(
-            id="test-client", connected_at=datetime.now(timezone.utc)
-        )
+        client = WebSocketClient(id="test-client", connected_at=datetime.now(timezone.utc))
 
         assert client.id == "test-client"
         assert client.filters == {}  # default
@@ -1185,9 +1134,7 @@ class TestWebSocketClient:
 
     def test_create_client_with_custom_queue(self):
         """Test WebSocketClient can have events queued."""
-        client = WebSocketClient(
-            id="test-client", connected_at=datetime.now(timezone.utc)
-        )
+        client = WebSocketClient(id="test-client", connected_at=datetime.now(timezone.utc))
 
         event = StreamingEvent.heartbeat()
         client.send_queue.put_nowait(event)

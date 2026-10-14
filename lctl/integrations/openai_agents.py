@@ -150,7 +150,8 @@ class LCTLRunHooks(RunHooks):
         with self._lock:
             for stack in [self._run_stack, self._tool_stack]:
                 stale_keys = [
-                    k for k, v in stack.items()
+                    k
+                    for k, v in stack.items()
                     if current_time - v.get("start_time", current_time) > max_age_seconds
                 ]
                 for k in stale_keys:
@@ -158,8 +159,7 @@ class LCTLRunHooks(RunHooks):
                     removed_count += 1
 
             stale_context_keys = [
-                k for k, v in self._tool_context_map.items()
-                if v not in self._tool_stack
+                k for k, v in self._tool_context_map.items() if v not in self._tool_stack
             ]
             for k in stale_context_keys:
                 del self._tool_context_map[k]
@@ -459,10 +459,7 @@ class LCTLTracingProcessor(TracingProcessor):
 
     def __repr__(self) -> str:
         """Return string representation for debugging."""
-        return (
-            f"LCTLTracingProcessor(session={self._session.chain.id!r}, "
-            f"verbose={self._verbose})"
-        )
+        return f"LCTLTracingProcessor(session={self._session.chain.id!r}, verbose={self._verbose})"
 
     def process_trace(self, trace: Trace) -> None:
         """Process a completed trace from the SDK."""
@@ -474,10 +471,7 @@ class LCTLTracingProcessor(TracingProcessor):
             if hasattr(trace, "to_dict"):
                 trace_data = trace.to_dict()
             elif hasattr(trace, "__dict__"):
-                trace_data = {
-                    k: v for k, v in trace.__dict__.items()
-                    if not k.startswith("_")
-                }
+                trace_data = {k: v for k, v in trace.__dict__.items() if not k.startswith("_")}
 
             self._session.add_fact(
                 fact_id=f"trace_{int(time.time() * 1000)}",
@@ -551,8 +545,7 @@ class LCTLOpenAIAgentTracer(BaseTracer):
     def __repr__(self) -> str:
         """Return string representation for debugging."""
         return (
-            f"LCTLOpenAIAgentTracer(chain_id={self._session.chain.id!r}, "
-            f"verbose={self._verbose})"
+            f"LCTLOpenAIAgentTracer(chain_id={self._session.chain.id!r}, verbose={self._verbose})"
         )
 
     def create_hooks(self) -> LCTLRunHooks:
@@ -572,9 +565,7 @@ class LCTLOpenAIAgentTracer(BaseTracer):
             LCTLTracingProcessor instance configured with the session.
         """
         if self._tracing_processor is None:
-            self._tracing_processor = LCTLTracingProcessor(
-                self._session, verbose=self._verbose
-            )
+            self._tracing_processor = LCTLTracingProcessor(self._session, verbose=self._verbose)
         return self._tracing_processor
 
     @property
@@ -903,10 +894,7 @@ class TracedAgent:
     def __repr__(self) -> str:
         """Return string representation for debugging."""
         agent_name = getattr(self._agent, "name", "unknown")
-        return (
-            f"TracedAgent(agent_name={agent_name!r}, "
-            f"chain_id={self._tracer.chain.id!r})"
-        )
+        return f"TracedAgent(agent_name={agent_name!r}, chain_id={self._tracer.chain.id!r})"
 
     @property
     def agent(self) -> "Agent":
@@ -954,9 +942,7 @@ class TracedAgent:
             agent = object.__getattribute__(self, "_agent")
             return getattr(agent, name)
         except AttributeError:
-            raise AttributeError(
-                f"'{type(self).__name__}' object has no attribute '{name}'"
-            )
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
 
 def is_available() -> bool:

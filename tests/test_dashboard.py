@@ -32,21 +32,26 @@ def sample_chain_data():
                 "type": "step_start",
                 "timestamp": base_time.isoformat(),
                 "agent": "agent-a",
-                "data": {"intent": "analyze", "input_summary": "test input"}
+                "data": {"intent": "analyze", "input_summary": "test input"},
             },
             {
                 "seq": 2,
                 "type": "fact_added",
                 "timestamp": (base_time + timedelta(seconds=1)).isoformat(),
                 "agent": "agent-a",
-                "data": {"id": "F1", "text": "Test fact", "confidence": 0.85}
+                "data": {"id": "F1", "text": "Test fact", "confidence": 0.85},
             },
             {
                 "seq": 3,
                 "type": "tool_call",
                 "timestamp": (base_time + timedelta(seconds=2)).isoformat(),
                 "agent": "agent-a",
-                "data": {"tool": "search", "input": "query", "output": "results", "duration_ms": 100}
+                "data": {
+                    "tool": "search",
+                    "input": "query",
+                    "output": "results",
+                    "duration_ms": 100,
+                },
             },
             {
                 "seq": 4,
@@ -57,15 +62,15 @@ def sample_chain_data():
                     "outcome": "success",
                     "output_summary": "analysis complete",
                     "duration_ms": 3000,
-                    "tokens": {"input": 100, "output": 50}
-                }
+                    "tokens": {"input": 100, "output": 50},
+                },
             },
             {
                 "seq": 5,
                 "type": "step_start",
                 "timestamp": (base_time + timedelta(seconds=4)).isoformat(),
                 "agent": "agent-b",
-                "data": {"intent": "review", "input_summary": "F1"}
+                "data": {"intent": "review", "input_summary": "F1"},
             },
             {
                 "seq": 6,
@@ -76,8 +81,8 @@ def sample_chain_data():
                     "category": "validation",
                     "type": "ValidationError",
                     "message": "Test error",
-                    "recoverable": True
-                }
+                    "recoverable": True,
+                },
             },
             {
                 "seq": 7,
@@ -88,10 +93,10 @@ def sample_chain_data():
                     "outcome": "error",
                     "output_summary": "failed",
                     "duration_ms": 2000,
-                    "tokens": {"input": 50, "output": 25}
-                }
-            }
-        ]
+                    "tokens": {"input": 50, "output": 25},
+                },
+            },
+        ],
     }
 
 
@@ -198,10 +203,7 @@ class TestDashboardApp:
 
     def test_replay_chain(self, client):
         """Test replaying to a specific sequence."""
-        response = client.post("/api/replay", json={
-            "filename": "test.lctl.json",
-            "target_seq": 4
-        })
+        response = client.post("/api/replay", json={"filename": "test.lctl.json", "target_seq": 4})
         assert response.status_code == 200
         data = response.json()
 
@@ -216,10 +218,7 @@ class TestDashboardApp:
 
     def test_replay_chain_to_seq_2(self, client):
         """Test replaying to seq 2 to verify fact is present."""
-        response = client.post("/api/replay", json={
-            "filename": "test.lctl.json",
-            "target_seq": 2
-        })
+        response = client.post("/api/replay", json={"filename": "test.lctl.json", "target_seq": 2})
         assert response.status_code == 200
         data = response.json()
 
@@ -230,25 +229,20 @@ class TestDashboardApp:
     def test_replay_invalid_seq(self, client):
         """Test replaying with invalid sequence number."""
         # Too high
-        response = client.post("/api/replay", json={
-            "filename": "test.lctl.json",
-            "target_seq": 100
-        })
+        response = client.post(
+            "/api/replay", json={"filename": "test.lctl.json", "target_seq": 100}
+        )
         assert response.status_code == 400
 
         # Too low
-        response = client.post("/api/replay", json={
-            "filename": "test.lctl.json",
-            "target_seq": 0
-        })
+        response = client.post("/api/replay", json={"filename": "test.lctl.json", "target_seq": 0})
         assert response.status_code == 400
 
     def test_replay_chain_not_found(self, client):
         """Test replaying a non-existent chain."""
-        response = client.post("/api/replay", json={
-            "filename": "nonexistent.lctl.json",
-            "target_seq": 1
-        })
+        response = client.post(
+            "/api/replay", json={"filename": "nonexistent.lctl.json", "target_seq": 1}
+        )
         assert response.status_code == 404
 
     def test_index_page(self, client):
@@ -282,11 +276,11 @@ class TestDashboardApp:
         # Note: This test simulates the server pushing events, which requires triggering
         # an event in the same process or mocking the manager.
         # Here we just verify connection and basic protocol.
-        
+
         with client.websocket_connect("/ws") as websocket:
             # Receive welcome message
-            websocket.receive_json() 
-            
+            websocket.receive_json()
+
             # Send a subscribe message
             websocket.send_json({"type": "subscribe", "filters": {"chain_id": "test-chain"}})
             # Expect confirmation or no error
@@ -297,24 +291,24 @@ class TestDashboardApp:
         response = client.get("/api/metrics/test.lctl.json")
         assert response.status_code == 200
         data = response.json()
-        
+
         # Check specific metrics fields
         assert "summary" in data
         assert data["summary"]["total_events"] == 7
         assert data["summary"]["total_errors"] == 1
         assert "agent_metrics" in data
         assert "agent-a" in data["agent_metrics"]
-        
+
         # Verify Token Distribution (from refactor)
         assert "token_distribution" in data
         assert data["token_distribution"]["input"] == 150
-        
+
     def test_get_evaluation(self, client):
         """Test evaluation endpoint."""
         response = client.get("/api/evaluation/test.lctl.json")
         assert response.status_code == 200
         data = response.json()
-        
+
         assert "scores" in data
         assert "overall" in data["scores"]
         assert "issues" in data
@@ -323,13 +317,12 @@ class TestDashboardApp:
 
     def test_compare_chains(self, client):
         """Test chain comparison endpoint."""
-        response = client.post("/api/compare", json={
-            "filename1": "test.lctl.json",
-            "filename2": "second.lctl.json"
-        })
+        response = client.post(
+            "/api/compare", json={"filename1": "test.lctl.json", "filename2": "second.lctl.json"}
+        )
         assert response.status_code == 200
         data = response.json()
-        
+
         assert "chain1" in data
         assert "chain2" in data
         assert "event_diffs" in data
@@ -416,21 +409,56 @@ class TestDashboardEdgeCases:
             "lctl": CURRENT_VERSION,
             "chain": {"id": "all-types"},
             "events": [
-                {"seq": 1, "type": "step_start", "timestamp": base_time.isoformat(),
-                 "agent": "a", "data": {"intent": "test"}},
-                {"seq": 2, "type": "fact_added", "timestamp": base_time.isoformat(),
-                 "agent": "a", "data": {"id": "F1", "text": "fact", "confidence": 0.9}},
-                {"seq": 3, "type": "fact_modified", "timestamp": base_time.isoformat(),
-                 "agent": "a", "data": {"id": "F1", "confidence": 0.95, "reason": "verified"}},
-                {"seq": 4, "type": "tool_call", "timestamp": base_time.isoformat(),
-                 "agent": "a", "data": {"tool": "test", "duration_ms": 50}},
-                {"seq": 5, "type": "checkpoint", "timestamp": base_time.isoformat(),
-                 "agent": "system", "data": {"state_hash": "abc123"}},
-                {"seq": 6, "type": "error", "timestamp": base_time.isoformat(),
-                 "agent": "a", "data": {"category": "test", "type": "TestError", "message": "test"}},
-                {"seq": 7, "type": "step_end", "timestamp": base_time.isoformat(),
-                 "agent": "a", "data": {"outcome": "error", "duration_ms": 1000}}
-            ]
+                {
+                    "seq": 1,
+                    "type": "step_start",
+                    "timestamp": base_time.isoformat(),
+                    "agent": "a",
+                    "data": {"intent": "test"},
+                },
+                {
+                    "seq": 2,
+                    "type": "fact_added",
+                    "timestamp": base_time.isoformat(),
+                    "agent": "a",
+                    "data": {"id": "F1", "text": "fact", "confidence": 0.9},
+                },
+                {
+                    "seq": 3,
+                    "type": "fact_modified",
+                    "timestamp": base_time.isoformat(),
+                    "agent": "a",
+                    "data": {"id": "F1", "confidence": 0.95, "reason": "verified"},
+                },
+                {
+                    "seq": 4,
+                    "type": "tool_call",
+                    "timestamp": base_time.isoformat(),
+                    "agent": "a",
+                    "data": {"tool": "test", "duration_ms": 50},
+                },
+                {
+                    "seq": 5,
+                    "type": "checkpoint",
+                    "timestamp": base_time.isoformat(),
+                    "agent": "system",
+                    "data": {"state_hash": "abc123"},
+                },
+                {
+                    "seq": 6,
+                    "type": "error",
+                    "timestamp": base_time.isoformat(),
+                    "agent": "a",
+                    "data": {"category": "test", "type": "TestError", "message": "test"},
+                },
+                {
+                    "seq": 7,
+                    "type": "step_end",
+                    "timestamp": base_time.isoformat(),
+                    "agent": "a",
+                    "data": {"outcome": "error", "duration_ms": 1000},
+                },
+            ],
         }
 
         chain_file = tmp_path / "all-types.lctl.json"

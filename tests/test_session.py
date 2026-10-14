@@ -116,7 +116,7 @@ class TestLCTLSessionStepMethods:
             output_summary="completed",
             duration_ms=500,
             tokens_in=100,
-            tokens_out=50
+            tokens_out=50,
         )
 
         assert seq == 2
@@ -244,7 +244,7 @@ class TestLCTLSessionToolCall:
             tool="search",
             input_data={"query": "test"},
             output_data={"results": ["a", "b"]},
-            duration_ms=150
+            duration_ms=150,
         )
 
         assert seq == 1
@@ -284,7 +284,7 @@ class TestLCTLSessionError:
             error_type="ValueError",
             message="Invalid input",
             recoverable=True,
-            suggested_action="Fix input"
+            suggested_action="Fix input",
         )
 
         assert seq == 1

@@ -88,8 +88,7 @@ def _incomplete_beta(a: float, b: float, x: float) -> float:
         return 1.0
 
     bt = math.exp(
-        math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
-        + a * math.log(x) + b * math.log(1 - x)
+        math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b) + a * math.log(x) + b * math.log(1 - x)
     )
 
     if x < (a + 1) / (a + b + 2):
@@ -191,7 +190,7 @@ def welch_t_test(
         t_stat = (mean_a - mean_b) / se_diff
 
         df_num = (se_a + se_b) ** 2
-        df_denom = (se_a ** 2) / (n_a - 1) + (se_b ** 2) / (n_b - 1)
+        df_denom = (se_a**2) / (n_a - 1) + (se_b**2) / (n_b - 1)
         df = df_num / df_denom if df_denom > 0 else n_a + n_b - 2
 
     p_value = 2 * (1 - _t_cdf(abs(t_stat), int(df)))
@@ -402,9 +401,7 @@ def is_significant(results: Dict[str, StatisticalResult]) -> bool:
     return any(r.significant for r in results.values())
 
 
-def consensus_significant(
-    results: Dict[str, StatisticalResult], threshold: float = 0.5
-) -> bool:
+def consensus_significant(results: Dict[str, StatisticalResult], threshold: float = 0.5) -> bool:
     """Check if a threshold of tests agree on significance.
 
     Args:

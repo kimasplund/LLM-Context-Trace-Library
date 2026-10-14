@@ -29,14 +29,18 @@ def cli_chain_file(tmp_path: Path, base_timestamp: datetime) -> Path:
             type=EventType.STEP_START,
             timestamp=base_timestamp,
             agent="planner",
-            data={"intent": "plan", "input_summary": "task"}
+            data={"intent": "plan", "input_summary": "task"},
         ),
         Event(
             seq=2,
             type=EventType.FACT_ADDED,
             timestamp=base_timestamp + timedelta(milliseconds=100),
             agent="planner",
-            data={"id": "F1", "text": "Important finding with sufficient text for display", "confidence": 0.9}
+            data={
+                "id": "F1",
+                "text": "Important finding with sufficient text for display",
+                "confidence": 0.9,
+            },
         ),
         Event(
             seq=3,
@@ -47,29 +51,29 @@ def cli_chain_file(tmp_path: Path, base_timestamp: datetime) -> Path:
                 "outcome": "success",
                 "output_summary": "plan complete",
                 "duration_ms": 2000,
-                "tokens": {"input": 500, "output": 200}
-            }
+                "tokens": {"input": 500, "output": 200},
+            },
         ),
         Event(
             seq=4,
             type=EventType.STEP_START,
             timestamp=base_timestamp + timedelta(seconds=2, milliseconds=100),
             agent="executor",
-            data={"intent": "execute", "input_summary": "plan"}
+            data={"intent": "execute", "input_summary": "plan"},
         ),
         Event(
             seq=5,
             type=EventType.TOOL_CALL,
             timestamp=base_timestamp + timedelta(seconds=2, milliseconds=500),
             agent="executor",
-            data={"tool": "code_gen", "input": "spec", "output": "code", "duration_ms": 300}
+            data={"tool": "code_gen", "input": "spec", "output": "code", "duration_ms": 300},
         ),
         Event(
             seq=6,
             type=EventType.FACT_MODIFIED,
             timestamp=base_timestamp + timedelta(seconds=3),
             agent="executor",
-            data={"id": "F1", "confidence": 0.95, "reason": "verified"}
+            data={"id": "F1", "confidence": 0.95, "reason": "verified"},
         ),
         Event(
             seq=7,
@@ -80,8 +84,8 @@ def cli_chain_file(tmp_path: Path, base_timestamp: datetime) -> Path:
                 "outcome": "success",
                 "output_summary": "executed",
                 "duration_ms": 3000,
-                "tokens": {"input": 1000, "output": 500}
-            }
+                "tokens": {"input": 1000, "output": 500},
+            },
         ),
     ]
     for event in events:
@@ -111,7 +115,7 @@ def error_chain_file(tmp_path: Path, base_timestamp: datetime) -> Path:
             type=EventType.STEP_START,
             timestamp=base_timestamp,
             agent="validator",
-            data={"intent": "validate"}
+            data={"intent": "validate"},
         ),
         Event(
             seq=2,
@@ -121,15 +125,15 @@ def error_chain_file(tmp_path: Path, base_timestamp: datetime) -> Path:
             data={
                 "category": "validation",
                 "type": "ValueError",
-                "message": "Invalid input data format"
-            }
+                "message": "Invalid input data format",
+            },
         ),
         Event(
             seq=3,
             type=EventType.STEP_END,
             timestamp=base_timestamp + timedelta(milliseconds=200),
             agent="validator",
-            data={"outcome": "error", "duration_ms": 200, "tokens": {"input": 50, "output": 10}}
+            data={"outcome": "error", "duration_ms": 200, "tokens": {"input": 50, "output": 10}},
         ),
     ]
     for event in events:
@@ -403,8 +407,10 @@ class TestDebugCommand:
 
         # Mock the dashboard to prevent actual server startup
         mock_run_dashboard = MagicMock()
-        with patch.dict('sys.modules', {'lctl.dashboard': MagicMock(run_dashboard=mock_run_dashboard)}):
-            with patch('lctl.cli.main.run_dashboard', mock_run_dashboard, create=True):
+        with patch.dict(
+            "sys.modules", {"lctl.dashboard": MagicMock(run_dashboard=mock_run_dashboard)}
+        ):
+            with patch("lctl.cli.main.run_dashboard", mock_run_dashboard, create=True):
                 result = runner.invoke(cli, ["debug", str(cli_chain_file)])
 
         # Either succeeds with mocked dashboard or exits with error message about dashboard
@@ -416,8 +422,10 @@ class TestDebugCommand:
         from unittest.mock import patch, MagicMock
 
         mock_run_dashboard = MagicMock()
-        with patch.dict('sys.modules', {'lctl.dashboard': MagicMock(run_dashboard=mock_run_dashboard)}):
-            with patch('lctl.cli.main.run_dashboard', mock_run_dashboard, create=True):
+        with patch.dict(
+            "sys.modules", {"lctl.dashboard": MagicMock(run_dashboard=mock_run_dashboard)}
+        ):
+            with patch("lctl.cli.main.run_dashboard", mock_run_dashboard, create=True):
                 result = runner.invoke(cli, ["debug", "--port", "3000", str(cli_chain_file)])
 
         assert "3000" in result.output
@@ -427,8 +435,10 @@ class TestDebugCommand:
         from unittest.mock import patch, MagicMock
 
         mock_run_dashboard = MagicMock()
-        with patch.dict('sys.modules', {'lctl.dashboard': MagicMock(run_dashboard=mock_run_dashboard)}):
-            with patch('lctl.cli.main.run_dashboard', mock_run_dashboard, create=True):
+        with patch.dict(
+            "sys.modules", {"lctl.dashboard": MagicMock(run_dashboard=mock_run_dashboard)}
+        ):
+            with patch("lctl.cli.main.run_dashboard", mock_run_dashboard, create=True):
                 result = runner.invoke(cli, ["debug", str(cli_chain_file)])
 
         assert "Events: 7" in result.output
@@ -441,7 +451,7 @@ class TestDebugCommand:
         def raise_import_error(*args, **kwargs):
             raise ImportError("No module named 'fastapi'")
 
-        with patch.dict('sys.modules', {'lctl.dashboard': None}):
+        with patch.dict("sys.modules", {"lctl.dashboard": None}):
             result = runner.invoke(cli, ["debug", str(cli_chain_file)])
 
         # Should show info about the chain even if dashboard fails
@@ -698,15 +708,23 @@ class TestCompareCommand:
         assert "improvements" in data["summary"]
         assert "regressions" in data["summary"]
 
-    def test_compare_nonexistent_first_file(self, runner: CliRunner, cli_chain_file: Path, tmp_path: Path):
+    def test_compare_nonexistent_first_file(
+        self, runner: CliRunner, cli_chain_file: Path, tmp_path: Path
+    ):
         """Test compare with nonexistent first file."""
-        result = runner.invoke(cli, ["compare", str(tmp_path / "nonexistent.json"), str(cli_chain_file)])
+        result = runner.invoke(
+            cli, ["compare", str(tmp_path / "nonexistent.json"), str(cli_chain_file)]
+        )
 
         assert result.exit_code != 0
 
-    def test_compare_nonexistent_second_file(self, runner: CliRunner, cli_chain_file: Path, tmp_path: Path):
+    def test_compare_nonexistent_second_file(
+        self, runner: CliRunner, cli_chain_file: Path, tmp_path: Path
+    ):
         """Test compare with nonexistent second file."""
-        result = runner.invoke(cli, ["compare", str(cli_chain_file), str(tmp_path / "nonexistent.json")])
+        result = runner.invoke(
+            cli, ["compare", str(cli_chain_file), str(tmp_path / "nonexistent.json")]
+        )
 
         assert result.exit_code != 0
 
@@ -946,9 +964,7 @@ class TestEvaluationCommandsIntegration:
         self, runner: CliRunner, cli_chain_file: Path, error_chain_file: Path
     ):
         """Test comparison workflow with different chains."""
-        compare_result = runner.invoke(
-            cli, ["compare", str(cli_chain_file), str(error_chain_file)]
-        )
+        compare_result = runner.invoke(cli, ["compare", str(cli_chain_file), str(error_chain_file)])
         assert compare_result.exit_code == 0
         assert "Chain Comparison Report" in compare_result.output
 
@@ -1005,7 +1021,11 @@ class TestClaudeCommands:
             result = runner.invoke(cli, ["claude", "validate"])
 
             # Should indicate hooks are not found
-            assert "not found" in result.output.lower() or "missing" in result.output.lower() or result.exit_code != 0
+            assert (
+                "not found" in result.output.lower()
+                or "missing" in result.output.lower()
+                or result.exit_code != 0
+            )
 
     def test_claude_validate_with_hooks(self, runner: CliRunner, tmp_path: Path):
         """Test claude validate after hooks are installed."""
@@ -1017,7 +1037,11 @@ class TestClaudeCommands:
             # Then validate
             result = runner.invoke(cli, ["claude", "validate"])
             # Should pass or at least not crash
-            assert result.exit_code == 0 or "valid" in result.output.lower() or "found" in result.output.lower()
+            assert (
+                result.exit_code == 0
+                or "valid" in result.output.lower()
+                or "found" in result.output.lower()
+            )
 
     def test_claude_status_no_session(self, runner: CliRunner, tmp_path: Path):
         """Test claude status when no session is active."""
@@ -1025,7 +1049,11 @@ class TestClaudeCommands:
             result = runner.invoke(cli, ["claude", "status"])
 
             # Should indicate no active session
-            assert "no active" in result.output.lower() or "not found" in result.output.lower() or result.exit_code == 0
+            assert (
+                "no active" in result.output.lower()
+                or "not found" in result.output.lower()
+                or result.exit_code == 0
+            )
 
     def test_claude_report_no_files(self, runner: CliRunner, tmp_path: Path):
         """Test claude report with no trace files."""
@@ -1033,9 +1061,15 @@ class TestClaudeCommands:
             result = runner.invoke(cli, ["claude", "report"])
 
             # Should indicate no files found or provide usage
-            assert result.exit_code != 0 or "no" in result.output.lower() or "usage" in result.output.lower()
+            assert (
+                result.exit_code != 0
+                or "no" in result.output.lower()
+                or "usage" in result.output.lower()
+            )
 
-    def test_claude_report_with_chain_file(self, runner: CliRunner, cli_chain_file: Path, tmp_path: Path):
+    def test_claude_report_with_chain_file(
+        self, runner: CliRunner, cli_chain_file: Path, tmp_path: Path
+    ):
         """Test claude report with a chain file."""
         result = runner.invoke(cli, ["claude", "report", str(cli_chain_file)])
 
@@ -1053,7 +1087,11 @@ class TestClaudeCommands:
             result = runner.invoke(cli, ["claude", "clean"])
 
             # Should indicate nothing to clean or success
-            assert result.exit_code == 0 or "no" in result.output.lower() or "clean" in result.output.lower()
+            assert (
+                result.exit_code == 0
+                or "no" in result.output.lower()
+                or "clean" in result.output.lower()
+            )
 
     def test_claude_clean_dry_run(self, runner: CliRunner, tmp_path: Path):
         """Test claude clean with --dry-run option."""
@@ -1061,7 +1099,9 @@ class TestClaudeCommands:
             # Create traces directory with a dummy file
             traces_dir = Path(".claude/traces")
             traces_dir.mkdir(parents=True, exist_ok=True)
-            (traces_dir / "old-trace.lctl.json").write_text('{"lctl": "4.0", "chain": {"id": "test"}, "events": []}')
+            (traces_dir / "old-trace.lctl.json").write_text(
+                '{"lctl": "4.0", "chain": {"id": "test"}, "events": []}'
+            )
 
             result = runner.invoke(cli, ["claude", "clean", "--dry-run"])
 

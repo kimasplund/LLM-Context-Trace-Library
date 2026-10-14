@@ -23,9 +23,7 @@ VERSION_HISTORY = {
 class SchemaVersionError(Exception):
     """Raised when schema version is incompatible."""
 
-    def __init__(
-        self, found_version: str, required_version: str, message: str = ""
-    ):
+    def __init__(self, found_version: str, required_version: str, message: str = ""):
         self.found_version = found_version
         self.required_version = required_version
         super().__init__(
@@ -50,9 +48,7 @@ class SchemaMigrator:
         return decorator
 
     @classmethod
-    def migrate(
-        cls, data: Dict[str, Any], target_version: str = CURRENT_VERSION
-    ) -> Dict[str, Any]:
+    def migrate(cls, data: Dict[str, Any], target_version: str = CURRENT_VERSION) -> Dict[str, Any]:
         """Migrate data from its current version to target version."""
         current = data.get("lctl", "3.0")
 
@@ -72,9 +68,7 @@ class SchemaMigrator:
         return result
 
     @classmethod
-    def _get_migration_path(
-        cls, from_version: str, to_version: str
-    ) -> List[tuple]:
+    def _get_migration_path(cls, from_version: str, to_version: str) -> List[tuple]:
         """Get ordered list of migrations needed."""
         versions = sorted(VERSION_HISTORY.keys(), key=lambda v: version.parse(v))
         path = []

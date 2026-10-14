@@ -159,6 +159,7 @@ class LCTLClaudeCodeTracer:
                     chain_path = Path(state.get("chain_path", ""))
                     if chain_path.exists():
                         from ..core.events import Chain
+
                         chain = Chain.load(chain_path)
                         session = LCTLSession(chain_id=chain.id)
                         session.chain = chain
@@ -898,10 +899,12 @@ class LCTLClaudeCodeTracer:
                     if line:
                         parts = line.split(" ", 1)
                         if len(parts) == 2:
-                            result["commits"].append({
-                                "hash": parts[0],
-                                "message": parts[1][:80],
-                            })
+                            result["commits"].append(
+                                {
+                                    "hash": parts[0],
+                                    "message": parts[1][:80],
+                                }
+                            )
 
             # Check for uncommitted changes in tracked files
             for fc in self._file_changes:
@@ -909,10 +912,12 @@ class LCTLClaudeCodeTracer:
                 cmd = ["git", "-C", repo_path, "status", "--porcelain", "--", file_path]
                 output = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
                 if output.stdout.strip():
-                    result["uncommitted_changes"].append({
-                        "file": file_path,
-                        "status": output.stdout.strip()[:50],
-                    })
+                    result["uncommitted_changes"].append(
+                        {
+                            "file": file_path,
+                            "status": output.stdout.strip()[:50],
+                        }
+                    )
 
         except Exception:
             pass  # Git operations are optional
@@ -992,7 +997,8 @@ class LCTLClaudeCodeTracer:
 
         # Count user interactions
         user_interactions = sum(
-            1 for e in self.session.chain.events
+            1
+            for e in self.session.chain.events
             if e.type.value == "tool_call" and e.data.get("tool") == "AskUserQuestion"
         )
 
@@ -1064,7 +1070,9 @@ class LCTLClaudeCodeTracer:
         _tracer_instance = None
 
 
-def generate_hooks(output_dir: str = ".claude/hooks", chain_id: Optional[str] = None) -> Dict[str, str]:
+def generate_hooks(
+    output_dir: str = ".claude/hooks", chain_id: Optional[str] = None
+) -> Dict[str, str]:
     """Generate Claude Code hook scripts for LCTL tracing.
 
     Args:
@@ -1080,7 +1088,7 @@ def generate_hooks(output_dir: str = ".claude/hooks", chain_id: Optional[str] = 
     hooks = {}
 
     # PreToolUse hook for Task tool
-    pre_tool_hook = '''#!/bin/bash
+    pre_tool_hook = """#!/bin/bash
 # LCTL Tracing Hook - Pre Tool Use
 # Records Task tool invocations as STEP_START events
 
@@ -1140,7 +1148,7 @@ except Exception as e:
     with open('/tmp/lctl-hook-error.log', 'a') as f:
         f.write(f'PreToolUse: {e}\\n{traceback.format_exc()}\\n---\\n')
 PYTHON_EOF
-'''
+"""
 
     pre_hook_path = hooks_dir / "PreToolUse.sh"
     pre_hook_path.write_text(pre_tool_hook)
@@ -1148,7 +1156,7 @@ PYTHON_EOF
     hooks["PreToolUse"] = str(pre_hook_path)
 
     # PostToolUse hook for Task tool and other tracked tools
-    post_tool_hook = '''#!/bin/bash
+    post_tool_hook = """#!/bin/bash
 # LCTL Tracing Hook - Post Tool Use
 # Records tool completions including Task, TodoWrite, Skill, MCP tools, and Git
 
@@ -1304,7 +1312,7 @@ except Exception as e:
     with open('/tmp/lctl-hook-error.log', 'a') as f:
         f.write(f'{e}\\n{traceback.format_exc()}\\n---\\n')
 PYTHON_EOF
-'''
+"""
 
     post_hook_path = hooks_dir / "PostToolUse.sh"
     post_hook_path.write_text(post_tool_hook)
@@ -1312,7 +1320,7 @@ PYTHON_EOF
     hooks["PostToolUse"] = str(post_hook_path)
 
     # Stop hook to export final trace
-    stop_hook = '''#!/bin/bash
+    stop_hook = """#!/bin/bash
 # LCTL Tracing Hook - Stop
 # Exports final trace when Claude Code session ends
 
@@ -1351,7 +1359,7 @@ try:
 except Exception as e:
     print(f'LCTL export warning: {e}', file=sys.stderr)
 "
-'''
+"""
 
     stop_hook_path = hooks_dir / "Stop.sh"
     stop_hook_path.write_text(stop_hook)
@@ -1365,11 +1373,7 @@ except Exception as e:
 
         # Create initial chain file
         chain_path = traces_dir / f"{chain_id}.lctl.json"
-        initial_chain = {
-            "lctl": "4.0",
-            "chain": {"id": chain_id},
-            "events": []
-        }
+        initial_chain = {"lctl": "4.0", "chain": {"id": chain_id}, "events": []}
         with open(chain_path, "w") as f:
             json.dump(initial_chain, f, indent=2)
 
@@ -1450,7 +1454,9 @@ def validate_hooks(hooks_dir: str = ".claude/hooks") -> Dict[str, Any]:
     # Check for traces directory
     traces_dir = Path(".claude/traces")
     if not traces_dir.exists():
-        result["warnings"].append("Traces directory does not exist (will be created on first trace)")
+        result["warnings"].append(
+            "Traces directory does not exist (will be created on first trace)"
+        )
 
     return result
 
@@ -1496,20 +1502,22 @@ def generate_html_report(chain: Any, output_path: str) -> str:
     # Build events list for timeline
     events_data = []
     for event in chain.events:
-        events_data.append({
-            "seq": event.seq,
-            "type": event.type.value,
-            "agent": event.agent or "system",
-            "timestamp": event.timestamp.isoformat() if event.timestamp else "",
-            "data": str(event.data)[:200],
-        })
+        events_data.append(
+            {
+                "seq": event.seq,
+                "type": event.type.value,
+                "agent": event.agent or "system",
+                "timestamp": event.timestamp.isoformat() if event.timestamp else "",
+                "data": str(event.data)[:200],
+            }
+        )
 
     # Escape chain metadata
     chain_id_esc = esc(chain.id)
     chain_version_esc = esc(chain.version)
 
     # Generate HTML
-    html_content = f'''<!DOCTYPE html>
+    html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -1609,7 +1617,7 @@ def generate_html_report(chain: Any, output_path: str) -> str:
         </footer>
     </div>
 </body>
-</html>'''
+</html>"""
 
     Path(output_path).write_text(html_content)
     return output_path
@@ -1635,27 +1643,25 @@ def get_session_metadata() -> Dict[str, Any]:
 
     # Get Python version
     import sys
+
     metadata["python_version"] = sys.version.split()[0]
 
     # Get git info
     try:
         result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            capture_output=True, text=True, timeout=5
+            ["git", "branch", "--show-current"], capture_output=True, text=True, timeout=5
         )
         if result.returncode == 0:
             metadata["git_branch"] = result.stdout.strip()
 
         result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=5
+            ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=5
         )
         if result.returncode == 0:
             metadata["git_commit"] = result.stdout.strip()
 
         result = subprocess.run(
-            ["git", "status", "--porcelain"],
-            capture_output=True, text=True, timeout=5
+            ["git", "status", "--porcelain"], capture_output=True, text=True, timeout=5
         )
         if result.returncode == 0:
             metadata["git_dirty"] = bool(result.stdout.strip())
@@ -1712,11 +1718,7 @@ MODEL_PRICING = {
 }
 
 
-def estimate_cost(
-    tokens_in: int,
-    tokens_out: int,
-    model: str = "default"
-) -> Dict[str, float]:
+def estimate_cost(tokens_in: int, tokens_out: int, model: str = "default") -> Dict[str, float]:
     """Estimate cost based on token usage.
 
     Args:

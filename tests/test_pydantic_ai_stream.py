@@ -1,4 +1,3 @@
-
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 
@@ -8,22 +7,25 @@ pytest.importorskip("pydantic_ai")
 from lctl.integrations.pydantic_ai import trace_agent
 from lctl.core.session import LCTLSession
 
+
 # Mock classes to simulate PydanticAI streaming
 class MockUsage:
     def __init__(self, req, resp):
         self.request_tokens = req
         self.response_tokens = resp
 
+
 class MockStreamResult:
     def __init__(self, text_chunks):
         self.text_chunks = text_chunks
-    
+
     async def stream_text(self, *args, **kwargs):
         for chunk in self.text_chunks:
             yield chunk
 
     def usage(self):
         return MockUsage(10, 20)
+
 
 class AsyncContextManagerMock:
     def __init__(self, return_value):
@@ -35,12 +37,13 @@ class AsyncContextManagerMock:
     async def __aexit__(self, exc_type, exc_value, traceback):
         pass
 
+
 @pytest.mark.asyncio
 async def test_trace_agent_run_stream():
     # Setup
     mock_agent = MagicMock()
     mock_agent.name = "test_agent"
-    
+
     # Mock run_stream to return our mock result context
     mock_result = MockStreamResult(["Hello", " ", "World"])
     mock_agent.run_stream.return_value = AsyncContextManagerMock(mock_result)
@@ -50,7 +53,7 @@ async def test_trace_agent_run_stream():
     # Mock session methods to verify calls
     session.step_start = MagicMock()
     session.step_end = MagicMock()
-    
+
     traced_agent = trace_agent(mock_agent, session=session)
 
     # Execute
@@ -61,18 +64,13 @@ async def test_trace_agent_run_stream():
 
     # Verify
     assert "".join(chunks) == "Hello World"
-    
+
     # Check start called
     session.step_start.assert_called_with(
-        agent="test_agent",
-        intent="run_stream",
-        input_summary="High five"
+        agent="test_agent", intent="run_stream", input_summary="High five"
     )
-    
+
     # Check end called with usage
     session.step_end.assert_called_with(
-        outcome="success",
-        output_summary="Hello World",
-        tokens_in=10,
-        tokens_out=20
+        outcome="success", output_summary="Hello World", tokens_in=10, tokens_out=20
     )

@@ -87,13 +87,13 @@ Everything is an immutable event. The event stream is the source of truth.
 from lctl.core.events import EventType
 
 # Standard event types
-EventType.STEP_START      # Agent begins work
-EventType.STEP_END        # Agent completes (with duration, tokens)
-EventType.FACT_ADDED      # New fact registered (id, text, confidence)
-EventType.FACT_MODIFIED   # Fact updated (confidence change, text change)
-EventType.TOOL_CALL       # Tool invocation (tool name, input, output)
-EventType.ERROR           # Failure occurred (category, type, message)
-EventType.CHECKPOINT      # State snapshot for fast replay
+EventType.STEP_START  # Agent begins work
+EventType.STEP_END  # Agent completes (with duration, tokens)
+EventType.FACT_ADDED  # New fact registered (id, text, confidence)
+EventType.FACT_MODIFIED  # Fact updated (confidence change, text change)
+EventType.TOOL_CALL  # Tool invocation (tool name, input, output)
+EventType.ERROR  # Failure occurred (category, type, message)
+EventType.CHECKPOINT  # State snapshot for fast replay
 ```
 
 ### Chain
@@ -134,13 +134,13 @@ from lctl.core.events import ReplayEngine
 
 engine = ReplayEngine(chain)
 state = engine.replay_to(target_seq=10)  # State at event 10
-state = engine.replay_all()               # Final state
+state = engine.replay_all()  # Final state
 
 # Analysis methods
-trace = engine.get_trace()                # Step-level execution flow
-bottlenecks = engine.find_bottlenecks()   # Performance analysis
-diffs = engine.diff(other_engine)         # Compare two chains
-timeline = engine.get_confidence_timeline() # Fact confidence over time
+trace = engine.get_trace()  # Step-level execution flow
+bottlenecks = engine.find_bottlenecks()  # Performance analysis
+diffs = engine.diff(other_engine)  # Compare two chains
+timeline = engine.get_confidence_timeline()  # Fact confidence over time
 ```
 
 ### LCTLSession
@@ -308,6 +308,7 @@ All integrations use one of two base class patterns from `lctl.integrations.base
 ```python
 from lctl.integrations.base import BaseTracer, IntegrationNotAvailableError
 
+
 class LCTLMyTracer(BaseTracer):
     """Tracer that can directly inherit from BaseTracer."""
 
@@ -328,6 +329,7 @@ class LCTLMyTracer(BaseTracer):
 **Pattern B: TracerDelegate composition** (for callback-based integrations)
 ```python
 from lctl.integrations.base import TracerDelegate
+
 
 class LCTLCallbackHandler(FrameworkBaseCallback):
     """Callback handler that must extend framework class, uses composition."""
@@ -392,7 +394,7 @@ Summaries should be truncated for readability:
 def _truncate(text: str, max_length: int = 200) -> str:
     if len(text) <= max_length:
         return text
-    return text[:max_length - 3] + "..."
+    return text[: max_length - 3] + "..."
 ```
 
 ## Testing Guide
@@ -413,6 +415,7 @@ def base_timestamp() -> datetime:
     """Fixed timestamp for reproducible tests."""
     return datetime(2025, 1, 15, 10, 0, 0)
 
+
 @pytest.fixture
 def sample_chain(sample_events) -> Chain:
     """Chain with standard test events."""
@@ -420,6 +423,7 @@ def sample_chain(sample_events) -> Chain:
     for event in sample_events:
         chain.add_event(event)
     return chain
+
 
 @pytest.fixture
 def temp_chain_file(sample_chain, tmp_path) -> Path:
@@ -439,11 +443,13 @@ def test_replay_to_seq(sample_chain):
     assert len(state.facts) == 1
     assert state.facts["F1"]["confidence"] == 0.9
 
+
 # Test CLI commands
 def test_replay_command(runner, temp_chain_file):
     result = runner.invoke(cli, ["replay", str(temp_chain_file)])
     assert result.exit_code == 0
     assert "Replaying" in result.output
+
 
 # Test error handling
 def test_invalid_file(runner, tmp_path):
@@ -469,14 +475,17 @@ from .base import BaseTracer, IntegrationNotAvailableError, truncate
 
 try:
     from newframework import Agent, Runner
+
     NEWFRAMEWORK_AVAILABLE = True
 except ImportError:
     NEWFRAMEWORK_AVAILABLE = False
     Agent = None
     Runner = None
 
+
 def is_available() -> bool:
     return NEWFRAMEWORK_AVAILABLE
+
 
 class LCTLNewFrameworkTracer(BaseTracer):
     def __init__(
@@ -508,6 +517,7 @@ class LCTLNewFrameworkTracer(BaseTracer):
         self.session.step_end(agent_name, outcome="success")
         self._maybe_cleanup()  # Periodic cleanup
 
+
 __all__ = ["NEWFRAMEWORK_AVAILABLE", "LCTLNewFrameworkTracer", "is_available"]
 ```
 
@@ -515,12 +525,15 @@ __all__ = ["NEWFRAMEWORK_AVAILABLE", "LCTLNewFrameworkTracer", "is_available"]
 ```python
 from .base import TracerDelegate, IntegrationNotAvailableError
 
+
 class LCTLNewFrameworkCallback(FrameworkBaseCallback):
     def __init__(self, chain_id=None, session=None, *, auto_cleanup=True, cleanup_interval=3600.0):
         super().__init__()  # Framework's __init__
         self._tracer = TracerDelegate(
-            chain_id=chain_id, session=session,
-            auto_cleanup=auto_cleanup, cleanup_interval=cleanup_interval,
+            chain_id=chain_id,
+            session=session,
+            auto_cleanup=auto_cleanup,
+            cleanup_interval=cleanup_interval,
         )
 
     @property
@@ -659,6 +672,7 @@ def newcommand(chain_file: str, option: str):
 ```python
 # Check if integration is available
 from lctl.integrations import langchain_available
+
 if langchain_available():
     from lctl.integrations.langchain import LCTLCallbackHandler
 ```

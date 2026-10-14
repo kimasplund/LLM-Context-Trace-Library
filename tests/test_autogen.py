@@ -88,12 +88,10 @@ class TestLCTLAutogenCallbackBasics:
 
     def test_callback_creation(self, mock_autogen):
         """Test basic callback creation."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -104,12 +102,10 @@ class TestLCTLAutogenCallbackBasics:
 
     def test_callback_creation_with_chain_id(self, mock_autogen):
         """Test callback creation with custom chain ID."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -118,12 +114,10 @@ class TestLCTLAutogenCallbackBasics:
 
     def test_callback_creation_with_existing_session(self, mock_autogen):
         """Test callback creation with existing session."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -138,12 +132,10 @@ class TestLCTLAutogenCallbackAttach:
 
     def test_attach_agent(self, mock_autogen):
         """Test attaching callback to an agent."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -160,12 +152,10 @@ class TestLCTLAutogenCallbackAttach:
 
     def test_attach_agent_twice_no_duplicate(self, mock_autogen):
         """Test that attaching same agent twice doesn't duplicate hooks."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -180,12 +170,10 @@ class TestLCTLAutogenCallbackAttach:
 
     def test_attach_records_fact(self, mock_autogen):
         """Test that attaching agent records a fact."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -194,9 +182,7 @@ class TestLCTLAutogenCallbackAttach:
 
             callback.attach(agent)
 
-            fact_events = [
-                e for e in callback.chain.events if e.type == EventType.FACT_ADDED
-            ]
+            fact_events = [e for e in callback.chain.events if e.type == EventType.FACT_ADDED]
             assert len(fact_events) == 1
             assert "my_agent" in fact_events[0].data["text"]
 
@@ -206,12 +192,10 @@ class TestLCTLAutogenCallbackDetach:
 
     def test_detach_all_clears_agents(self, mock_autogen):
         """Test detach_all clears attached agents."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -229,12 +213,10 @@ class TestLCTLAutogenCallbackDetach:
 
     def test_detach_all_clears_active_steps(self, mock_autogen):
         """Test detach_all clears active steps tracking."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -247,12 +229,10 @@ class TestLCTLAutogenCallbackDetach:
 
     def test_detach_all_clears_conversation_stack(self, mock_autogen):
         """Test detach_all clears conversation stack."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -273,14 +253,11 @@ class TestLCTLAutogenCallbackGroupChat:
 
     def test_attach_group_chat(self, mock_autogen):
         """Test attaching callback to a GroupChat."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
-        ), patch(
-            "lctl.integrations.autogen.GroupChat", MockGroupChat
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
+            patch("lctl.integrations.autogen.GroupChat", MockGroupChat),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -295,27 +272,19 @@ class TestLCTLAutogenCallbackGroupChat:
             assert agent1 in callback._attached_agents
             assert agent2 in callback._attached_agents
 
-            fact_events = [
-                e for e in callback.chain.events if e.type == EventType.FACT_ADDED
-            ]
-            config_fact = [
-                e for e in fact_events if "groupchat-config" in e.data.get("id", "")
-            ]
+            fact_events = [e for e in callback.chain.events if e.type == EventType.FACT_ADDED]
+            config_fact = [e for e in fact_events if "groupchat-config" in e.data.get("id", "")]
             assert len(config_fact) == 1
             assert "2 agents" in config_fact[0].data["text"]
 
     def test_attach_group_chat_with_manager(self, mock_autogen):
         """Test attaching GroupChat with manager."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
-        ), patch(
-            "lctl.integrations.autogen.GroupChat", MockGroupChat
-        ), patch(
-            "lctl.integrations.autogen.GroupChatManager", MockGroupChatManager
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
+            patch("lctl.integrations.autogen.GroupChat", MockGroupChat),
+            patch("lctl.integrations.autogen.GroupChatManager", MockGroupChatManager),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -336,12 +305,10 @@ class TestLCTLAutogenCallbackNestedChats:
 
     def test_start_nested_chat(self, mock_autogen):
         """Test starting a nested chat."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -352,21 +319,17 @@ class TestLCTLAutogenCallbackNestedChats:
             assert callback._nested_depth == 1
             assert len(callback._conversation_stack) == 1
 
-            step_starts = [
-                e for e in callback.chain.events if e.type == EventType.STEP_START
-            ]
+            step_starts = [e for e in callback.chain.events if e.type == EventType.STEP_START]
             assert len(step_starts) == 1
             assert step_starts[0].agent == "parent_agent"
             assert step_starts[0].data["intent"] == "start_nested_chat"
 
     def test_end_nested_chat(self, mock_autogen):
         """Test ending a nested chat."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -378,20 +341,16 @@ class TestLCTLAutogenCallbackNestedChats:
             assert callback._nested_depth == 0
             assert len(callback._conversation_stack) == 0
 
-            step_ends = [
-                e for e in callback.chain.events if e.type == EventType.STEP_END
-            ]
+            step_ends = [e for e in callback.chain.events if e.type == EventType.STEP_END]
             assert len(step_ends) == 1
             assert step_ends[0].data["outcome"] == "success"
 
     def test_nested_chat_depth_tracking(self, mock_autogen):
         """Test nested chat depth is tracked correctly."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -411,12 +370,10 @@ class TestLCTLAutogenCallbackNestedChats:
 
     def test_end_nested_chat_without_start(self, mock_autogen):
         """Test ending nested chat without start is safe."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -432,12 +389,10 @@ class TestLCTLAutogenCallbackToolTracking:
 
     def test_record_tool_result(self, mock_autogen):
         """Test recording a tool result uses session.tool_call()."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -450,9 +405,7 @@ class TestLCTLAutogenCallbackToolTracking:
                 agent="math_agent",
             )
 
-            tool_events = [
-                e for e in callback.chain.events if e.type == EventType.TOOL_CALL
-            ]
+            tool_events = [e for e in callback.chain.events if e.type == EventType.TOOL_CALL]
             assert len(tool_events) == 1
             assert tool_events[0].data["tool"] == "calculator"
             assert "42" in tool_events[0].data["output"]
@@ -464,12 +417,10 @@ class TestLCTLAutogenCallbackErrorHandling:
 
     def test_record_error(self, mock_autogen):
         """Test recording an error."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -481,9 +432,7 @@ class TestLCTLAutogenCallbackErrorHandling:
                 recoverable=True,
             )
 
-            error_events = [
-                e for e in callback.chain.events if e.type == EventType.ERROR
-            ]
+            error_events = [e for e in callback.chain.events if e.type == EventType.ERROR]
             assert len(error_events) == 1
             assert error_events[0].data["type"] == "ValueError"
             assert error_events[0].data["message"] == "Test error"
@@ -495,12 +444,10 @@ class TestLCTLAutogenCallbackExport:
 
     def test_export_json(self, tmp_path: Path, mock_autogen):
         """Test exporting callback to JSON file."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -518,12 +465,10 @@ class TestLCTLAutogenCallbackExport:
 
     def test_to_dict(self, mock_autogen):
         """Test to_dict returns chain dictionary."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -539,12 +484,10 @@ class TestLCTLAutogenCallbackHooks:
 
     def test_before_send_hook_creates_events(self, mock_autogen):
         """Test that before_send hook creates appropriate events."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -562,21 +505,17 @@ class TestLCTLAutogenCallbackHooks:
 
             assert result == message
 
-            step_starts = [
-                e for e in callback.chain.events if e.type == EventType.STEP_START
-            ]
+            step_starts = [e for e in callback.chain.events if e.type == EventType.STEP_START]
 
             send_starts = [s for s in step_starts if s.data.get("intent") == "send_message"]
             assert len(send_starts) >= 1
 
     def test_before_send_hook_with_tool_call(self, mock_autogen):
         """Test that before_send hook handles tool calls."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -601,20 +540,16 @@ class TestLCTLAutogenCallbackHooks:
 
             hooks[0](agent, message, recipient, False)
 
-            tool_events = [
-                e for e in callback.chain.events if e.type == EventType.TOOL_CALL
-            ]
+            tool_events = [e for e in callback.chain.events if e.type == EventType.TOOL_CALL]
             assert len(tool_events) == 1
             assert tool_events[0].data["tool"] == "calculator"
 
     def test_before_reply_hook_processes_messages(self, mock_autogen):
         """Test that before_reply hook processes messages."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -634,22 +569,16 @@ class TestLCTLAutogenCallbackHooks:
 
             assert result == messages
 
-            step_starts = [
-                e for e in callback.chain.events if e.type == EventType.STEP_START
-            ]
-            reply_starts = [
-                s for s in step_starts if s.data.get("intent") == "generate_reply"
-            ]
+            step_starts = [e for e in callback.chain.events if e.type == EventType.STEP_START]
+            reply_starts = [s for s in step_starts if s.data.get("intent") == "generate_reply"]
             assert len(reply_starts) >= 1
 
     def test_after_reply_hook_ends_step(self, mock_autogen):
         """Test that after_reply hook properly ends the step started by before_reply."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -670,12 +599,8 @@ class TestLCTLAutogenCallbackHooks:
 
             assert "responder-generate_reply" not in callback._active_steps
 
-            step_ends = [
-                e for e in callback.chain.events if e.type == EventType.STEP_END
-            ]
-            reply_ends = [
-                e for e in step_ends if e.agent == "responder"
-            ]
+            step_ends = [e for e in callback.chain.events if e.type == EventType.STEP_END]
+            reply_ends = [e for e in step_ends if e.agent == "responder"]
             assert len(reply_ends) >= 1
             assert reply_ends[-1].data["outcome"] == "success"
 
@@ -741,9 +666,7 @@ class TestHelperFunctions:
         """Test extract_message_content with dict containing list content."""
         from lctl.integrations.autogen import _extract_message_content
 
-        result = _extract_message_content(
-            {"content": [{"text": "Part 1"}, {"text": "Part 2"}]}
-        )
+        result = _extract_message_content({"content": [{"text": "Part 1"}, {"text": "Part 2"}]})
         assert "Part 1" in result
         assert "Part 2" in result
 
@@ -779,12 +702,10 @@ class TestTraceAgentFunction:
 
     def test_trace_agent_returns_callback(self, mock_autogen):
         """Test trace_agent returns a callback."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import trace_agent
 
@@ -796,12 +717,10 @@ class TestTraceAgentFunction:
 
     def test_trace_agent_with_chain_id(self, mock_autogen):
         """Test trace_agent with custom chain ID."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import trace_agent
 
@@ -816,14 +735,11 @@ class TestTraceGroupChatFunction:
 
     def test_trace_group_chat_returns_callback(self, mock_autogen):
         """Test trace_group_chat returns a callback."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
-        ), patch(
-            "lctl.integrations.autogen.GroupChat", MockGroupChat
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
+            patch("lctl.integrations.autogen.GroupChat", MockGroupChat),
         ):
             from lctl.integrations.autogen import trace_group_chat
 
@@ -839,16 +755,12 @@ class TestTraceGroupChatFunction:
 
     def test_trace_group_chat_with_manager(self, mock_autogen):
         """Test trace_group_chat with manager."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
-        ), patch(
-            "lctl.integrations.autogen.GroupChat", MockGroupChat
-        ), patch(
-            "lctl.integrations.autogen.GroupChatManager", MockGroupChatManager
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
+            patch("lctl.integrations.autogen.GroupChat", MockGroupChat),
+            patch("lctl.integrations.autogen.GroupChatManager", MockGroupChatManager),
         ):
             from lctl.integrations.autogen import trace_group_chat
 
@@ -866,12 +778,10 @@ class TestIntegration:
 
     def test_full_workflow(self, tmp_path: Path, mock_autogen):
         """Test complete workflow: create, attach, record, export."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 
@@ -900,12 +810,10 @@ class TestIntegration:
 
     def test_nested_workflow(self, mock_autogen):
         """Test workflow with nested conversations."""
-        with patch(
-            "lctl.integrations.autogen.AUTOGEN_AVAILABLE", True
-        ), patch(
-            "lctl.integrations.autogen.AUTOGEN_MODE", "legacy"
-        ), patch(
-            "lctl.integrations.autogen.ConversableAgent", MockAgent
+        with (
+            patch("lctl.integrations.autogen.AUTOGEN_AVAILABLE", True),
+            patch("lctl.integrations.autogen.AUTOGEN_MODE", "legacy"),
+            patch("lctl.integrations.autogen.ConversableAgent", MockAgent),
         ):
             from lctl.integrations.autogen import LCTLAutogenCallback
 

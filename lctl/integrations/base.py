@@ -27,7 +27,7 @@ def truncate(text: str, max_length: int = 200) -> str:
         return text
     if max_length < 4:
         return text[:max_length]
-    return text[:max_length - 3] + "..."
+    return text[: max_length - 3] + "..."
 
 
 def check_availability(module_name: str, import_check: callable) -> bool:
@@ -53,9 +53,7 @@ class IntegrationNotAvailableError(ImportError):
     def __init__(self, framework: str, install_hint: str):
         self.framework = framework
         self.install_hint = install_hint
-        super().__init__(
-            f"{framework} is not installed. Install with: {install_hint}"
-        )
+        super().__init__(f"{framework} is not installed. Install with: {install_hint}")
 
 
 class BaseTracer(ABC):
@@ -74,7 +72,7 @@ class BaseTracer(ABC):
         session: Optional[LCTLSession] = None,
         *,
         auto_cleanup: bool = True,
-        cleanup_interval: float = 3600.0
+        cleanup_interval: float = 3600.0,
     ):
         """Initialize the tracer.
 
@@ -138,10 +136,7 @@ class BaseTracer(ABC):
         self._last_cleanup = now
 
         with self._lock:
-            stale = [
-                key for key, ts in self._tracked_items.items()
-                if now - ts > max_age_seconds
-            ]
+            stale = [key for key, ts in self._tracked_items.items() if now - ts > max_age_seconds]
             for key in stale:
                 del self._tracked_items[key]
             return len(stale)
@@ -188,7 +183,7 @@ class TracerDelegate:
         session: Optional[LCTLSession] = None,
         *,
         auto_cleanup: bool = True,
-        cleanup_interval: float = 3600.0
+        cleanup_interval: float = 3600.0,
     ):
         """Initialize the delegate.
 
@@ -247,10 +242,7 @@ class TracerDelegate:
         self._last_cleanup = now
 
         with self._lock:
-            stale = [
-                key for key, ts in self._tracked_items.items()
-                if now - ts > max_age_seconds
-            ]
+            stale = [key for key, ts in self._tracked_items.items() if now - ts > max_age_seconds]
             for key in stale:
                 del self._tracked_items[key]
             return len(stale)

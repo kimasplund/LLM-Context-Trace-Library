@@ -56,13 +56,13 @@ class ChainMetrics:
                     "tokens_out": 0,
                     "error_count": 0,
                     "fact_count": 0,
-                    "tool_calls": 0
+                    "tool_calls": 0,
                 }
 
             agent_stats[agent]["event_count"] += 1
 
             # Normalize event type
-            event_type = event.type.value if hasattr(event.type, 'value') else event.type
+            event_type = event.type.value if hasattr(event.type, "value") else event.type
 
             if event_type == "step_end":
                 agent_stats[agent]["duration_ms"] += event.data.get("duration_ms", 0)
@@ -88,14 +88,9 @@ class ChainMetrics:
         confidences = [f.get("confidence", 1.0) for f in state.facts.values()]
         avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
 
-        token_efficiency = (
-            total_tokens / (total_duration / 1000) if total_duration > 0 else 0.0
-        )
+        token_efficiency = total_tokens / (total_duration / 1000) if total_duration > 0 else 0.0
 
-        error_rate = (
-            state.metrics["error_count"] / len(chain.events)
-            if chain.events else 0.0
-        )
+        error_rate = state.metrics["error_count"] / len(chain.events) if chain.events else 0.0
 
         return cls(
             chain_id=chain.id,
@@ -171,8 +166,9 @@ class MetricComparison:
         """
         difference = value_b - value_a
         percent_change = (
-            (difference / value_a * 100) if value_a != 0 else
-            (float("inf") if difference > 0 else (float("-inf") if difference < 0 else 0.0))
+            (difference / value_a * 100)
+            if value_a != 0
+            else (float("inf") if difference > 0 else (float("-inf") if difference < 0 else 0.0))
         )
 
         if difference == 0:
@@ -216,9 +212,7 @@ def compute_latency_diff(metrics_a: ChainMetrics, metrics_b: ChainMetrics) -> Me
     )
 
 
-def compute_token_efficiency(
-    metrics_a: ChainMetrics, metrics_b: ChainMetrics
-) -> MetricComparison:
+def compute_token_efficiency(metrics_a: ChainMetrics, metrics_b: ChainMetrics) -> MetricComparison:
     """Compute token efficiency difference between two chains.
 
     Higher efficiency (tokens per second) is better.

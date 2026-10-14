@@ -27,6 +27,7 @@ from lctl.core.session import LCTLSession
 # Mock classes to simulate Semantic Kernel types
 class MockKernelFunction:
     """Mock for semantic_kernel.functions.kernel_function.KernelFunction"""
+
     def __init__(self, name: str = "test_func", plugin_name: str = "TestPlugin"):
         self.name = name
         self.plugin_name = plugin_name
@@ -34,11 +35,9 @@ class MockKernelFunction:
 
 class MockFunctionInvocationContext:
     """Mock for semantic_kernel.filters.FunctionInvocationContext"""
+
     def __init__(
-        self,
-        function: MockKernelFunction = None,
-        arguments: dict = None,
-        result: Any = None
+        self, function: MockKernelFunction = None, arguments: dict = None, result: Any = None
     ):
         self.function = function or MockKernelFunction()
         self.arguments = arguments or {"arg1": "value1"}
@@ -47,17 +46,15 @@ class MockFunctionInvocationContext:
 
 class MockPromptRenderContext:
     """Mock for semantic_kernel.filters.PromptRenderContext"""
-    def __init__(
-        self,
-        function: MockKernelFunction = None,
-        rendered_prompt: str = None
-    ):
+
+    def __init__(self, function: MockKernelFunction = None, rendered_prompt: str = None):
         self.function = function or MockKernelFunction()
         self.rendered_prompt = rendered_prompt
 
 
 class MockFunctionResult:
     """Mock for function result with optional metadata"""
+
     def __init__(self, value: Any = "test_result", metadata: dict = None):
         self.value = value
         self.metadata = metadata
@@ -65,6 +62,7 @@ class MockFunctionResult:
 
 class MockUsage:
     """Mock for token usage object"""
+
     def __init__(self, prompt_tokens: int = 10, completion_tokens: int = 20):
         self.prompt_tokens = prompt_tokens
         self.completion_tokens = completion_tokens
@@ -72,6 +70,7 @@ class MockUsage:
 
 class MockKernel:
     """Mock for semantic_kernel.kernel.Kernel"""
+
     def __init__(self):
         self._filters = {}
 
@@ -83,6 +82,7 @@ class MockKernel:
 
 class MockFilterTypes:
     """Mock for semantic_kernel.filters.FilterTypes enum"""
+
     FUNCTION_INVOCATION = "function_invocation"
     PROMPT_RENDERING = "prompt_rendering"
 
@@ -102,11 +102,10 @@ class MockedLCTLSemanticKernelTracer:
         verbose: bool = False,
     ):
         from lctl.integrations.base import truncate
+
         self._truncate = truncate
         self._lock = threading.Lock()
-        self.session = session or LCTLSession(
-            chain_id=chain_id or f"sk-{id(self)}"
-        )
+        self.session = session or LCTLSession(chain_id=chain_id or f"sk-{id(self)}")
         self._verbose = verbose
         self._traced_kernels: set = set()
 
@@ -147,7 +146,7 @@ class MockedLCTLSemanticKernelTracer:
                     fact_id=f"prompt-{full_name}-{hash(context.rendered_prompt)}",
                     text=f"Rendered Prompt for {full_name}: {context.rendered_prompt}",
                     confidence=1.0,
-                    source="sk-prompt-filter"
+                    source="sk-prompt-filter",
                 )
             except Exception:
                 pass
@@ -162,9 +161,7 @@ class MockedLCTLSemanticKernelTracer:
 
         try:
             self.session.step_start(
-                agent=full_name,
-                intent="execute_function",
-                input_summary=input_summary
+                agent=full_name, intent="execute_function", input_summary=input_summary
             )
         except Exception:
             pass
@@ -199,12 +196,16 @@ class MockedLCTLSemanticKernelTracer:
                                     if hasattr(usage, "prompt_tokens"):
                                         tokens_in = usage.prompt_tokens
                                     elif isinstance(usage, dict):
-                                        tokens_in = usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0)
+                                        tokens_in = usage.get("prompt_tokens", 0) or usage.get(
+                                            "input_tokens", 0
+                                        )
 
                                     if hasattr(usage, "completion_tokens"):
                                         tokens_out = usage.completion_tokens
                                     elif isinstance(usage, dict):
-                                        tokens_out = usage.get("completion_tokens", 0) or usage.get("output_tokens", 0)
+                                        tokens_out = usage.get("completion_tokens", 0) or usage.get(
+                                            "output_tokens", 0
+                                        )
 
                             yield chunk
 
@@ -217,7 +218,7 @@ class MockedLCTLSemanticKernelTracer:
                                 output_summary=self._truncate(accumulated_content),
                                 duration_ms=duration_ms,
                                 tokens_in=tokens_in,
-                                tokens_out=tokens_out
+                                tokens_out=tokens_out,
                             )
                         except Exception:
                             pass
@@ -229,16 +230,14 @@ class MockedLCTLSemanticKernelTracer:
                                 category="execution_error",
                                 error_type=type(e).__name__,
                                 message=str(e),
-                                recoverable=False
+                                recoverable=False,
                             )
                         except Exception:
                             pass
                         duration_ms = int((time.time() - stream_start_time) * 1000)
                         try:
                             self.session.step_end(
-                                agent=full_name,
-                                outcome="error",
-                                duration_ms=duration_ms
+                                agent=full_name, outcome="error", duration_ms=duration_ms
                             )
                         except Exception:
                             pass
@@ -254,7 +253,7 @@ class MockedLCTLSemanticKernelTracer:
                                     output_summary=self._truncate(accumulated_content),
                                     duration_ms=duration_ms,
                                     tokens_in=tokens_in,
-                                    tokens_out=tokens_out
+                                    tokens_out=tokens_out,
                                 )
                             except Exception:
                                 pass
@@ -279,7 +278,9 @@ class MockedLCTLSemanticKernelTracer:
                     if hasattr(usage, "completion_tokens"):
                         tokens_out = usage.completion_tokens
                     elif isinstance(usage, dict):
-                        tokens_out = usage.get("completion_tokens", 0) or usage.get("output_tokens", 0)
+                        tokens_out = usage.get("completion_tokens", 0) or usage.get(
+                            "output_tokens", 0
+                        )
 
             try:
                 self.session.step_end(
@@ -288,7 +289,7 @@ class MockedLCTLSemanticKernelTracer:
                     output_summary=output_summary,
                     duration_ms=duration_ms,
                     tokens_in=tokens_in,
-                    tokens_out=tokens_out
+                    tokens_out=tokens_out,
                 )
             except Exception:
                 pass
@@ -300,16 +301,12 @@ class MockedLCTLSemanticKernelTracer:
                     category="execution_error",
                     error_type=type(e).__name__,
                     message=str(e),
-                    recoverable=False
+                    recoverable=False,
                 )
             except Exception:
                 pass
             try:
-                self.session.step_end(
-                    agent=full_name,
-                    outcome="error",
-                    duration_ms=duration_ms
-                )
+                self.session.step_end(agent=full_name, outcome="error", duration_ms=duration_ms)
             except Exception:
                 pass
             raise
@@ -319,7 +316,7 @@ class MockedLCTLSemanticKernelTracer:
 @pytest.fixture
 def mock_sk_not_available():
     """Patch SK_AVAILABLE to False"""
-    with patch('lctl.integrations.semantic_kernel.SK_AVAILABLE', False):
+    with patch("lctl.integrations.semantic_kernel.SK_AVAILABLE", False):
         yield
 
 
@@ -339,18 +336,21 @@ def session():
 # Test: is_available() function
 # ============================================================================
 
+
 class TestIsAvailable:
     """Tests for the is_available() function"""
 
     def test_is_available_returns_bool(self):
         """Test is_available returns a boolean"""
         from lctl.integrations.semantic_kernel import is_available
+
         result = is_available()
         assert isinstance(result, bool)
 
     def test_is_available_when_sk_not_installed(self, mock_sk_not_available):
         """Test is_available returns False when SK is not installed"""
         from lctl.integrations.semantic_kernel import is_available
+
         assert is_available() == False
 
 
@@ -358,12 +358,14 @@ class TestIsAvailable:
 # Test: SemanticKernelNotAvailableError
 # ============================================================================
 
+
 class TestSemanticKernelNotAvailableError:
     """Tests for the custom exception class"""
 
     def test_error_message(self):
         """Test error has correct message"""
         from lctl.integrations.semantic_kernel import SemanticKernelNotAvailableError
+
         error = SemanticKernelNotAvailableError()
         assert "Semantic Kernel is not installed" in str(error)
         assert "pip install semantic-kernel" in str(error)
@@ -371,6 +373,7 @@ class TestSemanticKernelNotAvailableError:
     def test_error_is_import_error(self):
         """Test error inherits from ImportError"""
         from lctl.integrations.semantic_kernel import SemanticKernelNotAvailableError
+
         error = SemanticKernelNotAvailableError()
         assert isinstance(error, ImportError)
 
@@ -379,6 +382,7 @@ class TestSemanticKernelNotAvailableError:
 # Test: _check_sk_available() function
 # ============================================================================
 
+
 class TestCheckSkAvailable:
     """Tests for the _check_sk_available helper function"""
 
@@ -386,8 +390,9 @@ class TestCheckSkAvailable:
         """Test raises SemanticKernelNotAvailableError when SK not installed"""
         from lctl.integrations.semantic_kernel import (
             _check_sk_available,
-            SemanticKernelNotAvailableError
+            SemanticKernelNotAvailableError,
         )
+
         with pytest.raises(SemanticKernelNotAvailableError):
             _check_sk_available()
 
@@ -395,6 +400,7 @@ class TestCheckSkAvailable:
 # ============================================================================
 # Test: MockedLCTLSemanticKernelTracer (tests the tracer logic)
 # ============================================================================
+
 
 class TestMockedTracerInit:
     """Tests for mocked tracer initialization"""
@@ -438,6 +444,7 @@ class TestMockedTracerInit:
 # Test: Tracer properties
 # ============================================================================
 
+
 class TestTracerProperties:
     """Tests for tracer properties"""
 
@@ -453,6 +460,7 @@ class TestTracerProperties:
 # ============================================================================
 # Test: Tracer export methods
 # ============================================================================
+
 
 class TestTracerExport:
     """Tests for export methods"""
@@ -479,6 +487,7 @@ class TestTracerExport:
 # ============================================================================
 # Test: trace_kernel() method
 # ============================================================================
+
 
 class TestTraceKernel:
     """Tests for trace_kernel method"""
@@ -534,6 +543,7 @@ class TestTraceKernel:
 # ============================================================================
 # Test: Function invocation filter
 # ============================================================================
+
 
 class TestFunctionInvocationFilter:
     """Tests for _function_invocation_filter"""
@@ -700,7 +710,7 @@ class TestFunctionInvocationFilter:
         next_func = AsyncMock()
 
         # Make step_start raise an exception
-        with patch.object(tracer.session, 'step_start', side_effect=Exception("Tracing failed")):
+        with patch.object(tracer.session, "step_start", side_effect=Exception("Tracing failed")):
             # Should not raise - continues execution
             await tracer._function_invocation_filter(context, next_func)
 
@@ -715,7 +725,7 @@ class TestFunctionInvocationFilter:
         next_func = AsyncMock()
 
         # Make step_end raise an exception
-        with patch.object(tracer.session, 'step_end', side_effect=Exception("Tracing failed")):
+        with patch.object(tracer.session, "step_end", side_effect=Exception("Tracing failed")):
             # Should not raise
             await tracer._function_invocation_filter(context, next_func)
 
@@ -724,12 +734,14 @@ class TestFunctionInvocationFilter:
 # Test: Streaming response handling
 # ============================================================================
 
+
 class TestStreamingResponseHandling:
     """Tests for streaming response handling in function invocation filter"""
 
     @pytest.mark.asyncio
     async def test_streaming_response_detected(self, tracer):
         """Test filter detects streaming response"""
+
         # Create an async generator
         async def mock_stream():
             yield "chunk1"
@@ -777,6 +789,7 @@ class TestStreamingResponseHandling:
     @pytest.mark.asyncio
     async def test_streaming_response_records_step_end_after_completion(self, tracer):
         """Test streaming records STEP_END after stream completes"""
+
         async def mock_stream():
             yield "chunk1"
             yield "chunk2"
@@ -807,6 +820,7 @@ class TestStreamingResponseHandling:
     @pytest.mark.asyncio
     async def test_streaming_response_handles_error(self, tracer):
         """Test streaming handles errors during iteration"""
+
         async def mock_stream():
             yield "chunk1"
             raise RuntimeError("Stream error")
@@ -838,6 +852,7 @@ class TestStreamingResponseHandling:
     @pytest.mark.asyncio
     async def test_streaming_extracts_usage_from_chunks(self, tracer):
         """Test streaming extracts token usage from chunk metadata"""
+
         class MockChunk:
             def __init__(self, content, metadata=None):
                 self.content = content
@@ -849,9 +864,9 @@ class TestStreamingResponseHandling:
         async def mock_stream():
             yield MockChunk("chunk1")
             # Final chunk has usage info
-            yield MockChunk("chunk2", metadata={
-                "usage": {"prompt_tokens": 50, "completion_tokens": 30}
-            })
+            yield MockChunk(
+                "chunk2", metadata={"usage": {"prompt_tokens": 50, "completion_tokens": 30}}
+            )
 
         stream_result = MockFunctionResult()
         stream_result.value = mock_stream()
@@ -876,6 +891,7 @@ class TestStreamingResponseHandling:
     @pytest.mark.asyncio
     async def test_streaming_extracts_usage_from_object_attributes(self, tracer):
         """Test streaming extracts token usage from objects with attributes"""
+
         class MockUsageObj:
             def __init__(self):
                 self.prompt_tokens = 60
@@ -914,6 +930,7 @@ class TestStreamingResponseHandling:
 # ============================================================================
 # Test: Prompt render filter
 # ============================================================================
+
 
 class TestPromptRenderFilter:
     """Tests for _prompt_render_filter"""
@@ -989,7 +1006,7 @@ class TestPromptRenderFilter:
         next_func = AsyncMock()
 
         # Make add_fact raise an exception
-        with patch.object(tracer.session, 'add_fact', side_effect=Exception("Tracing failed")):
+        with patch.object(tracer.session, "add_fact", side_effect=Exception("Tracing failed")):
             # Should not raise
             await tracer._prompt_render_filter(context, next_func)
 
@@ -1000,6 +1017,7 @@ class TestPromptRenderFilter:
 # ============================================================================
 # Test: Module exports (__all__)
 # ============================================================================
+
 
 class TestModuleExports:
     """Tests for module exports"""
@@ -1017,6 +1035,7 @@ class TestModuleExports:
 # ============================================================================
 # Test: Session management
 # ============================================================================
+
 
 class TestSessionManagement:
     """Tests for session management in tracer"""
@@ -1052,6 +1071,7 @@ class TestSessionManagement:
 # Test: Thread safety
 # ============================================================================
 
+
 class TestThreadSafety:
     """Tests for thread-safe operations"""
 
@@ -1075,13 +1095,14 @@ class TestThreadSafety:
 
     def test_lock_attribute_exists(self, tracer):
         """Test tracer has a lock attribute"""
-        assert hasattr(tracer, '_lock')
+        assert hasattr(tracer, "_lock")
         assert isinstance(tracer._lock, type(threading.Lock()))
 
 
 # ============================================================================
 # Test: Edge cases
 # ============================================================================
+
 
 class TestEdgeCases:
     """Tests for edge cases and boundary conditions"""
@@ -1163,6 +1184,7 @@ class TestEdgeCases:
 # Test: Real module integration tests (when SK_AVAILABLE is False)
 # ============================================================================
 
+
 class TestRealModuleWhenSKNotInstalled:
     """Tests that verify behavior of real module when SK is not installed"""
 
@@ -1170,17 +1192,20 @@ class TestRealModuleWhenSKNotInstalled:
         """Test that real tracer raises when SK unavailable"""
         from lctl.integrations.semantic_kernel import (
             LCTLSemanticKernelTracer,
-            SemanticKernelNotAvailableError
+            SemanticKernelNotAvailableError,
         )
+
         with pytest.raises(SemanticKernelNotAvailableError):
             LCTLSemanticKernelTracer()
 
     def test_sk_available_constant(self):
         """Test SK_AVAILABLE constant is accessible"""
         from lctl.integrations.semantic_kernel import SK_AVAILABLE
+
         assert isinstance(SK_AVAILABLE, bool)
 
     def test_is_available_function_returns_sk_available(self):
         """Test is_available returns SK_AVAILABLE value"""
         from lctl.integrations.semantic_kernel import SK_AVAILABLE, is_available
+
         assert is_available() == SK_AVAILABLE

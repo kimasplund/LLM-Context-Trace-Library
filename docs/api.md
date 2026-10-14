@@ -54,6 +54,7 @@ LCTL (LLM Context Trace Library) provides event sourcing and time-travel debuggi
 ```python
 # Zero-config auto-instrumentation
 import lctl
+
 lctl.auto_instrument()
 
 # Manual session
@@ -162,13 +163,15 @@ Create an Event from a dictionary.
 - `ValueError`: If required fields are missing or invalid.
 
 ```python
-event = Event.from_dict({
-    "seq": 1,
-    "type": "step_start",
-    "timestamp": "2026-01-11T10:30:00+00:00",
-    "agent": "analyzer",
-    "data": {"intent": "analyze"}
-})
+event = Event.from_dict(
+    {
+        "seq": 1,
+        "type": "step_start",
+        "timestamp": "2026-01-11T10:30:00+00:00",
+        "agent": "analyzer",
+        "data": {"intent": "analyze"},
+    }
+)
 ```
 
 ---
@@ -254,6 +257,7 @@ Load a chain from a JSON or YAML file.
 
 ```python
 from pathlib import Path
+
 chain = Chain.load(Path("trace.lctl.json"))
 ```
 
@@ -297,7 +301,7 @@ Materialized state derived from replaying events. Represents the world state at 
     "total_tokens_in": 0,
     "total_tokens_out": 0,
     "event_count": 0,
-    "error_count": 0
+    "error_count": 0,
 }
 ```
 
@@ -506,7 +510,7 @@ session.step_end(
     output_summary="Analysis complete",
     duration_ms=1500,
     tokens_in=100,
-    tokens_out=250
+    tokens_out=250,
 )
 ```
 
@@ -527,7 +531,7 @@ session.add_fact(
     fact_id="F1",
     text="The code has a memory leak in function process_data()",
     confidence=0.85,
-    source="analyzer"
+    source="analyzer",
 )
 ```
 
@@ -544,11 +548,7 @@ Modify an existing fact.
 **Returns**: Sequence number of the event.
 
 ```python
-session.modify_fact(
-    fact_id="F1",
-    confidence=0.95,
-    reason="Confirmed by second analyzer"
-)
+session.modify_fact(fact_id="F1", confidence=0.95, reason="Confirmed by second analyzer")
 ```
 
 ##### `tool_call(tool: str, input_data: Any, output_data: Any, duration_ms: int = 0) -> int`
@@ -568,7 +568,7 @@ session.tool_call(
     tool="web_search",
     input_data={"query": "Python memory leak detection"},
     output_data={"results": [...]},
-    duration_ms=500
+    duration_ms=500,
 )
 ```
 
@@ -591,7 +591,7 @@ session.error(
     error_type="RateLimitError",
     message="API rate limit exceeded",
     recoverable=True,
-    suggested_action="Wait 60 seconds and retry"
+    suggested_action="Wait 60 seconds and retry",
 )
 ```
 
@@ -695,7 +695,7 @@ from lctl.integrations.claude_code import (
     get_session_metadata,
     estimate_cost,
     MODEL_PRICING,
-    is_available
+    is_available,
 )
 ```
 
@@ -766,9 +766,7 @@ tracer = LCTLClaudeCodeTracer(chain_id="feature-impl")
 
 # Record agent workflow
 tracer.on_task_start(
-    agent_type="implementor",
-    description="Add authentication",
-    prompt="Implement JWT auth..."
+    agent_type="implementor", description="Add authentication", prompt="Implement JWT auth..."
 )
 
 tracer.on_tool_call("Write", {"file_path": "/auth.py"}, {"success": True})
@@ -779,7 +777,7 @@ tracer.on_task_complete(
     result="Implemented JWT auth",
     success=True,
     tokens_in=5000,
-    tokens_out=2000
+    tokens_out=2000,
 )
 
 # Export
@@ -893,12 +891,7 @@ MODEL_PRICING = {
 ### LangChain Integration
 
 ```python
-from lctl.integrations.langchain import (
-    LCTLCallbackHandler,
-    LCTLChain,
-    trace_chain,
-    is_available
-)
+from lctl.integrations.langchain import LCTLCallbackHandler, LCTLChain, trace_chain, is_available
 ```
 
 #### is_available() -> bool
@@ -962,10 +955,7 @@ from langchain_openai import ChatOpenAI
 handler = LCTLCallbackHandler(chain_id="my-chain")
 llm = ChatOpenAI()
 
-result = llm.invoke(
-    "Hello, how are you?",
-    config={"callbacks": [handler]}
-)
+result = llm.invoke("Hello, how are you?", config={"callbacks": [handler]})
 
 handler.export("langchain_trace.lctl.json")
 ```
@@ -1062,13 +1052,7 @@ traced.export("trace.lctl.json")
 ### CrewAI Integration
 
 ```python
-from lctl.integrations.crewai import (
-    LCTLAgent,
-    LCTLTask,
-    LCTLCrew,
-    trace_crew,
-    CREWAI_AVAILABLE
-)
+from lctl.integrations.crewai import LCTLAgent, LCTLTask, LCTLCrew, trace_crew, CREWAI_AVAILABLE
 ```
 
 #### LCTLAgent
@@ -1121,7 +1105,7 @@ researcher = LCTLAgent(
     role="Senior Researcher",
     goal="Research topics thoroughly",
     backstory="Expert researcher with years of experience",
-    verbose=True
+    verbose=True,
 )
 ```
 
@@ -1221,24 +1205,15 @@ LCTL's `kickoff_async` is fully awaitable and traces the entire async execution 
 ```python
 from lctl.integrations.crewai import LCTLAgent, LCTLTask, LCTLCrew
 
-researcher = LCTLAgent(
-    role="Researcher",
-    goal="Research topics",
-    backstory="Expert researcher"
-)
+researcher = LCTLAgent(role="Researcher", goal="Research topics", backstory="Expert researcher")
 
 task = LCTLTask(
     description="Research quantum computing",
     expected_output="Comprehensive report",
-    agent=researcher
+    agent=researcher,
 )
 
-crew = LCTLCrew(
-    agents=[researcher],
-    tasks=[task],
-    verbose=True,
-    chain_id="research-crew"
-)
+crew = LCTLCrew(agents=[researcher], tasks=[task], verbose=True, chain_id="research-crew")
 
 result = crew.kickoff()
 crew.export_trace("research_trace.lctl.json")
@@ -1295,7 +1270,7 @@ from lctl.integrations.autogen import (
     LCTLGroupChatManager,
     trace_agent,
     trace_group_chat,
-    is_available
+    is_available,
 )
 ```
 
@@ -1436,10 +1411,7 @@ from autogen import GroupChat
 from lctl.integrations.autogen import LCTLGroupChatManager
 
 group_chat = GroupChat(agents=[agent1, agent2], messages=[], max_round=10)
-manager = LCTLGroupChatManager(
-    groupchat=group_chat,
-    chain_id="group-discussion"
-)
+manager = LCTLGroupChatManager(groupchat=group_chat, chain_id="group-discussion")
 
 agent1.initiate_chat(manager.manager, message="Let's discuss")
 manager.export_trace("groupchat.lctl.json")
@@ -1508,7 +1480,7 @@ from lctl.integrations.openai_agents import (
     LCTLRunHooks,
     TracedAgent,
     trace_agent,
-    is_available
+    is_available,
 )
 ```
 
@@ -1594,11 +1566,7 @@ tracer = LCTLOpenAIAgentTracer(chain_id="my-agent")
 agent = Agent(name="assistant", instructions="You are helpful")
 
 # Use with Runner
-result = await Runner.run(
-    agent,
-    input="Hello",
-    run_config=tracer.run_config
-)
+result = await Runner.run(agent, input="Hello", run_config=tracer.run_config)
 
 tracer.export("openai_agent_trace.lctl.json")
 ```
@@ -1739,11 +1707,7 @@ with tracer.trace_agent_run("my_agent", "Process data") as ctx:
 LCTL provides automatic tracing for PydanticAI agents. It wraps the agent instance and intercepts both the high-level run execution and intermediate tool calls, providing a detailed trace of the agent's thought process.
 
 ```python
-from lctl.integrations.pydantic_ai import (
-    LCTLPydanticAITracer,
-    TracedAgent,
-    trace_agent
-)
+from lctl.integrations.pydantic_ai import LCTLPydanticAITracer, TracedAgent, trace_agent
 ```
 
 #### trace_agent
@@ -1775,7 +1739,7 @@ trace_agent(
 from pydantic_ai import Agent
 from lctl.integrations.pydantic_ai import trace_agent
 
-agent = Agent('openai:gpt-4o')
+agent = Agent("openai:gpt-4o")
 traced = trace_agent(agent, chain_id="my-agent")
 result = await traced.run("Hello")
 traced.tracer.export("trace.lctl.json")
@@ -1868,6 +1832,7 @@ app = create_app(working_dir=Path("/traces"))
 
 # Use with any ASGI server
 import uvicorn
+
 uvicorn.run(app, host="0.0.0.0", port=8080)
 ```
 
@@ -1900,12 +1865,7 @@ run_dashboard(
 from pathlib import Path
 from lctl.dashboard import run_dashboard
 
-run_dashboard(
-    host="localhost",
-    port=8000,
-    working_dir=Path("./traces"),
-    reload=True
-)
+run_dashboard(host="localhost", port=8000, working_dir=Path("./traces"), reload=True)
 ```
 
 ---
@@ -2036,6 +1996,7 @@ These functions are available at the `lctl` package level.
 
 ```python
 import lctl
+
 session = lctl.auto_instrument()
 ```
 

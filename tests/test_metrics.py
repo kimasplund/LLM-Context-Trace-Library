@@ -380,7 +380,9 @@ class TestMetricsAggregator:
     """Tests for MetricsAggregator."""
 
     @pytest.fixture
-    def multiple_metrics(self, sample_chain: Chain, sample_chain_with_errors: Chain) -> List[CollectedMetrics]:
+    def multiple_metrics(
+        self, sample_chain: Chain, sample_chain_with_errors: Chain
+    ) -> List[CollectedMetrics]:
         """Create metrics from multiple chains."""
         collector = MetricsCollector()
         return [
@@ -600,20 +602,24 @@ class TestEdgeCases:
     def test_chain_with_only_errors(self, base_timestamp: datetime):
         """Test chain containing only error events."""
         chain = Chain(id="errors-only")
-        chain.add_event(Event(
-            seq=1,
-            type=EventType.ERROR,
-            timestamp=base_timestamp,
-            agent="agent1",
-            data={"type": "Error1", "recoverable": False}
-        ))
-        chain.add_event(Event(
-            seq=2,
-            type=EventType.ERROR,
-            timestamp=base_timestamp + timedelta(milliseconds=100),
-            agent="agent2",
-            data={"type": "Error2", "recoverable": True}
-        ))
+        chain.add_event(
+            Event(
+                seq=1,
+                type=EventType.ERROR,
+                timestamp=base_timestamp,
+                agent="agent1",
+                data={"type": "Error1", "recoverable": False},
+            )
+        )
+        chain.add_event(
+            Event(
+                seq=2,
+                type=EventType.ERROR,
+                timestamp=base_timestamp + timedelta(milliseconds=100),
+                agent="agent2",
+                data={"type": "Error2", "recoverable": True},
+            )
+        )
 
         collector = MetricsCollector()
         metrics = collector.collect_from_chain(chain)
@@ -626,20 +632,24 @@ class TestEdgeCases:
     def test_chain_with_only_facts(self, base_timestamp: datetime):
         """Test chain containing only fact events."""
         chain = Chain(id="facts-only")
-        chain.add_event(Event(
-            seq=1,
-            type=EventType.FACT_ADDED,
-            timestamp=base_timestamp,
-            agent="agent1",
-            data={"id": "F1", "text": "Fact 1", "confidence": 0.8}
-        ))
-        chain.add_event(Event(
-            seq=2,
-            type=EventType.FACT_ADDED,
-            timestamp=base_timestamp + timedelta(milliseconds=100),
-            agent="agent2",
-            data={"id": "F2", "text": "Fact 2", "confidence": 0.9}
-        ))
+        chain.add_event(
+            Event(
+                seq=1,
+                type=EventType.FACT_ADDED,
+                timestamp=base_timestamp,
+                agent="agent1",
+                data={"id": "F1", "text": "Fact 1", "confidence": 0.8},
+            )
+        )
+        chain.add_event(
+            Event(
+                seq=2,
+                type=EventType.FACT_ADDED,
+                timestamp=base_timestamp + timedelta(milliseconds=100),
+                agent="agent2",
+                data={"id": "F2", "text": "Fact 2", "confidence": 0.9},
+            )
+        )
 
         collector = MetricsCollector()
         metrics = collector.collect_from_chain(chain)
@@ -651,20 +661,24 @@ class TestEdgeCases:
     def test_chain_with_system_agent(self, base_timestamp: datetime):
         """Test that system agent is handled correctly."""
         chain = Chain(id="system-chain")
-        chain.add_event(Event(
-            seq=1,
-            type=EventType.CHECKPOINT,
-            timestamp=base_timestamp,
-            agent="system",
-            data={"state_hash": "abc123"}
-        ))
-        chain.add_event(Event(
-            seq=2,
-            type=EventType.STEP_START,
-            timestamp=base_timestamp + timedelta(milliseconds=100),
-            agent="agent1",
-            data={"intent": "process"}
-        ))
+        chain.add_event(
+            Event(
+                seq=1,
+                type=EventType.CHECKPOINT,
+                timestamp=base_timestamp,
+                agent="system",
+                data={"state_hash": "abc123"},
+            )
+        )
+        chain.add_event(
+            Event(
+                seq=2,
+                type=EventType.STEP_START,
+                timestamp=base_timestamp + timedelta(milliseconds=100),
+                agent="agent1",
+                data={"intent": "process"},
+            )
+        )
 
         collector = MetricsCollector()
         metrics = collector.collect_from_chain(chain)
@@ -676,20 +690,24 @@ class TestEdgeCases:
     def test_step_without_tokens(self, base_timestamp: datetime):
         """Test step end without token information."""
         chain = Chain(id="no-tokens")
-        chain.add_event(Event(
-            seq=1,
-            type=EventType.STEP_START,
-            timestamp=base_timestamp,
-            agent="agent1",
-            data={"intent": "process"}
-        ))
-        chain.add_event(Event(
-            seq=2,
-            type=EventType.STEP_END,
-            timestamp=base_timestamp + timedelta(milliseconds=100),
-            agent="agent1",
-            data={"outcome": "success", "duration_ms": 100}
-        ))
+        chain.add_event(
+            Event(
+                seq=1,
+                type=EventType.STEP_START,
+                timestamp=base_timestamp,
+                agent="agent1",
+                data={"intent": "process"},
+            )
+        )
+        chain.add_event(
+            Event(
+                seq=2,
+                type=EventType.STEP_END,
+                timestamp=base_timestamp + timedelta(milliseconds=100),
+                agent="agent1",
+                data={"outcome": "success", "duration_ms": 100},
+            )
+        )
 
         collector = MetricsCollector()
         metrics = collector.collect_from_chain(chain)
@@ -700,13 +718,15 @@ class TestEdgeCases:
     def test_fact_without_id(self, base_timestamp: datetime):
         """Test fact event without id field."""
         chain = Chain(id="no-fact-id")
-        chain.add_event(Event(
-            seq=1,
-            type=EventType.FACT_ADDED,
-            timestamp=base_timestamp,
-            agent="agent1",
-            data={"text": "Orphan fact", "confidence": 0.5}
-        ))
+        chain.add_event(
+            Event(
+                seq=1,
+                type=EventType.FACT_ADDED,
+                timestamp=base_timestamp,
+                agent="agent1",
+                data={"text": "Orphan fact", "confidence": 0.5},
+            )
+        )
 
         collector = MetricsCollector()
         metrics = collector.collect_from_chain(chain)
@@ -717,14 +737,34 @@ class TestEdgeCases:
         """Test multiple handoffs between same agent pair."""
         chain = Chain(id="multi-handoff")
         events = [
-            Event(seq=1, type=EventType.STEP_START, timestamp=base_timestamp,
-                  agent="agent1", data={"intent": "step1"}),
-            Event(seq=2, type=EventType.STEP_START, timestamp=base_timestamp + timedelta(milliseconds=100),
-                  agent="agent2", data={"intent": "step2"}),
-            Event(seq=3, type=EventType.STEP_START, timestamp=base_timestamp + timedelta(milliseconds=200),
-                  agent="agent1", data={"intent": "step3"}),
-            Event(seq=4, type=EventType.STEP_START, timestamp=base_timestamp + timedelta(milliseconds=300),
-                  agent="agent2", data={"intent": "step4"}),
+            Event(
+                seq=1,
+                type=EventType.STEP_START,
+                timestamp=base_timestamp,
+                agent="agent1",
+                data={"intent": "step1"},
+            ),
+            Event(
+                seq=2,
+                type=EventType.STEP_START,
+                timestamp=base_timestamp + timedelta(milliseconds=100),
+                agent="agent2",
+                data={"intent": "step2"},
+            ),
+            Event(
+                seq=3,
+                type=EventType.STEP_START,
+                timestamp=base_timestamp + timedelta(milliseconds=200),
+                agent="agent1",
+                data={"intent": "step3"},
+            ),
+            Event(
+                seq=4,
+                type=EventType.STEP_START,
+                timestamp=base_timestamp + timedelta(milliseconds=300),
+                agent="agent2",
+                data={"intent": "step4"},
+            ),
         ]
         for e in events:
             chain.add_event(e)
@@ -742,14 +782,24 @@ class TestEdgeCases:
 
         for i in range(10):
             chain = Chain(id=f"chain-{i}")
-            chain.add_event(Event(
-                seq=1, type=EventType.STEP_START, timestamp=base_timestamp,
-                agent="agent1", data={"intent": "step"}
-            ))
-            chain.add_event(Event(
-                seq=2, type=EventType.STEP_END, timestamp=base_timestamp + timedelta(milliseconds=100),
-                agent="agent1", data={"outcome": "success", "duration_ms": (i + 1) * 100}
-            ))
+            chain.add_event(
+                Event(
+                    seq=1,
+                    type=EventType.STEP_START,
+                    timestamp=base_timestamp,
+                    agent="agent1",
+                    data={"intent": "step"},
+                )
+            )
+            chain.add_event(
+                Event(
+                    seq=2,
+                    type=EventType.STEP_END,
+                    timestamp=base_timestamp + timedelta(milliseconds=100),
+                    agent="agent1",
+                    data={"outcome": "success", "duration_ms": (i + 1) * 100},
+                )
+            )
             chains.append(chain)
 
         collector = MetricsCollector()
@@ -778,7 +828,9 @@ class TestIntegration:
         export_prometheus(metrics, prom_path)
         assert prom_path.exists()
 
-    def test_full_workflow(self, sample_chain: Chain, sample_chain_with_errors: Chain, tmp_path: Path):
+    def test_full_workflow(
+        self, sample_chain: Chain, sample_chain_with_errors: Chain, tmp_path: Path
+    ):
         """Test full metrics workflow: collect, aggregate, export."""
         collector = MetricsCollector()
 

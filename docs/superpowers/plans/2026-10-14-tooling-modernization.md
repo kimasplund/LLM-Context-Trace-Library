@@ -788,16 +788,26 @@ No new files. This proves spec §5 criteria 1–8. Criterion 9 (CI green on the 
 
 ```python
 """Print the public surface of LCTL's packages as sorted JSON (acceptance check 5)."""
+
 import importlib
 import json
 import sys
 
-MODULES = ["lctl", "lctl.core", "lctl.integrations", "lctl.streaming", "lctl.metrics", "lctl.evaluation"]
+MODULES = [
+    "lctl",
+    "lctl.core",
+    "lctl.integrations",
+    "lctl.streaming",
+    "lctl.metrics",
+    "lctl.evaluation",
+]
 out = {}
 for name in MODULES:
     mod = importlib.import_module(name)
     names = getattr(mod, "__all__", None)
-    out[name] = sorted(names) if names is not None else sorted(n for n in dir(mod) if not n.startswith("_"))
+    out[name] = (
+        sorted(names) if names is not None else sorted(n for n in dir(mod) if not n.startswith("_"))
+    )
 json.dump(out, sys.stdout, indent=1, sort_keys=True)
 print()
 ```

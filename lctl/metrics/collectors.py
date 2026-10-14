@@ -112,12 +112,8 @@ class AgentMetrics:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
-        handoff_pairs_str = {
-            f"{k[0]}->{k[1]}": v for k, v in self.handoff_pairs.items()
-        }
-        collaboration_graph_list = {
-            k: list(v) for k, v in self.collaboration_graph.items()
-        }
+        handoff_pairs_str = {f"{k[0]}->{k[1]}": v for k, v in self.handoff_pairs.items()}
+        collaboration_graph_list = {k: list(v) for k, v in self.collaboration_graph.items()}
         return {
             "steps_per_agent": self.steps_per_agent,
             "handoff_count": self.handoff_count,
@@ -178,9 +174,7 @@ class CollectedMetrics:
             "chain_id": self.chain_id,
             "total_events": self.total_events,
             "collection_timestamp": (
-                self.collection_timestamp.isoformat()
-                if self.collection_timestamp
-                else None
+                self.collection_timestamp.isoformat() if self.collection_timestamp else None
             ),
             "latency": self.latency.to_dict(),
             "tokens": self.tokens.to_dict(),

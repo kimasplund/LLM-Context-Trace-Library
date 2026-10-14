@@ -125,9 +125,7 @@ class DSPyNotAvailableError(ImportError):
     """Raised when DSPy is not installed."""
 
     def __init__(self) -> None:
-        super().__init__(
-            "DSPy is not installed. Install with: pip install dspy-ai"
-        )
+        super().__init__("DSPy is not installed. Install with: pip install dspy-ai")
 
 
 def _check_dspy_available() -> None:
@@ -208,7 +206,8 @@ class LCTLDSPyCallback(BaseTracer):
         now = time.time()
         with self._lock:
             stale_ids = [
-                module_id for module_id, info in self._active_modules.items()
+                module_id
+                for module_id, info in self._active_modules.items()
                 if now - info.get("start_time", now) > max_age_seconds
             ]
             for module_id in stale_ids:
@@ -684,7 +683,7 @@ def _wrap_module_class(module_class: type, callback: LCTLDSPyCallback) -> type:
         {
             "forward": traced_forward,
             "_lctl_callback": callback,
-        }
+        },
     )
 
     return traced_class
@@ -937,9 +936,7 @@ class LCTLDSPyTeleprompter:
             best_score: Best score so far.
             metrics: Additional metrics.
         """
-        self._callback.on_optimization_iteration(
-            iteration, score, best_score, metrics
-        )
+        self._callback.on_optimization_iteration(iteration, score, best_score, metrics)
 
     def export(self, path: str) -> None:
         """Export the LCTL trace to a file."""

@@ -29,10 +29,19 @@ class TestEventType:
     def test_all_event_types_defined(self):
         """Verify all expected event types exist."""
         expected_types = {
-            "step_start", "step_end", "fact_added", "fact_modified",
-            "tool_call", "error", "checkpoint", "stream_start",
-            "stream_chunk", "stream_end", "contract_validation", "model_routing",
-            "llm_trace"
+            "step_start",
+            "step_end",
+            "fact_added",
+            "fact_modified",
+            "tool_call",
+            "error",
+            "checkpoint",
+            "stream_start",
+            "stream_chunk",
+            "stream_end",
+            "contract_validation",
+            "model_routing",
+            "llm_trace",
         }
         actual_types = {e.value for e in EventType}
         assert expected_types == actual_types
@@ -48,7 +57,7 @@ class TestEvent:
             type=EventType.STEP_START,
             timestamp=base_timestamp,
             agent="test_agent",
-            data={"key": "value"}
+            data={"key": "value"},
         )
         assert event.seq == 1
         assert event.type == EventType.STEP_START
@@ -59,10 +68,7 @@ class TestEvent:
     def test_event_creation_with_default_data(self, base_timestamp: datetime):
         """Test event creation with default empty data."""
         event = Event(
-            seq=1,
-            type=EventType.STEP_START,
-            timestamp=base_timestamp,
-            agent="test_agent"
+            seq=1, type=EventType.STEP_START, timestamp=base_timestamp, agent="test_agent"
         )
         assert event.data == {}
 
@@ -73,7 +79,7 @@ class TestEvent:
             type=EventType.FACT_ADDED,
             timestamp=base_timestamp,
             agent="analyzer",
-            data={"id": "F1", "text": "test fact", "confidence": 0.9}
+            data={"id": "F1", "text": "test fact", "confidence": 0.9},
         )
         result = event.to_dict()
 
@@ -91,7 +97,7 @@ class TestEvent:
             "type": "tool_call",
             "timestamp": base_timestamp.isoformat(),
             "agent": "tool_user",
-            "data": {"tool": "search", "input": "query"}
+            "data": {"tool": "search", "input": "query"},
         }
         event = Event.from_dict(data)
 
@@ -107,7 +113,7 @@ class TestEvent:
             "seq": 1,
             "type": "step_start",
             "timestamp": base_timestamp.isoformat(),
-            "agent": "agent1"
+            "agent": "agent1",
         }
         event = Event.from_dict(data)
         assert event.data == {}
@@ -119,7 +125,7 @@ class TestEvent:
             "type": "custom_event",
             "timestamp": base_timestamp.isoformat(),
             "agent": "agent1",
-            "data": {}
+            "data": {},
         }
         event = Event.from_dict(data)
         assert event.type == "custom_event"
@@ -131,7 +137,7 @@ class TestEvent:
             type=EventType.ERROR,
             timestamp=base_timestamp,
             agent="error_handler",
-            data={"category": "validation", "message": "test error"}
+            data={"category": "validation", "message": "test error"},
         )
         restored = Event.from_dict(original.to_dict())
 
@@ -160,12 +166,7 @@ class TestChain:
     def test_add_event(self, base_timestamp: datetime):
         """Test adding events to chain."""
         chain = Chain(id="test")
-        event = Event(
-            seq=1,
-            type=EventType.STEP_START,
-            timestamp=base_timestamp,
-            agent="agent1"
-        )
+        event = Event(seq=1, type=EventType.STEP_START, timestamp=base_timestamp, agent="agent1")
         chain.add_event(event)
 
         assert len(chain.events) == 1
@@ -190,9 +191,9 @@ class TestChain:
                     "type": "step_start",
                     "timestamp": "2025-01-15T10:00:00",
                     "agent": "agent1",
-                    "data": {}
+                    "data": {},
                 }
-            ]
+            ],
         }
         chain = Chain.from_dict(data)
 
@@ -304,7 +305,7 @@ class TestState:
             type=EventType.STEP_START,
             timestamp=base_timestamp,
             agent="planner",
-            data={"intent": "plan"}
+            data={"intent": "plan"},
         )
         state.apply_event(event)
 
@@ -320,11 +321,7 @@ class TestState:
             type=EventType.STEP_END,
             timestamp=base_timestamp,
             agent="planner",
-            data={
-                "outcome": "success",
-                "duration_ms": 500,
-                "tokens": {"input": 100, "output": 50}
-            }
+            data={"outcome": "success", "duration_ms": 500, "tokens": {"input": 100, "output": 50}},
         )
         state.apply_event(event)
 
@@ -340,11 +337,7 @@ class TestState:
             type=EventType.STEP_END,
             timestamp=base_timestamp,
             agent="planner",
-            data={
-                "outcome": "success",
-                "duration_ms": 300,
-                "tokens": {"in": 80, "out": 40}
-            }
+            data={"outcome": "success", "duration_ms": 300, "tokens": {"in": 80, "out": 40}},
         )
         state.apply_event(event)
 
@@ -359,7 +352,7 @@ class TestState:
             type=EventType.FACT_ADDED,
             timestamp=base_timestamp,
             agent="analyzer",
-            data={"id": "F1", "text": "Test fact", "confidence": 0.85, "source": "analyzer"}
+            data={"id": "F1", "text": "Test fact", "confidence": 0.85, "source": "analyzer"},
         )
         state.apply_event(event)
 
@@ -377,7 +370,7 @@ class TestState:
             type=EventType.FACT_ADDED,
             timestamp=base_timestamp,
             agent="analyzer",
-            data={"text": "Test fact", "confidence": 0.85}
+            data={"text": "Test fact", "confidence": 0.85},
         )
         state.apply_event(event)
 
@@ -393,7 +386,7 @@ class TestState:
             type=EventType.FACT_MODIFIED,
             timestamp=base_timestamp,
             agent="verifier",
-            data={"id": "F1", "confidence": 0.9, "reason": "verified", "text": "Updated"}
+            data={"id": "F1", "confidence": 0.9, "reason": "verified", "text": "Updated"},
         )
         state.apply_event(event)
 
@@ -410,7 +403,7 @@ class TestState:
             type=EventType.FACT_MODIFIED,
             timestamp=base_timestamp,
             agent="verifier",
-            data={"id": "F_NONEXISTENT", "confidence": 0.9}
+            data={"id": "F_NONEXISTENT", "confidence": 0.9},
         )
         state.apply_event(event)
 
@@ -428,8 +421,8 @@ class TestState:
                 "category": "validation",
                 "type": "ValueError",
                 "message": "Invalid input",
-                "recoverable": True
-            }
+                "recoverable": True,
+            },
         )
         state.apply_event(event)
 
@@ -448,7 +441,7 @@ class TestState:
             type=EventType.TOOL_CALL,
             timestamp=base_timestamp,
             agent="tool_user",
-            data={"tool": "search", "duration_ms": 150}
+            data={"tool": "search", "duration_ms": 150},
         )
         state.apply_event(event)
 
@@ -509,11 +502,19 @@ class TestReplayEngine:
 
     def test_replay_uses_cache(self, replay_engine: ReplayEngine):
         """Test that replay engine caches intermediate states."""
-        replay_engine._state_cache.put(3, State(
-            facts={"CACHED": {"text": "cached", "confidence": 1.0}},
-            metrics={"event_count": 3, "total_duration_ms": 0,
-                     "total_tokens_in": 0, "total_tokens_out": 0, "error_count": 0}
-        ))
+        replay_engine._state_cache.put(
+            3,
+            State(
+                facts={"CACHED": {"text": "cached", "confidence": 1.0}},
+                metrics={
+                    "event_count": 3,
+                    "total_duration_ms": 0,
+                    "total_tokens_in": 0,
+                    "total_tokens_out": 0,
+                    "error_count": 0,
+                },
+            ),
+        )
         state = replay_engine.replay_to(5)
 
         assert "CACHED" in state.facts
@@ -542,9 +543,7 @@ class TestReplayEngine:
         diffs = engine1.diff(engine2)
         assert diffs == []
 
-    def test_diff_divergent_chains(
-        self, sample_chain: Chain, divergent_chain: Chain
-    ):
+    def test_diff_divergent_chains(self, sample_chain: Chain, divergent_chain: Chain):
         """Test diffing divergent chains."""
         engine1 = ReplayEngine(sample_chain)
         engine2 = ReplayEngine(divergent_chain)
@@ -642,13 +641,15 @@ class TestEdgeCases:
     def test_chain_with_no_step_events(self, base_timestamp: datetime):
         """Test chain containing only fact events."""
         chain = Chain(id="facts-only")
-        chain.add_event(Event(
-            seq=1,
-            type=EventType.FACT_ADDED,
-            timestamp=base_timestamp,
-            agent="agent1",
-            data={"id": "F1", "text": "fact1", "confidence": 1.0}
-        ))
+        chain.add_event(
+            Event(
+                seq=1,
+                type=EventType.FACT_ADDED,
+                timestamp=base_timestamp,
+                agent="agent1",
+                data={"id": "F1", "text": "fact1", "confidence": 1.0},
+            )
+        )
 
         engine = ReplayEngine(chain)
         state = engine.replay_all()
@@ -664,7 +665,7 @@ class TestEdgeCases:
             type=EventType.STEP_END,
             timestamp=base_timestamp,
             agent="agent1",
-            data={"outcome": "success"}
+            data={"outcome": "success"},
         )
         state.apply_event(event)
 
@@ -678,7 +679,7 @@ class TestEdgeCases:
             type=EventType.STEP_END,
             timestamp=base_timestamp,
             agent="agent1",
-            data={"outcome": "success", "duration_ms": 100}
+            data={"outcome": "success", "duration_ms": 100},
         )
         state.apply_event(event)
 
@@ -694,11 +695,7 @@ class TestEdgeCases:
         """Test error event with minimal data fields."""
         state = State()
         event = Event(
-            seq=1,
-            type=EventType.ERROR,
-            timestamp=base_timestamp,
-            agent="agent1",
-            data={}
+            seq=1, type=EventType.ERROR, timestamp=base_timestamp, agent="agent1", data={}
         )
         state.apply_event(event)
 
@@ -710,13 +707,15 @@ class TestEdgeCases:
         """Test performance with larger chain."""
         chain = Chain(id="large-chain")
         for i in range(1000):
-            chain.add_event(Event(
-                seq=i + 1,
-                type=EventType.FACT_ADDED,
-                timestamp=base_timestamp + timedelta(milliseconds=i),
-                agent=f"agent{i % 5}",
-                data={"id": f"F{i}", "text": f"Fact {i}", "confidence": 0.9}
-            ))
+            chain.add_event(
+                Event(
+                    seq=i + 1,
+                    type=EventType.FACT_ADDED,
+                    timestamp=base_timestamp + timedelta(milliseconds=i),
+                    agent=f"agent{i % 5}",
+                    data={"id": f"F{i}", "text": f"Fact {i}", "confidence": 0.9},
+                )
+            )
 
         engine = ReplayEngine(chain)
         state = engine.replay_all()

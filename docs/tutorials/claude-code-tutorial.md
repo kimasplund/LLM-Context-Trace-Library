@@ -350,11 +350,13 @@ tracer = LCTLClaudeCodeTracer.get_or_create()
 
 ```python
 # TodoWrite (task list updates)
-tracer.on_todo_write(todos=[
-    {"content": "Implement auth", "status": "completed"},
-    {"content": "Add tests", "status": "in_progress"},
-    {"content": "Deploy", "status": "pending"},
-])
+tracer.on_todo_write(
+    todos=[
+        {"content": "Implement auth", "status": "completed"},
+        {"content": "Add tests", "status": "in_progress"},
+        {"content": "Deploy", "status": "pending"},
+    ]
+)
 
 # Skill invocations
 tracer.on_skill_invoke(
@@ -520,11 +522,7 @@ LCTL includes accurate pricing for all Claude models:
 from lctl.integrations.claude_code import estimate_cost, MODEL_PRICING
 
 # Estimate cost
-cost = estimate_cost(
-    tokens_in=50000,
-    tokens_out=15000,
-    model="claude-sonnet-4"
-)
+cost = estimate_cost(tokens_in=50000, tokens_out=15000, model="claude-sonnet-4")
 
 print(f"Input: ${cost['input_cost']:.4f}")
 print(f"Output: ${cost['output_cost']:.4f}")

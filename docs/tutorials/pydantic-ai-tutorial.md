@@ -30,6 +30,7 @@ Verify that both LCTL and PydanticAI are properly installed:
 try:
     import pydantic_ai
     from lctl.integrations.pydantic_ai import trace_agent
+
     print("PydanticAI integration is ready!")
 except ImportError:
     print("Please install required packages: pip install lctl[pydantic-ai]")
@@ -53,23 +54,22 @@ import asyncio
 from pydantic_ai import Agent
 from lctl.integrations.pydantic_ai import trace_agent
 
+
 async def main():
     # 1. Create your PydanticAI agent
-    agent = Agent(
-        'openai:gpt-4o',
-        system_prompt='You are a helpful assistant.'
-    )
+    agent = Agent("openai:gpt-4o", system_prompt="You are a helpful assistant.")
 
     # 2. Wrap it with LCTL tracing
     traced_agent = trace_agent(agent, chain_id="basic-demo")
 
     # 3. Run normally
-    result = await traced_agent.run('What is the capital of Finland?')
-    
+    result = await traced_agent.run("What is the capital of Finland?")
+
     print(f"Result: {result.data}")
 
     # 4. Export the trace
     traced_agent.tracer.export("basic_trace.lctl.json")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -84,11 +84,9 @@ import asyncio
 from pydantic_ai import Agent, RunContext, tool
 from lctl.integrations.pydantic_ai import trace_agent
 
+
 async def main():
-    agent = Agent(
-        'openai:gpt-4o',
-        system_prompt='You supply weather information.'
-    )
+    agent = Agent("openai:gpt-4o", system_prompt="You supply weather information.")
 
     # Define a tool
     @agent.tool
@@ -100,10 +98,11 @@ async def main():
     traced = trace_agent(agent, chain_id="weather-agent")
 
     # Run query requiring tools
-    result = await traced.run('What is the weather in Helsinki?')
-    
+    result = await traced.run("What is the weather in Helsinki?")
+
     print(result.data)
     traced.export("tool_trace.lctl.json")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -119,27 +118,26 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 from lctl.integrations.pydantic_ai import trace_agent
 
+
 class CityInfo(BaseModel):
     name: str
     population: int
     country: str
 
+
 async def main():
-    agent = Agent(
-        'openai:gpt-4o',
-        result_type=CityInfo,
-        system_prompt='Extract city information.'
-    )
+    agent = Agent("openai:gpt-4o", result_type=CityInfo, system_prompt="Extract city information.")
 
     traced = trace_agent(agent, chain_id="structured-agent")
 
-    result = await traced.run('Tell me about Tokyo.')
-    
+    result = await traced.run("Tell me about Tokyo.")
+
     print(f"City: {result.data.name}")
     print(f"Population: {result.data.population}")
 
     # The trace will contain the JSON representation of the CityInfo object
     traced.export("structured_trace.lctl.json")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -154,15 +152,17 @@ import asyncio
 from pydantic_ai import Agent
 from lctl.integrations.pydantic_ai import trace_agent
 
+
 async def main():
-    agent = Agent('openai:gpt-4o')
+    agent = Agent("openai:gpt-4o")
     traced = trace_agent(agent, chain_id="streaming-demo")
 
-    async with traced.run_stream('Tell me a short story') as response:
+    async with traced.run_stream("Tell me a short story") as response:
         async for chunk in response.stream_text():
             print(chunk, end="", flush=True)
 
     traced.export("streaming_trace.lctl.json")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

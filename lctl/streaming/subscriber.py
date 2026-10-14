@@ -102,7 +102,7 @@ class FilteredSubscriber(EventSubscriber):
         event_types: Optional[List[str]] = None,
         chain_ids: Optional[List[str]] = None,
         lctl_event_types: Optional[List[str]] = None,
-        filter_fn: Optional[Callable[[StreamingEvent], bool]] = None
+        filter_fn: Optional[Callable[[StreamingEvent], bool]] = None,
     ):
         """Initialize the filtered subscriber.
 
@@ -231,7 +231,7 @@ class BufferedSubscriber(EventSubscriber):
         handler: Callable[[List[StreamingEvent]], None],
         max_size: int = 100,
         flush_interval: float = 5.0,
-        filter_fn: Optional[Callable[[StreamingEvent], bool]] = None
+        filter_fn: Optional[Callable[[StreamingEvent], bool]] = None,
     ):
         """Initialize the buffered subscriber.
 
@@ -337,7 +337,7 @@ class AsyncSubscriber(EventSubscriber):
         emitter: EventEmitter,
         handler: Callable[[StreamingEvent], Any],
         queue_size: int = 1000,
-        filter_fn: Optional[Callable[[StreamingEvent], bool]] = None
+        filter_fn: Optional[Callable[[StreamingEvent], bool]] = None,
     ):
         """Initialize the async subscriber.
 
@@ -406,10 +406,7 @@ class AsyncSubscriber(EventSubscriber):
         """Main processing loop."""
         while self._running:
             try:
-                event = await asyncio.wait_for(
-                    self._queue.get(),
-                    timeout=1.0
-                )
+                event = await asyncio.wait_for(self._queue.get(), timeout=1.0)
                 try:
                     result = self._handler(event)
                     if asyncio.iscoroutine(result):
@@ -438,12 +435,7 @@ class AsyncSubscriber(EventSubscriber):
         await self.start()
         return self
 
-    async def __aexit__(
-        self,
-        exc_type: Any,
-        exc_val: Any,
-        exc_tb: Any
-    ) -> None:
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Async context manager exit."""
         await self.stop()
 
@@ -451,6 +443,7 @@ class AsyncSubscriber(EventSubscriber):
 @dataclass
 class EventAggregation:
     """Aggregated event statistics."""
+
     count: int = 0
     first_timestamp: Optional[datetime] = None
     last_timestamp: Optional[datetime] = None
@@ -476,9 +469,7 @@ class AggregatingSubscriber(EventSubscriber):
     """
 
     def __init__(
-        self,
-        emitter: EventEmitter,
-        filter_fn: Optional[Callable[[StreamingEvent], bool]] = None
+        self, emitter: EventEmitter, filter_fn: Optional[Callable[[StreamingEvent], bool]] = None
     ):
         """Initialize the aggregating subscriber.
 
@@ -533,7 +524,7 @@ class AggregatingSubscriber(EventSubscriber):
                 last_timestamp=self._aggregation.last_timestamp,
                 events_by_type=dict(self._aggregation.events_by_type),
                 events_by_agent=dict(self._aggregation.events_by_agent),
-                chain_ids=set(self._aggregation.chain_ids)
+                chain_ids=set(self._aggregation.chain_ids),
             )
 
     def reset(self) -> None:

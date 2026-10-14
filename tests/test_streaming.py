@@ -34,7 +34,7 @@ class TestStreamingEvent:
             type=StreamingEventType.EVENT,
             timestamp=datetime.now(timezone.utc),
             chain_id="chain-1",
-            payload={"test": "data"}
+            payload={"test": "data"},
         )
 
         assert event.id == "test-id"
@@ -50,7 +50,7 @@ class TestStreamingEvent:
             type=StreamingEventType.EVENT,
             timestamp=ts,
             chain_id="chain-1",
-            payload={"test": "data"}
+            payload={"test": "data"},
         )
 
         d = event.to_dict()
@@ -67,7 +67,7 @@ class TestStreamingEvent:
             type=StreamingEventType.EVENT,
             timestamp=datetime.now(timezone.utc),
             chain_id="chain-1",
-            payload={}
+            payload={},
         )
 
         json_str = event.to_json()
@@ -82,7 +82,7 @@ class TestStreamingEvent:
             type=EventType.STEP_START,
             timestamp=datetime.now(timezone.utc),
             agent="test-agent",
-            data={"intent": "test"}
+            data={"intent": "test"},
         )
 
         streaming_event = StreamingEvent.from_lctl_event(lctl_event, "chain-1")
@@ -154,7 +154,7 @@ class TestEventEmitter:
             type=StreamingEventType.EVENT,
             timestamp=datetime.now(timezone.utc),
             chain_id=None,
-            payload={}
+            payload={},
         )
         emitter.emit(event)
 
@@ -204,7 +204,7 @@ class TestEventEmitter:
             type=StreamingEventType.EVENT,
             timestamp=datetime.now(timezone.utc),
             chain_id=None,
-            payload={}
+            payload={},
         )
 
         emitter.emit(event)
@@ -278,7 +278,7 @@ class TestEventEmitter:
             type=EventType.STEP_START,
             timestamp=datetime.now(timezone.utc),
             agent="test-agent",
-            data={"intent": "test"}
+            data={"intent": "test"},
         )
 
         emitter.emit_lctl_event(lctl_event)
@@ -296,7 +296,7 @@ class TestEventEmitter:
             type=EventType.STEP_START,
             timestamp=datetime.now(timezone.utc),
             agent="test-agent",
-            data={}
+            data={},
         )
 
         with pytest.raises(ValueError, match="chain_id must be set"):
@@ -365,19 +365,19 @@ class TestFilteredSubscriber:
         received = []
 
         subscriber = FilteredSubscriber(
-            emitter,
-            handler=lambda e: received.append(e),
-            event_types=["event"]
+            emitter, handler=lambda e: received.append(e), event_types=["event"]
         )
         subscriber.subscribe()
 
-        emitter.emit(StreamingEvent(
-            id="1",
-            type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
-            chain_id=None,
-            payload={}
-        ))
+        emitter.emit(
+            StreamingEvent(
+                id="1",
+                type=StreamingEventType.EVENT,
+                timestamp=datetime.now(timezone.utc),
+                chain_id=None,
+                payload={},
+            )
+        )
         emitter.emit(StreamingEvent.heartbeat())
 
         assert len(received) == 1
@@ -389,26 +389,28 @@ class TestFilteredSubscriber:
         received = []
 
         subscriber = FilteredSubscriber(
-            emitter,
-            handler=lambda e: received.append(e),
-            chain_ids=["chain-1"]
+            emitter, handler=lambda e: received.append(e), chain_ids=["chain-1"]
         )
         subscriber.subscribe()
 
-        emitter.emit(StreamingEvent(
-            id="1",
-            type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
-            chain_id="chain-1",
-            payload={}
-        ))
-        emitter.emit(StreamingEvent(
-            id="2",
-            type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
-            chain_id="chain-2",
-            payload={}
-        ))
+        emitter.emit(
+            StreamingEvent(
+                id="1",
+                type=StreamingEventType.EVENT,
+                timestamp=datetime.now(timezone.utc),
+                chain_id="chain-1",
+                payload={},
+            )
+        )
+        emitter.emit(
+            StreamingEvent(
+                id="2",
+                type=StreamingEventType.EVENT,
+                timestamp=datetime.now(timezone.utc),
+                chain_id="chain-2",
+                payload={},
+            )
+        )
 
         assert len(received) == 1
         assert received[0].chain_id == "chain-1"
@@ -419,26 +421,28 @@ class TestFilteredSubscriber:
         received = []
 
         subscriber = FilteredSubscriber(
-            emitter,
-            handler=lambda e: received.append(e),
-            lctl_event_types=["step_start"]
+            emitter, handler=lambda e: received.append(e), lctl_event_types=["step_start"]
         )
         subscriber.subscribe()
 
-        emitter.emit(StreamingEvent(
-            id="1",
-            type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
-            chain_id=None,
-            payload={"type": "step_start"}
-        ))
-        emitter.emit(StreamingEvent(
-            id="2",
-            type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
-            chain_id=None,
-            payload={"type": "step_end"}
-        ))
+        emitter.emit(
+            StreamingEvent(
+                id="1",
+                type=StreamingEventType.EVENT,
+                timestamp=datetime.now(timezone.utc),
+                chain_id=None,
+                payload={"type": "step_start"},
+            )
+        )
+        emitter.emit(
+            StreamingEvent(
+                id="2",
+                type=StreamingEventType.EVENT,
+                timestamp=datetime.now(timezone.utc),
+                chain_id=None,
+                payload={"type": "step_end"},
+            )
+        )
 
         assert len(received) == 1
         assert received[0].payload["type"] == "step_start"
@@ -451,24 +455,28 @@ class TestFilteredSubscriber:
         subscriber = FilteredSubscriber(
             emitter,
             handler=lambda e: received.append(e),
-            filter_fn=lambda e: e.payload.get("important", False)
+            filter_fn=lambda e: e.payload.get("important", False),
         )
         subscriber.subscribe()
 
-        emitter.emit(StreamingEvent(
-            id="1",
-            type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
-            chain_id=None,
-            payload={"important": True}
-        ))
-        emitter.emit(StreamingEvent(
-            id="2",
-            type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
-            chain_id=None,
-            payload={"important": False}
-        ))
+        emitter.emit(
+            StreamingEvent(
+                id="1",
+                type=StreamingEventType.EVENT,
+                timestamp=datetime.now(timezone.utc),
+                chain_id=None,
+                payload={"important": True},
+            )
+        )
+        emitter.emit(
+            StreamingEvent(
+                id="2",
+                type=StreamingEventType.EVENT,
+                timestamp=datetime.now(timezone.utc),
+                chain_id=None,
+                payload={"important": False},
+            )
+        )
 
         assert len(received) == 1
 
@@ -477,30 +485,31 @@ class TestFilteredSubscriber:
         emitter = EventEmitter()
         received = []
 
-        subscriber = FilteredSubscriber(
-            emitter,
-            handler=lambda e: received.append(e)
-        )
+        subscriber = FilteredSubscriber(emitter, handler=lambda e: received.append(e))
         subscriber.subscribe()
 
         subscriber.add_chain_id("chain-1")
-        emitter.emit(StreamingEvent(
-            id="1",
-            type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
-            chain_id="chain-2",
-            payload={}
-        ))
+        emitter.emit(
+            StreamingEvent(
+                id="1",
+                type=StreamingEventType.EVENT,
+                timestamp=datetime.now(timezone.utc),
+                chain_id="chain-2",
+                payload={},
+            )
+        )
         assert len(received) == 0
 
         subscriber.remove_chain_id("chain-1")
-        emitter.emit(StreamingEvent(
-            id="2",
-            type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
-            chain_id="chain-2",
-            payload={}
-        ))
+        emitter.emit(
+            StreamingEvent(
+                id="2",
+                type=StreamingEventType.EVENT,
+                timestamp=datetime.now(timezone.utc),
+                chain_id="chain-2",
+                payload={},
+            )
+        )
         assert len(received) == 1
 
     def test_context_manager(self):
@@ -508,10 +517,7 @@ class TestFilteredSubscriber:
         emitter = EventEmitter()
         received = []
 
-        subscriber = FilteredSubscriber(
-            emitter,
-            handler=lambda e: received.append(e)
-        )
+        subscriber = FilteredSubscriber(emitter, handler=lambda e: received.append(e))
 
         with subscriber:
             emitter.emit(StreamingEvent.heartbeat())
@@ -531,10 +537,7 @@ class TestBufferedSubscriber:
         batches = []
 
         subscriber = BufferedSubscriber(
-            emitter,
-            handler=lambda events: batches.append(events),
-            max_size=3,
-            flush_interval=60.0
+            emitter, handler=lambda events: batches.append(events), max_size=3, flush_interval=60.0
         )
         subscriber.subscribe()
 
@@ -555,7 +558,7 @@ class TestBufferedSubscriber:
             emitter,
             handler=lambda events: batches.append(events),
             max_size=100,
-            flush_interval=60.0
+            flush_interval=60.0,
         )
         subscriber.subscribe()
 
@@ -581,7 +584,7 @@ class TestBufferedSubscriber:
             emitter,
             handler=lambda events: batches.append(events),
             max_size=100,
-            flush_interval=60.0
+            flush_interval=60.0,
         )
         subscriber.subscribe()
 
@@ -600,25 +603,29 @@ class TestBufferedSubscriber:
             handler=lambda events: batches.append(events),
             max_size=2,
             flush_interval=60.0,
-            filter_fn=lambda e: e.type == StreamingEventType.EVENT
+            filter_fn=lambda e: e.type == StreamingEventType.EVENT,
         )
         subscriber.subscribe()
 
         emitter.emit(StreamingEvent.heartbeat())
-        emitter.emit(StreamingEvent(
-            id="1",
-            type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
-            chain_id=None,
-            payload={}
-        ))
-        emitter.emit(StreamingEvent(
-            id="2",
-            type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
-            chain_id=None,
-            payload={}
-        ))
+        emitter.emit(
+            StreamingEvent(
+                id="1",
+                type=StreamingEventType.EVENT,
+                timestamp=datetime.now(timezone.utc),
+                chain_id=None,
+                payload={},
+            )
+        )
+        emitter.emit(
+            StreamingEvent(
+                id="2",
+                type=StreamingEventType.EVENT,
+                timestamp=datetime.now(timezone.utc),
+                chain_id=None,
+                payload={},
+            )
+        )
 
         assert len(batches) == 1
         assert len(batches[0]) == 2
@@ -641,10 +648,7 @@ class TestAsyncSubscriber:
             received.append(event)
 
         async def run_test():
-            subscriber = AsyncSubscriber(
-                emitter,
-                handler=async_handler
-            )
+            subscriber = AsyncSubscriber(emitter, handler=async_handler)
 
             await subscriber.start()
 
@@ -669,10 +673,7 @@ class TestAsyncSubscriber:
             received.append(event)
 
         async def run_test():
-            subscriber = AsyncSubscriber(
-                emitter,
-                handler=async_handler
-            )
+            subscriber = AsyncSubscriber(emitter, handler=async_handler)
 
             async with subscriber:
                 emitter.emit(StreamingEvent.heartbeat())
@@ -692,11 +693,7 @@ class TestAsyncSubscriber:
             await anyio.sleep(0.5)
 
         async def run_test():
-            subscriber = AsyncSubscriber(
-                emitter,
-                handler=slow_handler,
-                queue_size=10
-            )
+            subscriber = AsyncSubscriber(emitter, handler=slow_handler, queue_size=10)
 
             await subscriber.start()
 
@@ -792,8 +789,7 @@ class TestWebSocketServer:
             server = WebSocketServer(emitter)
 
             client = await server.register_client(
-                client_id="custom-id",
-                filters={"chain_id": "chain-1"}
+                client_id="custom-id", filters={"chain_id": "chain-1"}
             )
 
             assert client.id == "custom-id"
@@ -829,10 +825,7 @@ class TestWebSocketServer:
 
             client = await server.register_client()
 
-            await server.update_client_filters(
-                client.id,
-                {"event_types": ["step_start"]}
-            )
+            await server.update_client_filters(client.id, {"event_types": ["step_start"]})
 
             updated_client = server._clients[client.id]
             assert updated_client.filters == {"event_types": ["step_start"]}
@@ -897,27 +890,33 @@ class TestAggregatingSubscriber:
         subscriber = AggregatingSubscriber(emitter)
         subscriber.subscribe()
 
-        emitter.emit(StreamingEvent(
-            id="1",
-            type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
-            chain_id="chain-1",
-            payload={"type": "step_start", "agent": "agent-1"}
-        ))
-        emitter.emit(StreamingEvent(
-            id="2",
-            type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
-            chain_id="chain-1",
-            payload={"type": "step_end", "agent": "agent-1"}
-        ))
-        emitter.emit(StreamingEvent(
-            id="3",
-            type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
-            chain_id="chain-2",
-            payload={"type": "step_start", "agent": "agent-2"}
-        ))
+        emitter.emit(
+            StreamingEvent(
+                id="1",
+                type=StreamingEventType.EVENT,
+                timestamp=datetime.now(timezone.utc),
+                chain_id="chain-1",
+                payload={"type": "step_start", "agent": "agent-1"},
+            )
+        )
+        emitter.emit(
+            StreamingEvent(
+                id="2",
+                type=StreamingEventType.EVENT,
+                timestamp=datetime.now(timezone.utc),
+                chain_id="chain-1",
+                payload={"type": "step_end", "agent": "agent-1"},
+            )
+        )
+        emitter.emit(
+            StreamingEvent(
+                id="3",
+                type=StreamingEventType.EVENT,
+                timestamp=datetime.now(timezone.utc),
+                chain_id="chain-2",
+                payload={"type": "step_start", "agent": "agent-2"},
+            )
+        )
 
         agg = subscriber.get_aggregation()
 

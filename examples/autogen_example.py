@@ -16,10 +16,12 @@ import os
 
 try:
     from autogen import ConversableAgent, GroupChat, GroupChatManager
+
     AUTOGEN_INSTALLED = True
 except ImportError:
     try:
         from ag2 import ConversableAgent, GroupChat, GroupChatManager
+
         AUTOGEN_INSTALLED = True
     except ImportError:
         AUTOGEN_INSTALLED = False
@@ -202,7 +204,7 @@ def main() -> None:
 
 def print_example_code() -> None:
     """Print example code when AutoGen is not installed."""
-    code = '''
+    code = """
 from autogen import ConversableAgent, GroupChat, GroupChatManager
 from lctl.integrations.autogen import (
     LCTLAutogenCallback,
@@ -269,7 +271,7 @@ callback.start_nested_chat("orchestrator", "Delegating work")
 callback.end_nested_chat("Work completed")
 
 callback.export("nested.lctl.json")
-'''
+"""
     print(code)
     print()
     print("The trace captures:")

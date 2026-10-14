@@ -228,6 +228,7 @@ Trace agents that use custom tools:
 from crewai_tools import tool
 from lctl.integrations.crewai import LCTLAgent, LCTLTask, LCTLCrew
 
+
 # Define custom tools
 @tool("Search Database")
 def search_database(query: str) -> str:
@@ -235,10 +236,12 @@ def search_database(query: str) -> str:
     # Simulated database search
     return f"Found 3 results for: {query}"
 
+
 @tool("Send Notification")
 def send_notification(message: str) -> str:
     """Send a notification to the team."""
     return f"Notification sent: {message}"
+
 
 # Create agent with tools
 support_agent = LCTLAgent(
@@ -296,10 +299,9 @@ crew = LCTLCrew(
 )
 
 # Pass inputs at runtime
-result = crew.kickoff(inputs={
-    "target_language": "Spanish",
-    "text": "Hello, how can I help you today?"
-})
+result = crew.kickoff(
+    inputs={"target_language": "Spanish", "text": "Hello, how can I help you today?"}
+)
 
 crew.export_trace("translation_trace.lctl.json")
 ```
@@ -468,6 +470,7 @@ trace_data = crew.get_trace()
 
 # Example: Send to monitoring service
 import json
+
 print(json.dumps(trace_data, indent=2))
 
 # Or extract specific information
@@ -544,6 +547,7 @@ pip install crewai
 1. Ensure the directory exists:
    ```python
    import os
+
    os.makedirs("traces", exist_ok=True)
    crew.export_trace("traces/my_trace.lctl.json")
    ```
@@ -583,11 +587,13 @@ agent = LCTLAgent(
 ```python
 import asyncio
 
+
 async def run_crew():
     result = await crew.kickoff_async()
     # Wait for async operations to complete
     crew.export_trace("async_trace.lctl.json")
     return result
+
 
 asyncio.run(run_crew())
 ```

@@ -24,14 +24,12 @@ except ImportError:
 if "OPENAI_API_KEY" not in os.environ:
     print("Warning: OPENAI_API_KEY not set. This example may fail if run directly.")
 
+
 async def main():
     print("=== LCTL PydanticAI Example ===")
 
     # 1. Define an agent with a tool
-    agent = Agent(
-        'openai:gpt-4o',
-        system_prompt='You are a helpful travel assistant.'
-    )
+    agent = Agent("openai:gpt-4o", system_prompt="You are a helpful travel assistant.")
 
     @agent.tool
     async def get_weather(ctx: RunContext[str], city: str) -> str:
@@ -47,19 +45,20 @@ async def main():
     # 3. Run the agent
     print("Running agent query...")
     query = "What is the weather in Barcelona?"
-    
+
     # We use the traced_agent to run, which captures all events
     result = await traced_agent.run(query)
-    
+
     print(f"Agent Response: {result.data}")
 
     # 4. Export the trace
     output_file = "pydantic_travel_trace.lctl.json"
     traced_agent.tracer.export(output_file)
     print(f"Trace exported to {output_file}")
-    
+
     # Verify trace content
     print(f"Captured {len(traced_agent.tracer.chain.events)} events.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

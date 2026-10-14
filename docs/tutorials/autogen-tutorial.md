@@ -81,8 +81,7 @@ user_proxy = LCTLConversableAgent(
 
 # Run the conversation
 result = assistant.initiate_chat(
-    user_proxy,
-    message="What are three key benefits of using Python for data science?"
+    user_proxy, message="What are three key benefits of using Python for data science?"
 )
 
 # Export the trace
@@ -116,10 +115,7 @@ callback.attach(researcher)
 callback.attach(writer)
 
 # Run conversation - tracing happens automatically
-researcher.initiate_chat(
-    writer,
-    message="I've researched the topic. Here are the key points: ..."
-)
+researcher.initiate_chat(writer, message="I've researched the topic. Here are the key points: ...")
 
 # Export trace
 callback.export("research_workflow.lctl.json")
@@ -168,8 +164,7 @@ manager = LCTLGroupChatManager(
 
 # Start the group discussion
 planner.initiate_chat(
-    manager,
-    message="We need to implement a function to validate email addresses."
+    manager, message="We need to implement a function to validate email addresses."
 )
 
 # Export trace with all agent interactions
@@ -279,20 +274,14 @@ callback.attach(specialist2)
 callback.start_nested_chat("orchestrator", "Delegating data processing")
 
 # Nested conversation with specialist1
-orchestrator.initiate_chat(
-    specialist1,
-    message="Process the raw data files."
-)
+orchestrator.initiate_chat(specialist1, message="Process the raw data files.")
 
 callback.end_nested_chat("Data processing complete", outcome="success")
 
 # Another nested conversation
 callback.start_nested_chat("orchestrator", "Delegating ML training")
 
-orchestrator.initiate_chat(
-    specialist2,
-    message="Train the model on processed data."
-)
+orchestrator.initiate_chat(specialist2, message="Train the model on processed data.")
 
 callback.end_nested_chat("Model training complete", outcome="success")
 
@@ -308,14 +297,17 @@ Trace agents that use tool/function calls:
 from autogen import ConversableAgent
 from lctl.integrations.autogen import LCTLAutogenCallback
 
+
 # Define tools/functions
 def get_weather(city: str) -> str:
     """Get weather for a city."""
     return f"Weather in {city}: Sunny, 72F"
 
+
 def search_database(query: str) -> str:
     """Search the database."""
     return f"Found 3 results for: {query}"
+
 
 # Create agent with tools
 assistant = ConversableAgent(
@@ -329,24 +321,20 @@ assistant = ConversableAgent(
                 "description": "Get current weather for a city",
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "city": {"type": "string", "description": "City name"}
-                    },
-                    "required": ["city"]
-                }
+                    "properties": {"city": {"type": "string", "description": "City name"}},
+                    "required": ["city"],
+                },
             },
             {
                 "name": "search_database",
                 "description": "Search the database",
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "query": {"type": "string", "description": "Search query"}
-                    },
-                    "required": ["query"]
-                }
-            }
-        ]
+                    "properties": {"query": {"type": "string", "description": "Search query"}},
+                    "required": ["query"],
+                },
+            },
+        ],
     },
 )
 
@@ -371,8 +359,7 @@ callback.attach(user)
 
 # Run - tool calls will be traced
 assistant.initiate_chat(
-    user,
-    message="What's the weather in Paris? Also search for 'sales reports'."
+    user, message="What's the weather in Paris? Also search for 'sales reports'."
 )
 
 callback.export("function_calls_trace.lctl.json")
@@ -476,7 +463,7 @@ callback.record_tool_result(
     tool_name="database_query",
     result={"rows": 150, "status": "success"},
     duration_ms=250,
-    agent="assistant"
+    agent="assistant",
 )
 ```
 
@@ -534,10 +521,7 @@ trace_data = callback.to_dict()
 import json
 import requests
 
-requests.post(
-    "https://monitoring.example.com/traces",
-    json=trace_data
-)
+requests.post("https://monitoring.example.com/traces", json=trace_data)
 ```
 
 ### 6. Combine with Human Input Mode
@@ -557,10 +541,7 @@ assistant = LCTLConversableAgent(
 )
 
 # Human inputs will be traced as messages
-result = assistant.initiate_chat(
-    user,
-    message="How can I help you today?"
-)
+result = assistant.initiate_chat(user, message="How can I help you today?")
 
 assistant.export_trace("human_in_loop.lctl.json")
 ```

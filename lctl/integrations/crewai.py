@@ -38,6 +38,7 @@ try:
     from crewai.agents.agent_builder.base_agent import BaseAgent
     from crewai.events.event_bus import crewai_event_bus
     from crewai.events.types.llm_events import LLMCallCompletedEvent
+
     CREWAI_AVAILABLE = True
 except ImportError:
     CREWAI_AVAILABLE = False
@@ -76,13 +77,13 @@ def _llm_event_handler(source: Any, event: Any) -> None:
 
     if not session:
         return
-        
+
     try:
         session.llm_trace(
             messages=getattr(event, "messages", []) or [],
             response=str(getattr(event, "response", ""))[:2000],  # Truncate response
             model=getattr(event, "model", "unknown") or "unknown",
-            usage={}  # Usage not available in this event
+            usage={},  # Usage not available in this event
         )
     except Exception:
         pass
@@ -100,9 +101,7 @@ class CrewAINotAvailableError(ImportError):
     """Raised when CrewAI is not installed."""
 
     def __init__(self) -> None:
-        super().__init__(
-            "CrewAI is not installed. Install it with: pip install crewai"
-        )
+        super().__init__("CrewAI is not installed. Install it with: pip install crewai")
 
 
 def _check_crewai_available() -> None:
@@ -130,7 +129,7 @@ class LCTLAgent:
         max_iter: int = 25,
         max_rpm: Optional[int] = None,
         max_execution_time: Optional[int] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> None:
         """Initialize an LCTL-traced CrewAI agent.
 
@@ -178,7 +177,7 @@ class LCTLAgent:
             max_iter=max_iter,
             max_rpm=max_rpm,
             max_execution_time=max_execution_time,
-            **kwargs
+            **kwargs,
         )
 
     @property
@@ -210,7 +209,7 @@ class LCTLTask:
         tools: Optional[List[Any]] = None,
         async_execution: bool = False,
         context: Optional[List["LCTLTask"]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> None:
         """Initialize an LCTL-traced CrewAI task.
 
@@ -235,9 +234,7 @@ class LCTLTask:
         # Get underlying tasks for context
         underlying_context = None
         if context:
-            underlying_context = [
-                t.task if isinstance(t, LCTLTask) else t for t in context
-            ]
+            underlying_context = [t.task if isinstance(t, LCTLTask) else t for t in context]
 
         # Store metadata for tracing
         self._metadata: Dict[str, Any] = {
@@ -255,7 +252,7 @@ class LCTLTask:
             tools=tools,
             async_execution=async_execution,
             context=underlying_context,
-            **kwargs
+            **kwargs,
         )
 
     @property
@@ -296,7 +293,7 @@ class LCTLCrew:
         manager_llm: Optional[Any] = None,
         manager_agent: Optional[Union[LCTLAgent, "Agent"]] = None,
         chain_id: Optional[str] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> None:
         """Initialize an LCTL-traced CrewAI crew.
 
@@ -316,12 +313,8 @@ class LCTLCrew:
         self._lctl_tasks = [t for t in tasks if isinstance(t, LCTLTask)]
 
         # Extract underlying CrewAI objects
-        underlying_agents = [
-            a.agent if isinstance(a, LCTLAgent) else a for a in agents
-        ]
-        underlying_tasks = [
-            t.task if isinstance(t, LCTLTask) else t for t in tasks
-        ]
+        underlying_agents = [a.agent if isinstance(a, LCTLAgent) else a for a in agents]
+        underlying_tasks = [t.task if isinstance(t, LCTLTask) else t for t in tasks]
         underlying_manager = (
             manager_agent.agent if isinstance(manager_agent, LCTLAgent) else manager_agent
         )
@@ -347,7 +340,7 @@ class LCTLCrew:
             "agents": underlying_agents,
             "tasks": underlying_tasks,
             "verbose": verbose,
-            **kwargs
+            **kwargs,
         }
 
         if process:
@@ -419,7 +412,7 @@ class LCTLCrew:
             self._session.step_start(
                 agent=agent_name,
                 intent="execute_step",
-                input_summary=truncate(thought, 100) if thought else "Agent step"
+                input_summary=truncate(thought, 100) if thought else "Agent step",
             )
 
             # Record tool call if applicable
@@ -428,7 +421,7 @@ class LCTLCrew:
                     tool=tool_name,
                     input_data=tool_input,
                     output_data=tool_output,
-                    duration_ms=duration_ms
+                    duration_ms=duration_ms,
                 )
 
             # Record step end with duration
@@ -436,7 +429,7 @@ class LCTLCrew:
                 agent=agent_name,
                 outcome="success",
                 output_summary=truncate(tool_output, 100) if tool_output else "Step completed",
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
             )
 
         except Exception as e:
@@ -472,10 +465,7 @@ class LCTLCrew:
             if task_output_text:
                 fact_text += f" | Output: {task_output_text}"
             self._session.add_fact(
-                fact_id=fact_id,
-                text=fact_text,
-                confidence=1.0,
-                source="crew-execution"
+                fact_id=fact_id, text=fact_text, confidence=1.0, source="crew-execution"
             )
 
         except Exception as e:
@@ -511,16 +501,16 @@ class LCTLCrew:
         self._session.step_start(
             agent="crew-manager",
             intent="kickoff",
-            input_summary=f"Starting {self._process} crew with {len(self._crew.agents)} agents"
+            input_summary=f"Starting {self._process} crew with {len(self._crew.agents)} agents",
         )
 
         # Add crew metadata as facts
         self._session.add_fact(
             fact_id="crew-config",
             text=f"Crew configuration: {self._process} process, "
-                 f"{len(self._crew.agents)} agents, {len(self._crew.tasks)} tasks",
+            f"{len(self._crew.agents)} agents, {len(self._crew.tasks)} tasks",
             confidence=1.0,
-            source="crew-manager"
+            source="crew-manager",
         )
 
         # Record agent information
@@ -531,7 +521,7 @@ class LCTLCrew:
                 fact_id=f"agent-{i}",
                 text=f"Agent '{role}': {goal[:100]}",
                 confidence=1.0,
-                source="crew-manager"
+                source="crew-manager",
             )
 
         try:
@@ -557,7 +547,7 @@ class LCTLCrew:
                 output_summary="Crew execution completed successfully",
                 duration_ms=duration_ms,
                 tokens_in=tokens_in,
-                tokens_out=tokens_out
+                tokens_out=tokens_out,
             )
 
             # Add final result as fact
@@ -566,7 +556,7 @@ class LCTLCrew:
                 fact_id="crew-result",
                 text=f"Final result: {result_text}",
                 confidence=1.0,
-                source="crew-manager"
+                source="crew-manager",
             )
 
             return result
@@ -579,7 +569,7 @@ class LCTLCrew:
                 agent="crew-manager",
                 outcome="error",
                 output_summary=f"Crew execution failed: {str(e)[:200]}",
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
             )
 
             self._session.error(
@@ -587,7 +577,7 @@ class LCTLCrew:
                 error_type=type(e).__name__,
                 message=str(e),
                 recoverable=False,
-                suggested_action="Check agent configurations and task definitions"
+                suggested_action="Check agent configurations and task definitions",
             )
 
             raise
@@ -622,15 +612,15 @@ class LCTLCrew:
         self._session.step_start(
             agent="crew-manager",
             intent="kickoff_async",
-            input_summary=f"Starting async {self._process} crew"
+            input_summary=f"Starting async {self._process} crew",
         )
 
         try:
             # We must await the coroutine to capture result/error
             result = await self._crew.kickoff_async(inputs=inputs)
-            
+
             duration_ms = int((time.time() - start_time) * 1000)
-            
+
             # Extract usage if available
             tokens_in = 0
             tokens_out = 0
@@ -648,7 +638,7 @@ class LCTLCrew:
                 output_summary="Async crew execution completed",
                 duration_ms=duration_ms,
                 tokens_in=tokens_in,
-                tokens_out=tokens_out
+                tokens_out=tokens_out,
             )
 
             # Add final result as fact
@@ -657,26 +647,26 @@ class LCTLCrew:
                 fact_id="crew-result-async",
                 text=f"Final result: {result_text}",
                 confidence=1.0,
-                source="crew-manager"
+                source="crew-manager",
             )
 
             return result
-            
+
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
-            
+
             self._session.step_end(
                 agent="crew-manager",
                 outcome="error",
                 output_summary=f"Async execution failed: {str(e)[:200]}",
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
             )
-            
+
             self._session.error(
                 category="crew_async_error",
                 error_type=type(e).__name__,
                 message=str(e),
-                recoverable=False
+                recoverable=False,
             )
             raise
         finally:
@@ -723,11 +713,7 @@ class LCTLCrew:
         return getattr(self._crew, name)
 
 
-def trace_crew(
-    crew: "Crew",
-    chain_id: Optional[str] = None,
-    verbose: bool = False
-) -> LCTLCrew:
+def trace_crew(crew: "Crew", chain_id: Optional[str] = None, verbose: bool = False) -> LCTLCrew:
     """Wrap an existing CrewAI Crew with LCTL tracing.
 
     This is useful when you have an existing Crew instance and want to

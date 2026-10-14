@@ -20,13 +20,10 @@ from .base import BaseTracer, truncate
 try:
     # Check availability - import used for availability check
     import semantic_kernel as _sk  # noqa: F401
+
     del _sk  # Remove from namespace after check
     # Use direct imports from filters package for better compatibility
-    from semantic_kernel.filters import (
-        FilterTypes, 
-        FunctionInvocationContext,
-        PromptRenderContext
-    )
+    from semantic_kernel.filters import FilterTypes, FunctionInvocationContext, PromptRenderContext
     from semantic_kernel.kernel import Kernel
 
     SK_AVAILABLE = True
@@ -36,6 +33,7 @@ except ImportError:
 
 class SemanticKernelNotAvailableError(ImportError):
     """Raised when Semantic Kernel is not installed."""
+
     def __init__(self) -> None:
         super().__init__(
             "Semantic Kernel is not installed. Install with: pip install semantic-kernel"
@@ -120,12 +118,14 @@ class LCTLSemanticKernelTracer(BaseTracer):
                     fact_id=f"prompt-{full_name}-{hash(context.rendered_prompt)}",
                     text=f"Rendered Prompt for {full_name}: {context.rendered_prompt}",
                     confidence=1.0,
-                    source="sk-prompt-filter"
+                    source="sk-prompt-filter",
                 )
             except Exception:
                 pass  # Don't break execution if tracing fails
 
-    async def _function_invocation_filter(self, context: FunctionInvocationContext, next: Callable[..., Any]):
+    async def _function_invocation_filter(
+        self, context: FunctionInvocationContext, next: Callable[..., Any]
+    ):
         """Filter for function invocations."""
 
         # 1. Step Start
@@ -138,9 +138,7 @@ class LCTLSemanticKernelTracer(BaseTracer):
 
         try:
             self.session.step_start(
-                agent=full_name,
-                intent="execute_function",
-                input_summary=input_summary
+                agent=full_name, intent="execute_function", input_summary=input_summary
             )
         except Exception:
             pass  # Don't break execution if tracing fails
@@ -178,12 +176,16 @@ class LCTLSemanticKernelTracer(BaseTracer):
                                     if hasattr(usage, "prompt_tokens"):
                                         tokens_in = usage.prompt_tokens
                                     elif isinstance(usage, dict):
-                                        tokens_in = usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0)
+                                        tokens_in = usage.get("prompt_tokens", 0) or usage.get(
+                                            "input_tokens", 0
+                                        )
 
                                     if hasattr(usage, "completion_tokens"):
                                         tokens_out = usage.completion_tokens
                                     elif isinstance(usage, dict):
-                                        tokens_out = usage.get("completion_tokens", 0) or usage.get("output_tokens", 0)
+                                        tokens_out = usage.get("completion_tokens", 0) or usage.get(
+                                            "output_tokens", 0
+                                        )
 
                             yield chunk
 
@@ -197,7 +199,7 @@ class LCTLSemanticKernelTracer(BaseTracer):
                                 output_summary=truncate(accumulated_content),
                                 duration_ms=duration_ms,
                                 tokens_in=tokens_in,
-                                tokens_out=tokens_out
+                                tokens_out=tokens_out,
                             )
                         except Exception:
                             pass  # Don't break execution if tracing fails
@@ -209,16 +211,14 @@ class LCTLSemanticKernelTracer(BaseTracer):
                                 category="execution_error",
                                 error_type=type(e).__name__,
                                 message=str(e),
-                                recoverable=False
+                                recoverable=False,
                             )
                         except Exception:
                             pass  # Don't break execution if tracing fails
                         duration_ms = int((time.time() - stream_start_time) * 1000)
                         try:
                             self.session.step_end(
-                                agent=full_name,
-                                outcome="error",
-                                duration_ms=duration_ms
+                                agent=full_name, outcome="error", duration_ms=duration_ms
                             )
                         except Exception:
                             pass  # Don't break execution if tracing fails
@@ -234,7 +234,7 @@ class LCTLSemanticKernelTracer(BaseTracer):
                                     output_summary=truncate(accumulated_content),
                                     duration_ms=duration_ms,
                                     tokens_in=tokens_in,
-                                    tokens_out=tokens_out
+                                    tokens_out=tokens_out,
                                 )
                             except Exception:
                                 pass  # Don't fail if cleanup fails
@@ -263,7 +263,9 @@ class LCTLSemanticKernelTracer(BaseTracer):
                     if hasattr(usage, "completion_tokens"):
                         tokens_out = usage.completion_tokens
                     elif isinstance(usage, dict):
-                        tokens_out = usage.get("completion_tokens", 0) or usage.get("output_tokens", 0)
+                        tokens_out = usage.get("completion_tokens", 0) or usage.get(
+                            "output_tokens", 0
+                        )
 
             try:
                 self.session.step_end(
@@ -272,7 +274,7 @@ class LCTLSemanticKernelTracer(BaseTracer):
                     output_summary=output_summary,
                     duration_ms=duration_ms,
                     tokens_in=tokens_in,
-                    tokens_out=tokens_out
+                    tokens_out=tokens_out,
                 )
             except Exception:
                 pass  # Don't break execution if tracing fails
@@ -285,16 +287,12 @@ class LCTLSemanticKernelTracer(BaseTracer):
                     category="execution_error",
                     error_type=type(e).__name__,
                     message=str(e),
-                    recoverable=False
+                    recoverable=False,
                 )
             except Exception:
                 pass  # Don't break execution if tracing fails
             try:
-                self.session.step_end(
-                    agent=full_name,
-                    outcome="error",
-                    duration_ms=duration_ms
-                )
+                self.session.step_end(agent=full_name, outcome="error", duration_ms=duration_ms)
             except Exception:
                 pass  # Don't break execution if tracing fails
             raise
@@ -312,7 +310,7 @@ def trace_kernel(
     kernel: Kernel,
     chain_id: Optional[str] = None,
     session: Optional[LCTLSession] = None,
-    verbose: bool = False
+    verbose: bool = False,
 ) -> LCTLSemanticKernelTracer:
     """Convenience function to trace a Semantic Kernel.
 
@@ -321,13 +319,14 @@ def trace_kernel(
         chain_id: Optional chain ID.
         session: Optional session.
         verbose: Enable verbose logging.
-        
+
     Returns:
         The tracer instance.
     """
     tracer = LCTLSemanticKernelTracer(chain_id, session, verbose)
     tracer.trace_kernel(kernel)
     return tracer
+
 
 def is_available() -> bool:
     """Check if Semantic Kernel is available."""

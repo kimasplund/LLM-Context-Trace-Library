@@ -46,50 +46,42 @@ def chain_a(base_timestamp: datetime) -> Chain:
             type=EventType.STEP_START,
             timestamp=base_timestamp,
             agent="planner",
-            data={"intent": "plan", "input_summary": "task"}
+            data={"intent": "plan", "input_summary": "task"},
         ),
         Event(
             seq=2,
             type=EventType.FACT_ADDED,
             timestamp=base_timestamp + timedelta(milliseconds=100),
             agent="planner",
-            data={"id": "F1", "text": "Fact 1", "confidence": 0.8}
+            data={"id": "F1", "text": "Fact 1", "confidence": 0.8},
         ),
         Event(
             seq=3,
             type=EventType.STEP_END,
             timestamp=base_timestamp + timedelta(milliseconds=500),
             agent="planner",
-            data={
-                "outcome": "success",
-                "duration_ms": 500,
-                "tokens": {"input": 100, "output": 50}
-            }
+            data={"outcome": "success", "duration_ms": 500, "tokens": {"input": 100, "output": 50}},
         ),
         Event(
             seq=4,
             type=EventType.STEP_START,
             timestamp=base_timestamp + timedelta(milliseconds=600),
             agent="executor",
-            data={"intent": "execute", "input_summary": "plan"}
+            data={"intent": "execute", "input_summary": "plan"},
         ),
         Event(
             seq=5,
             type=EventType.FACT_ADDED,
             timestamp=base_timestamp + timedelta(milliseconds=700),
             agent="executor",
-            data={"id": "F2", "text": "Fact 2", "confidence": 0.9}
+            data={"id": "F2", "text": "Fact 2", "confidence": 0.9},
         ),
         Event(
             seq=6,
             type=EventType.STEP_END,
             timestamp=base_timestamp + timedelta(milliseconds=1100),
             agent="executor",
-            data={
-                "outcome": "success",
-                "duration_ms": 500,
-                "tokens": {"input": 150, "output": 75}
-            }
+            data={"outcome": "success", "duration_ms": 500, "tokens": {"input": 150, "output": 75}},
         ),
     ]
     for event in events:
@@ -107,50 +99,42 @@ def chain_b(base_timestamp: datetime) -> Chain:
             type=EventType.STEP_START,
             timestamp=base_timestamp,
             agent="planner",
-            data={"intent": "plan", "input_summary": "task"}
+            data={"intent": "plan", "input_summary": "task"},
         ),
         Event(
             seq=2,
             type=EventType.FACT_ADDED,
             timestamp=base_timestamp + timedelta(milliseconds=50),
             agent="planner",
-            data={"id": "F1", "text": "Fact 1", "confidence": 0.95}
+            data={"id": "F1", "text": "Fact 1", "confidence": 0.95},
         ),
         Event(
             seq=3,
             type=EventType.STEP_END,
             timestamp=base_timestamp + timedelta(milliseconds=300),
             agent="planner",
-            data={
-                "outcome": "success",
-                "duration_ms": 300,
-                "tokens": {"input": 80, "output": 40}
-            }
+            data={"outcome": "success", "duration_ms": 300, "tokens": {"input": 80, "output": 40}},
         ),
         Event(
             seq=4,
             type=EventType.STEP_START,
             timestamp=base_timestamp + timedelta(milliseconds=400),
             agent="executor",
-            data={"intent": "execute", "input_summary": "plan"}
+            data={"intent": "execute", "input_summary": "plan"},
         ),
         Event(
             seq=5,
             type=EventType.FACT_ADDED,
             timestamp=base_timestamp + timedelta(milliseconds=500),
             agent="executor",
-            data={"id": "F2", "text": "Fact 2", "confidence": 0.98}
+            data={"id": "F2", "text": "Fact 2", "confidence": 0.98},
         ),
         Event(
             seq=6,
             type=EventType.STEP_END,
             timestamp=base_timestamp + timedelta(milliseconds=700),
             agent="executor",
-            data={
-                "outcome": "success",
-                "duration_ms": 300,
-                "tokens": {"input": 120, "output": 60}
-            }
+            data={"outcome": "success", "duration_ms": 300, "tokens": {"input": 120, "output": 60}},
         ),
     ]
     for event in events:
@@ -168,7 +152,7 @@ def chain_with_errors(base_timestamp: datetime) -> Chain:
             type=EventType.STEP_START,
             timestamp=base_timestamp,
             agent="agent1",
-            data={"intent": "process"}
+            data={"intent": "process"},
         ),
         Event(
             seq=2,
@@ -179,15 +163,15 @@ def chain_with_errors(base_timestamp: datetime) -> Chain:
                 "category": "validation",
                 "type": "ValueError",
                 "message": "Invalid input",
-                "recoverable": True
-            }
+                "recoverable": True,
+            },
         ),
         Event(
             seq=3,
             type=EventType.STEP_END,
             timestamp=base_timestamp + timedelta(milliseconds=200),
             agent="agent1",
-            data={"outcome": "error", "duration_ms": 200, "tokens": {"input": 50, "output": 10}}
+            data={"outcome": "error", "duration_ms": 200, "tokens": {"input": 50, "output": 10}},
         ),
     ]
     for event in events:
@@ -441,9 +425,7 @@ class TestStatisticalFunctions:
         sample_a = [10.0, 11.0, 9.0, 10.5, 10.2, 9.8, 10.1, 10.3]
         sample_b = [15.0, 16.0, 14.0, 15.5, 15.2, 14.8, 15.1, 15.3]
 
-        result = bootstrap_confidence_interval(
-            sample_a, sample_b, n_bootstrap=1000, seed=42
-        )
+        result = bootstrap_confidence_interval(sample_a, sample_b, n_bootstrap=1000, seed=42)
 
         assert result.test_name == "bootstrap_ci"
         assert result.confidence_interval is not None
@@ -456,9 +438,7 @@ class TestStatisticalFunctions:
         sample_a = [10.0, 11.0, 9.0, 10.5, 12.0, 8.0]
         sample_b = [10.1, 10.9, 9.1, 10.4, 11.5, 8.5]
 
-        result = bootstrap_confidence_interval(
-            sample_a, sample_b, n_bootstrap=1000, seed=42
-        )
+        result = bootstrap_confidence_interval(sample_a, sample_b, n_bootstrap=1000, seed=42)
 
         assert result.confidence_interval is not None
         ci_lower, ci_upper = result.confidence_interval
@@ -662,9 +642,7 @@ class TestCompareChains:
 
         assert isinstance(result, ComparisonResult)
 
-    def test_compare_chain_path_objects(
-        self, chain_a: Chain, chain_b: Chain, tmp_path: Path
-    ):
+    def test_compare_chain_path_objects(self, chain_a: Chain, chain_b: Chain, tmp_path: Path):
         """Test comparing chains using Path objects."""
         path_a = tmp_path / "chain_a.lctl.json"
         path_b = tmp_path / "chain_b.lctl.json"
@@ -699,9 +677,7 @@ class TestCompareChainSets:
         assert "aggregate_a" in result.chain_a_id
         assert "aggregate_b" in result.chain_b_id
 
-    def test_compare_chain_sets_files(
-        self, chain_a: Chain, chain_b: Chain, tmp_path: Path
-    ):
+    def test_compare_chain_sets_files(self, chain_a: Chain, chain_b: Chain, tmp_path: Path):
         """Test comparing chain sets from files."""
         paths_a = []
         paths_b = []
@@ -726,9 +702,7 @@ class TestCompareChainSets:
         with pytest.raises(ValueError, match="must not be empty"):
             compare_chain_sets([chain_a], [])
 
-    def test_compare_chain_sets_statistical_tests(
-        self, chain_a: Chain, chain_b: Chain
-    ):
+    def test_compare_chain_sets_statistical_tests(self, chain_a: Chain, chain_b: Chain):
         """Test that chain sets run proper statistical tests."""
         result = compare_chain_sets(
             [chain_a, chain_a, chain_a],

@@ -217,13 +217,15 @@ class TestReplayEngineWithLRUCache:
         """Create a chain with many events for cache testing."""
         chain = Chain(id="large-chain")
         for i in range(200):
-            chain.add_event(Event(
-                seq=i + 1,
-                type=EventType.FACT_ADDED,
-                timestamp=base_timestamp + timedelta(milliseconds=i),
-                agent=f"agent{i % 5}",
-                data={"id": f"F{i}", "text": f"Fact {i}", "confidence": 0.9}
-            ))
+            chain.add_event(
+                Event(
+                    seq=i + 1,
+                    type=EventType.FACT_ADDED,
+                    timestamp=base_timestamp + timedelta(milliseconds=i),
+                    agent=f"agent{i % 5}",
+                    data={"id": f"F{i}", "text": f"Fact {i}", "confidence": 0.9},
+                )
+            )
         return chain
 
     def test_replay_engine_default_cache_size(self, large_chain: Chain):

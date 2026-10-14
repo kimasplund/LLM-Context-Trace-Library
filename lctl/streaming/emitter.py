@@ -14,6 +14,7 @@ from ..core.events import Event
 
 class StreamingEventType(str, Enum):
     """Types of streaming events."""
+
     EVENT = "event"
     CHAIN_START = "chain_start"
     CHAIN_END = "chain_end"
@@ -26,6 +27,7 @@ class StreamingEventType(str, Enum):
 @dataclass
 class StreamingEvent:
     """A streaming event wrapper for real-time transmission."""
+
     id: str
     type: StreamingEventType
     timestamp: datetime
@@ -38,7 +40,7 @@ class StreamingEvent:
             "type": self.type.value,
             "timestamp": self.timestamp.isoformat(),
             "chain_id": self.chain_id,
-            "payload": self.payload
+            "payload": self.payload,
         }
 
     def to_json(self) -> str:
@@ -52,7 +54,7 @@ class StreamingEvent:
             type=StreamingEventType.EVENT,
             timestamp=datetime.now(timezone.utc),
             chain_id=chain_id,
-            payload=event.to_dict()
+            payload=event.to_dict(),
         )
 
     @classmethod
@@ -63,7 +65,7 @@ class StreamingEvent:
             type=StreamingEventType.CHAIN_START,
             timestamp=datetime.now(timezone.utc),
             chain_id=chain_id,
-            payload={"chain_id": chain_id}
+            payload={"chain_id": chain_id},
         )
 
     @classmethod
@@ -74,7 +76,7 @@ class StreamingEvent:
             type=StreamingEventType.CHAIN_END,
             timestamp=datetime.now(timezone.utc),
             chain_id=chain_id,
-            payload={"chain_id": chain_id, "event_count": event_count}
+            payload={"chain_id": chain_id, "event_count": event_count},
         )
 
     @classmethod
@@ -85,7 +87,7 @@ class StreamingEvent:
             type=StreamingEventType.CONNECTED,
             timestamp=datetime.now(timezone.utc),
             chain_id=None,
-            payload={"client_id": client_id}
+            payload={"client_id": client_id},
         )
 
     @classmethod
@@ -96,7 +98,7 @@ class StreamingEvent:
             type=StreamingEventType.HEARTBEAT,
             timestamp=datetime.now(timezone.utc),
             chain_id=None,
-            payload={}
+            payload={},
         )
 
     @classmethod
@@ -107,7 +109,7 @@ class StreamingEvent:
             type=StreamingEventType.ERROR,
             timestamp=datetime.now(timezone.utc),
             chain_id=chain_id,
-            payload={"message": message}
+            payload={"message": message},
         )
 
 
@@ -174,9 +176,7 @@ class EventEmitter:
             return list(self._history)
 
     def on(
-        self,
-        event_type: Union[str, StreamingEventType],
-        handler: Optional[EventHandler] = None
+        self, event_type: Union[str, StreamingEventType], handler: Optional[EventHandler] = None
     ) -> Callable:
         """Register an event handler.
 
@@ -211,7 +211,7 @@ class EventEmitter:
     def on_async(
         self,
         event_type: Union[str, StreamingEventType],
-        handler: Optional[AsyncEventHandler] = None
+        handler: Optional[AsyncEventHandler] = None,
     ) -> Callable:
         """Register an async event handler.
 
@@ -236,9 +236,7 @@ class EventEmitter:
         return decorator
 
     def once(
-        self,
-        event_type: Union[str, StreamingEventType],
-        handler: Optional[EventHandler] = None
+        self, event_type: Union[str, StreamingEventType], handler: Optional[EventHandler] = None
     ) -> Callable:
         """Register a one-time event handler.
 
@@ -264,11 +262,7 @@ class EventEmitter:
             return decorator(handler)
         return decorator
 
-    def off(
-        self,
-        event_type: Union[str, StreamingEventType],
-        handler: EventHandler
-    ) -> bool:
+    def off(self, event_type: Union[str, StreamingEventType], handler: EventHandler) -> bool:
         """Remove an event handler.
 
         Args:

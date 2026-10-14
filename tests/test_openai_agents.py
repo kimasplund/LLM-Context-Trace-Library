@@ -15,14 +15,14 @@ from lctl.core.session import LCTLSession
 # Check if pytest-asyncio is available
 try:
     import pytest_asyncio
+
     PYTEST_ASYNCIO_AVAILABLE = True
 except ImportError:
     PYTEST_ASYNCIO_AVAILABLE = False
 
 # Skip marker for async tests
 skip_if_no_asyncio = pytest.mark.skipif(
-    not PYTEST_ASYNCIO_AVAILABLE,
-    reason="pytest-asyncio not installed"
+    not PYTEST_ASYNCIO_AVAILABLE, reason="pytest-asyncio not installed"
 )
 
 
@@ -551,7 +551,8 @@ class TestLCTLRunHooks:
 
         events = hooks._session.chain.events
         handoff_events = [
-            e for e in events
+            e
+            for e in events
             if e.type == EventType.FACT_ADDED and "Handoff" in e.data.get("text", "")
         ]
         assert len(handoff_events) == 1

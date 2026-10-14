@@ -30,10 +30,12 @@ def example_callback_handler():
 
     handler = LCTLCallbackHandler(chain_id="callback-example")
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful assistant."),
-        ("human", "{input}"),
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", "You are a helpful assistant."),
+            ("human", "{input}"),
+        ]
+    )
     llm = ChatOpenAI(model="gpt-3.5-turbo")
     chain = prompt | llm
 
@@ -62,10 +64,12 @@ def example_chain_wrapper():
     from langchain_core.prompts import ChatPromptTemplate
     from langchain_openai import ChatOpenAI
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful assistant."),
-        ("human", "{input}"),
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", "You are a helpful assistant."),
+            ("human", "{input}"),
+        ]
+    )
     llm = ChatOpenAI(model="gpt-3.5-turbo")
     chain = prompt | llm
 
@@ -92,10 +96,12 @@ def example_trace_chain_helper():
     from langchain_core.prompts import ChatPromptTemplate
     from langchain_openai import ChatOpenAI
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful assistant."),
-        ("human", "{input}"),
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", "You are a helpful assistant."),
+            ("human", "{input}"),
+        ]
+    )
     llm = ChatOpenAI(model="gpt-3.5-turbo")
     chain = prompt | llm
 
@@ -156,10 +162,12 @@ def example_streaming():
     from langchain_core.prompts import ChatPromptTemplate
     from langchain_openai import ChatOpenAI
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful assistant."),
-        ("human", "{input}"),
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", "You are a helpful assistant."),
+            ("human", "{input}"),
+        ]
+    )
     llm = ChatOpenAI(model="gpt-3.5-turbo", streaming=True)
     chain = prompt | llm
 

@@ -38,7 +38,7 @@ class LCTLSession:
         self,
         chain_id: Optional[str] = None,
         emitter: Optional["EventEmitter"] = None,
-        redaction_enabled: bool = True
+        redaction_enabled: bool = True,
     ):
         """Initialize the session.
 
@@ -69,7 +69,7 @@ class LCTLSession:
                     category="execution_error",
                     error_type=exc_type.__name__,
                     message=str(exc_val),
-                    recoverable=False
+                    recoverable=False,
                 )
             except Exception:
                 pass
@@ -90,11 +90,7 @@ class LCTLSession:
             data = redactor.redact_event_data(data)
 
         event = Event(
-            seq=self._next_seq(),
-            type=event_type,
-            timestamp=self._now(),
-            agent=agent,
-            data=data
+            seq=self._next_seq(), type=event_type, timestamp=self._now(), agent=agent, data=data
         )
         self.chain.add_event(event)
 
@@ -146,10 +142,9 @@ class LCTLSession:
     def step_start(self, agent: str, intent: str, input_summary: str = "") -> int:
         """Record start of an agent step. Returns sequence number."""
         self._current_agent = agent
-        event = self._add_event(EventType.STEP_START, agent, {
-            "intent": intent,
-            "input_summary": input_summary
-        })
+        event = self._add_event(
+            EventType.STEP_START, agent, {"intent": intent, "input_summary": input_summary}
+        )
         return event.seq
 
     def step_end(
@@ -159,34 +154,33 @@ class LCTLSession:
         output_summary: str = "",
         duration_ms: int = 0,
         tokens_in: int = 0,
-        tokens_out: int = 0
+        tokens_out: int = 0,
     ) -> int:
         """Record end of an agent step."""
         agent = agent or self._current_agent or "unknown"
-        event = self._add_event(EventType.STEP_END, agent, {
-            "outcome": outcome,
-            "output_summary": output_summary,
-            "duration_ms": duration_ms,
-            "tokens": {"input": tokens_in, "output": tokens_out}
-        })
+        event = self._add_event(
+            EventType.STEP_END,
+            agent,
+            {
+                "outcome": outcome,
+                "output_summary": output_summary,
+                "duration_ms": duration_ms,
+                "tokens": {"input": tokens_in, "output": tokens_out},
+            },
+        )
         self._current_agent = None
         return event.seq
 
     def add_fact(
-        self,
-        fact_id: str,
-        text: str,
-        confidence: float = 1.0,
-        source: Optional[str] = None
+        self, fact_id: str, text: str, confidence: float = 1.0, source: Optional[str] = None
     ) -> int:
         """Add a new fact."""
         agent = source or self._current_agent or "unknown"
-        event = self._add_event(EventType.FACT_ADDED, agent, {
-            "id": fact_id,
-            "text": text,
-            "confidence": confidence,
-            "source": source or agent
-        })
+        event = self._add_event(
+            EventType.FACT_ADDED,
+            agent,
+            {"id": fact_id, "text": text, "confidence": confidence, "source": source or agent},
+        )
         return event.seq
 
     def modify_fact(
@@ -194,7 +188,7 @@ class LCTLSession:
         fact_id: str,
         text: Optional[str] = None,
         confidence: Optional[float] = None,
-        reason: str = ""
+        reason: str = "",
     ) -> int:
         """Modify an existing fact."""
         agent = self._current_agent or "unknown"
@@ -213,16 +207,15 @@ class LCTLSession:
         input_data: Any,
         output_data: Any,
         duration_ms: int = 0,
-        agent: Optional[str] = None
+        agent: Optional[str] = None,
     ) -> int:
         """Record a tool invocation."""
         agent = agent or self._current_agent or "unknown"
-        event = self._add_event(EventType.TOOL_CALL, agent, {
-            "tool": tool,
-            "input": input_data,
-            "output": output_data,
-            "duration_ms": duration_ms
-        })
+        event = self._add_event(
+            EventType.TOOL_CALL,
+            agent,
+            {"tool": tool, "input": input_data, "output": output_data, "duration_ms": duration_ms},
+        )
         return event.seq
 
     def llm_trace(
@@ -231,17 +224,21 @@ class LCTLSession:
         response: str,
         model: str,
         usage: Optional[Dict[str, int]] = None,
-        duration_ms: int = 0
+        duration_ms: int = 0,
     ) -> int:
         """Record an LLM trace."""
         agent = self._current_agent or "unknown"
-        event = self._add_event(EventType.LLM_TRACE, agent, {
-            "messages": messages,
-            "response": response,
-            "model": model,
-            "usage": usage or {},
-            "duration_ms": duration_ms
-        })
+        event = self._add_event(
+            EventType.LLM_TRACE,
+            agent,
+            {
+                "messages": messages,
+                "response": response,
+                "model": model,
+                "usage": usage or {},
+                "duration_ms": duration_ms,
+            },
+        )
         return event.seq
 
     def error(
@@ -250,17 +247,21 @@ class LCTLSession:
         error_type: str,
         message: str,
         recoverable: bool = True,
-        suggested_action: str = ""
+        suggested_action: str = "",
     ) -> int:
         """Record an error."""
         agent = self._current_agent or "unknown"
-        event = self._add_event(EventType.ERROR, agent, {
-            "category": category,
-            "type": error_type,
-            "message": message,
-            "recoverable": recoverable,
-            "suggested_action": suggested_action
-        })
+        event = self._add_event(
+            EventType.ERROR,
+            agent,
+            {
+                "category": category,
+                "type": error_type,
+                "message": message,
+                "recoverable": recoverable,
+                "suggested_action": suggested_action,
+            },
+        )
         return event.seq
 
     def checkpoint(self, facts_snapshot: Optional[Dict] = None) -> int:
@@ -273,10 +274,11 @@ class LCTLSession:
             state = engine.replay_all()
             facts_snapshot = state.facts
 
-        event = self._add_event(EventType.CHECKPOINT, "system", {
-            "state_hash": str(hash(str(facts_snapshot)))[:8],
-            "facts_snapshot": facts_snapshot
-        })
+        event = self._add_event(
+            EventType.CHECKPOINT,
+            "system",
+            {"state_hash": str(hash(str(facts_snapshot)))[:8], "facts_snapshot": facts_snapshot},
+        )
         return event.seq
 
     def stream_start(self, stream_id: str, description: str = "") -> int:
@@ -290,10 +292,9 @@ class LCTLSession:
             Event sequence number
         """
         agent = self._current_agent or "unknown"
-        event = self._add_event(EventType.STREAM_START, agent, {
-            "stream_id": stream_id,
-            "description": description
-        })
+        event = self._add_event(
+            EventType.STREAM_START, agent, {"stream_id": stream_id, "description": description}
+        )
         return event.seq
 
     def stream_chunk(self, stream_id: str, content: str, index: int = 0) -> int:
@@ -308,19 +309,15 @@ class LCTLSession:
             Event sequence number
         """
         agent = self._current_agent or "unknown"
-        event = self._add_event(EventType.STREAM_CHUNK, agent, {
-            "stream_id": stream_id,
-            "content": content,
-            "index": index
-        })
+        event = self._add_event(
+            EventType.STREAM_CHUNK,
+            agent,
+            {"stream_id": stream_id, "content": content, "index": index},
+        )
         return event.seq
 
     def stream_end(
-        self,
-        stream_id: str,
-        total_content: str = "",
-        tokens_in: int = 0,
-        tokens_out: int = 0
+        self, stream_id: str, total_content: str = "", tokens_in: int = 0, tokens_out: int = 0
     ) -> int:
         """End a streaming response.
 
@@ -334,11 +331,15 @@ class LCTLSession:
             Event sequence number
         """
         agent = self._current_agent or "unknown"
-        event = self._add_event(EventType.STREAM_END, agent, {
-            "stream_id": stream_id,
-            "total_content": total_content,
-            "tokens": {"input": tokens_in, "output": tokens_out}
-        })
+        event = self._add_event(
+            EventType.STREAM_END,
+            agent,
+            {
+                "stream_id": stream_id,
+                "total_content": total_content,
+                "tokens": {"input": tokens_in, "output": tokens_out},
+            },
+        )
         return event.seq
 
     def export(self, path: str) -> None:
@@ -377,6 +378,7 @@ def traced_step(session: LCTLSession, agent: str, intent: str, input_summary: st
     Note: If tracing itself fails, the original exception is still raised.
     """
     import time
+
     start = time.time()
 
     try:
@@ -401,7 +403,7 @@ def traced_step(session: LCTLSession, agent: str, intent: str, input_summary: st
                 category="execution_error",
                 error_type=type(e).__name__,
                 message=str(e),
-                recoverable=False
+                recoverable=False,
             )
         except Exception:
             pass  # Don't suppress original exception if tracing fails

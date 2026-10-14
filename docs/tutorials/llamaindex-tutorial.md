@@ -74,15 +74,10 @@ documents = [
 ]
 
 # Create index with LCTL callback
-index = VectorStoreIndex.from_documents(
-    documents,
-    callback_manager=callback.get_callback_manager()
-)
+index = VectorStoreIndex.from_documents(documents, callback_manager=callback.get_callback_manager())
 
 # Create query engine
-query_engine = index.as_query_engine(
-    callback_manager=callback.get_callback_manager()
-)
+query_engine = index.as_query_engine(callback_manager=callback.get_callback_manager())
 
 # Query
 response = query_engine.query("What is LCTL?")
@@ -195,28 +190,21 @@ documents = [
 callback = LCTLLlamaIndexCallback(chain_id="custom-rag")
 
 # Build index
-index = VectorStoreIndex.from_documents(
-    documents,
-    callback_manager=callback.get_callback_manager()
-)
+index = VectorStoreIndex.from_documents(documents, callback_manager=callback.get_callback_manager())
 
 # Create custom retriever
 retriever = VectorIndexRetriever(
-    index=index,
-    similarity_top_k=3,
-    callback_manager=callback.get_callback_manager()
+    index=index, similarity_top_k=3, callback_manager=callback.get_callback_manager()
 )
 
 # Create response synthesizer
-synthesizer = get_response_synthesizer(
-    callback_manager=callback.get_callback_manager()
-)
+synthesizer = get_response_synthesizer(callback_manager=callback.get_callback_manager())
 
 # Build query engine with custom components
 query_engine = RetrieverQueryEngine(
     retriever=retriever,
     response_synthesizer=synthesizer,
-    callback_manager=callback.get_callback_manager()
+    callback_manager=callback.get_callback_manager(),
 )
 
 # Query
@@ -288,8 +276,7 @@ python_docs = [
     Document(text="Python emphasizes readability and simplicity."),
 ]
 python_index = VectorStoreIndex.from_documents(
-    python_docs,
-    callback_manager=callback.get_callback_manager()
+    python_docs, callback_manager=callback.get_callback_manager()
 )
 
 rust_docs = [
@@ -297,32 +284,25 @@ rust_docs = [
     Document(text="Rust focuses on safety and performance."),
 ]
 rust_index = VectorStoreIndex.from_documents(
-    rust_docs,
-    callback_manager=callback.get_callback_manager()
+    rust_docs, callback_manager=callback.get_callback_manager()
 )
 
 # Create query engine tools
-python_engine = python_index.as_query_engine(
-    callback_manager=callback.get_callback_manager()
-)
-rust_engine = rust_index.as_query_engine(
-    callback_manager=callback.get_callback_manager()
-)
+python_engine = python_index.as_query_engine(callback_manager=callback.get_callback_manager())
+rust_engine = rust_index.as_query_engine(callback_manager=callback.get_callback_manager())
 
 python_tool = QueryEngineTool.from_defaults(
-    query_engine=python_engine,
-    description="Answers questions about Python programming."
+    query_engine=python_engine, description="Answers questions about Python programming."
 )
 rust_tool = QueryEngineTool.from_defaults(
-    query_engine=rust_engine,
-    description="Answers questions about Rust programming."
+    query_engine=rust_engine, description="Answers questions about Rust programming."
 )
 
 # Create router
 router = RouterQueryEngine(
     selector=LLMSingleSelector.from_defaults(),
     query_engine_tools=[python_tool, rust_tool],
-    callback_manager=callback.get_callback_manager()
+    callback_manager=callback.get_callback_manager(),
 )
 
 # Query different topics
@@ -347,6 +327,7 @@ from llama_index.llms.openai import OpenAI
 from llama_index.embeddings.openai import OpenAIEmbedding
 from lctl.integrations.llamaindex import trace_query_engine
 
+
 async def main():
     # Configure
     Settings.llm = OpenAI(model="gpt-3.5-turbo")
@@ -368,6 +349,7 @@ async def main():
 
     # Export
     traced.export("async_trace.lctl.json")
+
 
 asyncio.run(main())
 ```
@@ -485,10 +467,7 @@ pip install llama-index llama-index-llms-openai llama-index-embeddings-openai
 1. Ensure you pass the callback manager:
    ```python
    # Correct
-   index = VectorStoreIndex.from_documents(
-       documents,
-       callback_manager=callback.get_callback_manager()
-   )
+   index = VectorStoreIndex.from_documents(documents, callback_manager=callback.get_callback_manager())
 
    # Wrong - no callback
    index = VectorStoreIndex.from_documents(documents)

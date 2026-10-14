@@ -28,6 +28,7 @@ Before you begin, ensure you have:
 try:
     import semantic_kernel
     from lctl.integrations.semantic_kernel import trace_kernel
+
     print("Semantic Kernel integration is ready!")
 except ImportError:
     print("Please install required packages: pip install lctl[semantic-kernel]")
@@ -53,10 +54,11 @@ from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 from lctl.integrations.semantic_kernel import trace_kernel
 
+
 async def main():
     # 1. Initialize Kernel
     kernel = Kernel()
-    
+
     # 2. Add AI Service
     service_id = "chat-gpt"
     kernel.add_service(
@@ -76,14 +78,12 @@ async def main():
 
     # 5. Invoke function
     # LCTL captures the 'step_start', 'step_end', and mapping of inputs/outputs
-    result = await kernel.invoke(
-        function_name="get_time",
-        plugin_name="TimePlugin"
-    )
+    result = await kernel.invoke(function_name="get_time", plugin_name="TimePlugin")
     print(f"Result: {result}")
 
     # 6. Export Trace
     tracer.export("sk_basic.lctl.json")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -99,21 +99,20 @@ from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 from lctl.integrations.semantic_kernel import trace_kernel
 
+
 async def main():
     kernel = Kernel()
     kernel.add_service(
         OpenAIChatCompletion(service_id="chat", ai_model_id="gpt-3.5-turbo"),
     )
-    
+
     # Attach tracer
     tracer = trace_kernel(kernel, chain_id="sk-prompt-demo")
 
     # Define a prompt function
     prompt = "Summarize this text in one sentence: {{$input}}"
     summarize = kernel.create_function_from_prompt(
-        function_name="summarize",
-        plugin_name="Summarizer",
-        prompt=prompt
+        function_name="summarize", plugin_name="Summarizer", prompt=prompt
     )
 
     # Invoke
@@ -121,12 +120,13 @@ async def main():
     LCTL (LLM Context Trace Library) is a library for time-travel debugging.
     It uses event sourcing to capture every agent action as an immutable event.
     """
-    
+
     result = await kernel.invoke(summarize, input=text)
     print(f"Summary: {result}")
 
     # Export
     tracer.export("sk_prompt.lctl.json")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -140,6 +140,7 @@ Errors inside functions are captured automatically.
 import asyncio
 from semantic_kernel import Kernel
 from lctl.integrations.semantic_kernel import trace_kernel
+
 
 async def main():
     kernel = Kernel()
@@ -155,9 +156,10 @@ async def main():
         await kernel.invoke(function_name="fail", plugin_name="ErrorPlugin")
     except Exception as e:
         print(f"Caught error: {e}")
-    
+
     # Trace will include the ERROR event
     tracer.export("sk_error.lctl.json")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

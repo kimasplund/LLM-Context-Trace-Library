@@ -101,7 +101,11 @@ def generate_report(
         suite_title = BENCHMARK_SUITES.get(suite_name, (suite_name, None))[0]
 
         suite_total_time = sum(r["total_time_ms"] for r in suite_results)
-        suite_avg_ops = sum(r["ops_per_second"] for r in suite_results) / len(suite_results) if suite_results else 0
+        suite_avg_ops = (
+            sum(r["ops_per_second"] for r in suite_results) / len(suite_results)
+            if suite_results
+            else 0
+        )
 
         report["suites"][suite_name] = {
             "title": suite_title,
@@ -308,11 +312,7 @@ Examples:
     if args.baseline:
         baseline = load_baseline(args.baseline)
 
-    suites_to_run = (
-        list(BENCHMARK_SUITES.keys())
-        if args.suite == "all"
-        else [args.suite]
-    )
+    suites_to_run = list(BENCHMARK_SUITES.keys()) if args.suite == "all" else [args.suite]
 
     results: Dict[str, List[Dict[str, Any]]] = {}
 

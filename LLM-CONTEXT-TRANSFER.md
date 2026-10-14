@@ -149,17 +149,22 @@ def replay_to(events, target_seq):
         apply_event(state, event)
     return state
 
+
 # Derive trace view (for visualization)
 def events_to_trace(events):
     return [e for e in events if e["type"] in ("step_start", "step_end")]
+
 
 # Derive metrics
 def events_to_metrics(events):
     return {
         "total_duration": sum(e["data"].get("duration_ms", 0) for e in events),
-        "total_tokens": sum(e["data"].get("tokens", {}).get("input", 0) +
-                          e["data"].get("tokens", {}).get("output", 0) for e in events),
-        "error_count": len([e for e in events if e["type"] == "error"])
+        "total_tokens": sum(
+            e["data"].get("tokens", {}).get("input", 0)
+            + e["data"].get("tokens", {}).get("output", 0)
+            for e in events
+        ),
+        "error_count": len([e for e in events if e["type"] == "error"]),
     }
 ```
 
@@ -397,6 +402,7 @@ Zero-config integration for major frameworks:
 ```python
 # One line to enable LCTL
 import lctl
+
 lctl.auto_instrument()
 
 # That's it. All agent calls are now traced.
@@ -407,18 +413,22 @@ lctl.auto_instrument()
 ```python
 # Claude Code Task Tool
 from lctl.claude import traced_task
+
 result = traced_task(subagent_type="explore", prompt="Find auth files")
 
 # LangChain
 from lctl.langchain import LCTLCallbackHandler
+
 chain.invoke(input, config={"callbacks": [LCTLCallbackHandler()]})
 
 # CrewAI
 from lctl.crewai import LCTLCrew
+
 crew = LCTLCrew(agents=[...], tasks=[...])
 
 # AutoGen
 from lctl.autogen import enable_lctl
+
 enable_lctl()  # Patches all agents
 ```
 

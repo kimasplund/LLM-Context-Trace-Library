@@ -1,5 +1,3 @@
-
-
 import pytest
 
 from lctl.core.events import EventType
@@ -10,9 +8,9 @@ if SK_AVAILABLE:
     from semantic_kernel.functions.kernel_function_decorator import kernel_function
     from semantic_kernel.kernel import Kernel
 
+
 @pytest.mark.skipif(not SK_AVAILABLE, reason="Semantic Kernel not installed")
 class TestLCTLSemanticKernelTracer:
-
     @pytest.fixture
     def kernel(self):
         return Kernel()
@@ -101,6 +99,7 @@ class TestLCTLSemanticKernelTracer:
         # Test the convenience function wrapper
         tracer = trace_kernel(kernel)
         assert isinstance(tracer, LCTLSemanticKernelTracer)
+
         # Verify functionality can still run
         class TestPlugin:
             @kernel_function(name="test")

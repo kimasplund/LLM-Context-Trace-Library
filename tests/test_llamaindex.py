@@ -157,13 +157,16 @@ mock_llama_index_core_callbacks_schema.EventPayload = MockEventPayload
 sys.modules["llama_index"] = MagicMock()
 sys.modules["llama_index.core"] = MagicMock()
 sys.modules["llama_index.core.callbacks"] = mock_llama_index_core_callbacks
-sys.modules["llama_index.core.callbacks.base_handler"] = mock_llama_index_core_callbacks_base_handler
+sys.modules["llama_index.core.callbacks.base_handler"] = (
+    mock_llama_index_core_callbacks_base_handler
+)
 sys.modules["llama_index.core.callbacks.schema"] = mock_llama_index_core_callbacks_schema
 
 if "lctl.integrations.llamaindex" in sys.modules:
     del sys.modules["lctl.integrations.llamaindex"]
 
 import lctl.integrations.llamaindex as llamaindex_module
+
 importlib.reload(llamaindex_module)
 
 
@@ -232,9 +235,7 @@ class TestLCTLLlamaIndexCallbackEvents:
         assert event_id == "event-1"
         assert "event-1" in callback._event_stack
 
-        step_starts = [
-            e for e in callback.chain.events if e.type == EventType.STEP_START
-        ]
+        step_starts = [e for e in callback.chain.events if e.type == EventType.STEP_START]
         assert len(step_starts) == 1
         assert step_starts[0].agent == "llm"
         assert step_starts[0].data["intent"] == "llm_call"
@@ -257,9 +258,7 @@ class TestLCTLLlamaIndexCallbackEvents:
 
         assert "event-1" not in callback._event_stack
 
-        step_ends = [
-            e for e in callback.chain.events if e.type == EventType.STEP_END
-        ]
+        step_ends = [e for e in callback.chain.events if e.type == EventType.STEP_END]
         assert len(step_ends) == 1
         assert step_ends[0].data["outcome"] == "success"
 
@@ -275,9 +274,7 @@ class TestLCTLLlamaIndexCallbackEvents:
 
         assert callback._query_depth == 1
 
-        step_starts = [
-            e for e in callback.chain.events if e.type == EventType.STEP_START
-        ]
+        step_starts = [e for e in callback.chain.events if e.type == EventType.STEP_START]
         assert len(step_starts) == 1
         assert step_starts[0].agent == "query_engine"
         assert "What is AI?" in step_starts[0].data["input_summary"]
@@ -310,9 +307,7 @@ class TestLCTLLlamaIndexCallbackEvents:
             event_id="retrieve-1",
         )
 
-        step_starts = [
-            e for e in callback.chain.events if e.type == EventType.STEP_START
-        ]
+        step_starts = [e for e in callback.chain.events if e.type == EventType.STEP_START]
         assert len(step_starts) == 1
         assert step_starts[0].agent == "retriever"
 
@@ -333,15 +328,11 @@ class TestLCTLLlamaIndexCallbackEvents:
             event_id="retrieve-1",
         )
 
-        tool_calls = [
-            e for e in callback.chain.events if e.type == EventType.TOOL_CALL
-        ]
+        tool_calls = [e for e in callback.chain.events if e.type == EventType.TOOL_CALL]
         assert len(tool_calls) == 1
         assert "2 nodes" in tool_calls[0].data["output"]
 
-        fact_events = [
-            e for e in callback.chain.events if e.type == EventType.FACT_ADDED
-        ]
+        fact_events = [e for e in callback.chain.events if e.type == EventType.FACT_ADDED]
         assert len(fact_events) == 2
 
     def test_on_event_embedding(self):
@@ -360,9 +351,7 @@ class TestLCTLLlamaIndexCallbackEvents:
             event_id="embed-1",
         )
 
-        step_ends = [
-            e for e in callback.chain.events if e.type == EventType.STEP_END
-        ]
+        step_ends = [e for e in callback.chain.events if e.type == EventType.STEP_END]
         assert len(step_ends) == 1
         assert "3 chunks" in step_ends[0].data["output_summary"]
 
@@ -382,12 +371,8 @@ class TestLCTLLlamaIndexCallbackEvents:
             event_id="synth-1",
         )
 
-        step_starts = [
-            e for e in callback.chain.events if e.type == EventType.STEP_START
-        ]
-        step_ends = [
-            e for e in callback.chain.events if e.type == EventType.STEP_END
-        ]
+        step_starts = [e for e in callback.chain.events if e.type == EventType.STEP_START]
+        step_ends = [e for e in callback.chain.events if e.type == EventType.STEP_END]
 
         assert any(s.agent == "synthesizer" for s in step_starts)
         assert any(s.agent == "synthesizer" for s in step_ends)
@@ -409,12 +394,8 @@ class TestLCTLLlamaIndexCallbackEvents:
             event_id="rerank-1",
         )
 
-        step_starts = [
-            e for e in callback.chain.events if e.type == EventType.STEP_START
-        ]
-        step_ends = [
-            e for e in callback.chain.events if e.type == EventType.STEP_END
-        ]
+        step_starts = [e for e in callback.chain.events if e.type == EventType.STEP_START]
+        step_ends = [e for e in callback.chain.events if e.type == EventType.STEP_END]
 
         assert any(s.agent == "reranker" for s in step_starts)
         assert any("2 nodes" in s.data.get("output_summary", "") for s in step_ends)
@@ -435,12 +416,8 @@ class TestLCTLLlamaIndexCallbackEvents:
             event_id="other-1",
         )
 
-        step_starts = [
-            e for e in callback.chain.events if e.type == EventType.STEP_START
-        ]
-        step_ends = [
-            e for e in callback.chain.events if e.type == EventType.STEP_END
-        ]
+        step_starts = [e for e in callback.chain.events if e.type == EventType.STEP_START]
+        step_ends = [e for e in callback.chain.events if e.type == EventType.STEP_END]
 
         assert len(step_starts) >= 1
         assert len(step_ends) >= 1

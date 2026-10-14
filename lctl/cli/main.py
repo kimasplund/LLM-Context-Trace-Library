@@ -89,8 +89,8 @@ def replay(chain_file: str, to_seq: Optional[int], verbose: bool):
         click.echo()
         click.echo("Facts:")
         for fid, fact in state.facts.items():
-            conf = fact.get('confidence', 1.0)
-            text = fact.get('text', '') or ''
+            conf = fact.get("confidence", 1.0)
+            text = fact.get("text", "") or ""
             display_text = text[:60] + "..." if len(text) > 60 else text
             click.echo(f"  {fid}: {display_text} (conf: {conf:.2f})")
 
@@ -126,12 +126,11 @@ def stats(chain_file: str, as_json: bool):
         "tokens": {
             "input": state.metrics["total_tokens_in"],
             "output": state.metrics["total_tokens_out"],
-            "total": state.metrics["total_tokens_in"] + state.metrics["total_tokens_out"]
+            "total": state.metrics["total_tokens_in"] + state.metrics["total_tokens_out"],
         },
         "estimated_cost_usd": _estimate_cost(
-            state.metrics["total_tokens_in"],
-            state.metrics["total_tokens_out"]
-        )
+            state.metrics["total_tokens_in"], state.metrics["total_tokens_out"]
+        ),
     }
 
     if as_json:
@@ -144,7 +143,9 @@ def stats(chain_file: str, as_json: bool):
         click.echo(f"Facts: {stats_data['facts']}")
         click.echo(f"Errors: {stats_data['errors']}")
         click.echo(f"Duration: {stats_data['duration_ms'] / 1000:.1f}s")
-        click.echo(f"Tokens: {stats_data['tokens']['total']:,} (in: {stats_data['tokens']['input']:,} / out: {stats_data['tokens']['output']:,})")
+        click.echo(
+            f"Tokens: {stats_data['tokens']['total']:,} (in: {stats_data['tokens']['input']:,} / out: {stats_data['tokens']['output']:,})"
+        )
         click.echo(f"Est. Cost: ${stats_data['estimated_cost_usd']:.4f}")
 
 
@@ -174,12 +175,16 @@ def bottleneck(chain_file: str, top: int):
     click.echo("Slowest steps:")
     for i, step in enumerate(bottlenecks, 1):
         duration_s = step["duration_ms"] / 1000
-        click.echo(f"  {i}. {step['agent']} (seq {step['seq']}): {duration_s:.1f}s ({step['percentage']:.0f}%)")
+        click.echo(
+            f"  {i}. {step['agent']} (seq {step['seq']}): {duration_s:.1f}s ({step['percentage']:.0f}%)"
+        )
 
     # Recommendations - check list is not empty before accessing index
     click.echo()
     if bottlenecks and bottlenecks[0]["percentage"] > 50:
-        click.echo(f"Recommendation: {bottlenecks[0]['agent']} is a major bottleneck ({bottlenecks[0]['percentage']:.0f}% of time).")
+        click.echo(
+            f"Recommendation: {bottlenecks[0]['agent']} is a major bottleneck ({bottlenecks[0]['percentage']:.0f}% of time)."
+        )
         click.echo("Consider: parallelization, caching, or faster model.")
 
 
@@ -332,6 +337,7 @@ def debug(chain_file: str, port: int):
     # Start the dashboard
     try:
         from ..dashboard import run_dashboard
+
         run_dashboard(port=port, working_dir=Path(chain_file).parent.absolute())
     except ImportError as e:
         click.echo(click.style(f"Error: Dashboard dependencies not installed: {e}", fg="red"))
@@ -410,7 +416,7 @@ def evaluate(chain_file: str, as_json: bool):
                 color = "red" if pct > 50 else ("yellow" if pct > 30 else "white")
                 click.echo(
                     f"  {i}. {b['agent']} (seq {b['seq']}): "
-                    + click.style(f"{b['duration_ms']/1000:.1f}s ({pct:.0f}%)", fg=color)
+                    + click.style(f"{b['duration_ms'] / 1000:.1f}s ({pct:.0f}%)", fg=color)
                 )
 
 
@@ -449,7 +455,7 @@ def compare(chain1: str, chain2: str, as_json: bool):
                 "improvements": sum(1 for c in comparisons.values() if c.improvement is True),
                 "regressions": sum(1 for c in comparisons.values() if c.improvement is False),
                 "unchanged": sum(1 for c in comparisons.values() if c.improvement is None),
-            }
+            },
         }
         click.echo(json.dumps(output, indent=2, default=str))
     else:
@@ -463,14 +469,31 @@ def compare(chain1: str, chain2: str, as_json: bool):
         click.echo()
 
         click.echo(click.style("Metric Comparisons", fg="white", bold=True))
-        click.echo(f"  {'Metric':<25} {'Chain A':>12} {'Chain B':>12} {'Change':>12} {'Status':>10}")
-        click.echo(f"  {'-'*25} {'-'*12} {'-'*12} {'-'*12} {'-'*10}")
+        click.echo(
+            f"  {'Metric':<25} {'Chain A':>12} {'Chain B':>12} {'Change':>12} {'Status':>10}"
+        )
+        click.echo(f"  {'-' * 25} {'-' * 12} {'-' * 12} {'-' * 12} {'-' * 10}")
 
         metric_display = [
-            ("Latency (ms)", metrics_a.total_duration_ms, metrics_b.total_duration_ms, comparisons["latency_diff"]),
-            ("Token Efficiency", metrics_a.token_efficiency, metrics_b.token_efficiency, comparisons["token_efficiency"]),
+            (
+                "Latency (ms)",
+                metrics_a.total_duration_ms,
+                metrics_b.total_duration_ms,
+                comparisons["latency_diff"],
+            ),
+            (
+                "Token Efficiency",
+                metrics_a.token_efficiency,
+                metrics_b.token_efficiency,
+                comparisons["token_efficiency"],
+            ),
             ("Error Rate", metrics_a.error_rate, metrics_b.error_rate, comparisons["error_rate"]),
-            ("Fact Confidence", metrics_a.avg_fact_confidence, metrics_b.avg_fact_confidence, comparisons["fact_confidence_avg"]),
+            (
+                "Fact Confidence",
+                metrics_a.avg_fact_confidence,
+                metrics_b.avg_fact_confidence,
+                comparisons["fact_confidence_avg"],
+            ),
         ]
 
         for name, val_a, val_b, comp in metric_display:
@@ -481,7 +504,9 @@ def compare(chain1: str, chain2: str, as_json: bool):
             else:
                 status = click.style("SAME", fg="yellow")
 
-            pct_str = f"{comp.percent_change:+.1f}%" if abs(comp.percent_change) < float("inf") else "N/A"
+            pct_str = (
+                f"{comp.percent_change:+.1f}%" if abs(comp.percent_change) < float("inf") else "N/A"
+            )
             click.echo(f"  {name:<25} {val_a:>12.2f} {val_b:>12.2f} {pct_str:>12} {status:>10}")
 
         click.echo()
@@ -574,7 +599,7 @@ def benchmark(chain_file: str, iterations: int, as_json: bool):
         },
         "memory": {
             "avg_facts": round(statistics.mean(state_sizes), 1),
-        }
+        },
     }
 
     if as_json:
@@ -621,7 +646,13 @@ def benchmark(chain_file: str, iterations: int, as_json: bool):
 
 @cli.command()
 @click.argument("chain_file", type=click.Path())
-@click.option("--format", "output_format", type=click.Choice(["json", "prometheus"]), default="json", help="Output format")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "prometheus"]),
+    default="json",
+    help="Output format",
+)
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON (same as --format json)")
 def metrics(chain_file: str, output_format: str, as_json: bool):
     """Export metrics in various formats.
@@ -646,8 +677,7 @@ def metrics(chain_file: str, output_format: str, as_json: bool):
     if output_format == "json":
         output = chain_metrics.to_dict()
         output["cost_estimate_usd"] = _estimate_cost(
-            chain_metrics.total_tokens_in,
-            chain_metrics.total_tokens_out
+            chain_metrics.total_tokens_in, chain_metrics.total_tokens_out
         )
         click.echo(json.dumps(output, indent=2, default=str))
 
@@ -655,59 +685,65 @@ def metrics(chain_file: str, output_format: str, as_json: bool):
         chain_id = chain_metrics.chain_id.replace("-", "_").replace(".", "_")
 
         prometheus_lines = [
-            '# HELP lctl_chain_events_total Total number of events in chain',
-            '# TYPE lctl_chain_events_total gauge',
+            "# HELP lctl_chain_events_total Total number of events in chain",
+            "# TYPE lctl_chain_events_total gauge",
             f'lctl_chain_events_total{{chain_id="{chain_id}"}} {chain_metrics.total_events}',
-            '',
-            '# HELP lctl_chain_duration_ms Total duration in milliseconds',
-            '# TYPE lctl_chain_duration_ms gauge',
+            "",
+            "# HELP lctl_chain_duration_ms Total duration in milliseconds",
+            "# TYPE lctl_chain_duration_ms gauge",
             f'lctl_chain_duration_ms{{chain_id="{chain_id}"}} {chain_metrics.total_duration_ms}',
-            '',
-            '# HELP lctl_chain_tokens_total Total tokens used',
-            '# TYPE lctl_chain_tokens_total gauge',
+            "",
+            "# HELP lctl_chain_tokens_total Total tokens used",
+            "# TYPE lctl_chain_tokens_total gauge",
             f'lctl_chain_tokens_total{{chain_id="{chain_id}",type="input"}} {chain_metrics.total_tokens_in}',
             f'lctl_chain_tokens_total{{chain_id="{chain_id}",type="output"}} {chain_metrics.total_tokens_out}',
-            '',
-            '# HELP lctl_chain_errors_total Total number of errors',
-            '# TYPE lctl_chain_errors_total gauge',
+            "",
+            "# HELP lctl_chain_errors_total Total number of errors",
+            "# TYPE lctl_chain_errors_total gauge",
             f'lctl_chain_errors_total{{chain_id="{chain_id}"}} {chain_metrics.error_count}',
-            '',
-            '# HELP lctl_chain_facts_total Total number of facts',
-            '# TYPE lctl_chain_facts_total gauge',
+            "",
+            "# HELP lctl_chain_facts_total Total number of facts",
+            "# TYPE lctl_chain_facts_total gauge",
             f'lctl_chain_facts_total{{chain_id="{chain_id}"}} {chain_metrics.fact_count}',
-            '',
-            '# HELP lctl_chain_steps_total Total number of steps',
-            '# TYPE lctl_chain_steps_total gauge',
+            "",
+            "# HELP lctl_chain_steps_total Total number of steps",
+            "# TYPE lctl_chain_steps_total gauge",
             f'lctl_chain_steps_total{{chain_id="{chain_id}"}} {chain_metrics.step_count}',
-            '',
-            '# HELP lctl_chain_agents_total Total number of agents',
-            '# TYPE lctl_chain_agents_total gauge',
+            "",
+            "# HELP lctl_chain_agents_total Total number of agents",
+            "# TYPE lctl_chain_agents_total gauge",
             f'lctl_chain_agents_total{{chain_id="{chain_id}"}} {chain_metrics.agent_count}',
-            '',
-            '# HELP lctl_chain_avg_step_duration_ms Average step duration in milliseconds',
-            '# TYPE lctl_chain_avg_step_duration_ms gauge',
+            "",
+            "# HELP lctl_chain_avg_step_duration_ms Average step duration in milliseconds",
+            "# TYPE lctl_chain_avg_step_duration_ms gauge",
             f'lctl_chain_avg_step_duration_ms{{chain_id="{chain_id}"}} {chain_metrics.avg_step_duration_ms:.2f}',
-            '',
-            '# HELP lctl_chain_avg_fact_confidence Average fact confidence',
-            '# TYPE lctl_chain_avg_fact_confidence gauge',
+            "",
+            "# HELP lctl_chain_avg_fact_confidence Average fact confidence",
+            "# TYPE lctl_chain_avg_fact_confidence gauge",
             f'lctl_chain_avg_fact_confidence{{chain_id="{chain_id}"}} {chain_metrics.avg_fact_confidence:.4f}',
-            '',
-            '# HELP lctl_chain_token_efficiency Tokens per second',
-            '# TYPE lctl_chain_token_efficiency gauge',
+            "",
+            "# HELP lctl_chain_token_efficiency Tokens per second",
+            "# TYPE lctl_chain_token_efficiency gauge",
             f'lctl_chain_token_efficiency{{chain_id="{chain_id}"}} {chain_metrics.token_efficiency:.2f}',
-            '',
-            '# HELP lctl_chain_error_rate Error rate (errors/events)',
-            '# TYPE lctl_chain_error_rate gauge',
+            "",
+            "# HELP lctl_chain_error_rate Error rate (errors/events)",
+            "# TYPE lctl_chain_error_rate gauge",
             f'lctl_chain_error_rate{{chain_id="{chain_id}"}} {chain_metrics.error_rate:.6f}',
         ]
 
-        click.echo('\n'.join(prometheus_lines))
+        click.echo("\n".join(prometheus_lines))
 
 
 @cli.command()
 @click.option("--port", "-p", default=8080, help="Port to run dashboard on")
 @click.option("--host", "-h", default="0.0.0.0", help="Host to bind to")
-@click.option("--dir", "-d", "working_dir", type=click.Path(exists=True), help="Directory containing .lctl.json files")
+@click.option(
+    "--dir",
+    "-d",
+    "working_dir",
+    type=click.Path(exists=True),
+    help="Directory containing .lctl.json files",
+)
 def dashboard(port: int, host: str, working_dir: Optional[str]):
     """Launch the web dashboard for visualizing LCTL chains.
 
@@ -730,7 +766,9 @@ def dashboard(port: int, host: str, working_dir: Optional[str]):
     work_path = Path(working_dir) if working_dir else Path.cwd()
 
     # Count available chains
-    chain_count = len(list(work_path.glob("*.lctl.json"))) + len(list(work_path.glob("*.lctl.yaml")))
+    chain_count = len(list(work_path.glob("*.lctl.json"))) + len(
+        list(work_path.glob("*.lctl.yaml"))
+    )
 
     click.echo(f"  Working directory: {work_path}")
     click.echo(f"  Available chains: {chain_count}")
@@ -742,6 +780,7 @@ def dashboard(port: int, host: str, working_dir: Optional[str]):
 
     try:
         from ..dashboard import run_dashboard
+
         run_dashboard(host=host, port=port, working_dir=work_path)
     except ImportError as e:
         click.echo(click.style(f"Error: Dashboard dependencies not installed: {e}", fg="red"))
@@ -763,29 +802,29 @@ def _print_event(event: Event) -> None:
         "fact_modified": "yellow",
         "tool_call": "blue",
         "error": "red",
-        "checkpoint": "magenta"
+        "checkpoint": "magenta",
     }
 
-    etype = event.type.value if hasattr(event.type, 'value') else str(event.type)
+    etype = event.type.value if hasattr(event.type, "value") else str(event.type)
     color = type_colors.get(etype, "white")
 
     click.echo(f"[{event.seq}] " + click.style(etype, fg=color) + f" ({event.agent})")
 
     # Show key data - handle None values safely
     if etype == "fact_added":
-        fact_id = event.data.get('id', 'unknown')
-        text = event.data.get('text', '') or ''
+        fact_id = event.data.get("id", "unknown")
+        text = event.data.get("text", "") or ""
         display_text = text[:50] + "..." if len(text) > 50 else text
         click.echo(f"     {fact_id}: {display_text}")
     elif etype == "error":
-        category = event.data.get('category', 'unknown')
-        error_type = event.data.get('type', 'unknown')
-        message = event.data.get('message', '') or ''
+        category = event.data.get("category", "unknown")
+        error_type = event.data.get("type", "unknown")
+        message = event.data.get("message", "") or ""
         display_msg = message[:50] + "..." if len(message) > 50 else message
         click.echo(f"     {category}/{error_type}: {display_msg}")
     elif etype == "tool_call":
-        tool = event.data.get('tool', 'unknown')
-        duration = event.data.get('duration_ms', 0) or 0
+        tool = event.data.get("tool", "unknown")
+        duration = event.data.get("duration_ms", 0) or 0
         click.echo(f"     {tool}: {duration}ms")
 
 
@@ -842,10 +881,11 @@ def claude_init(hooks_dir: str, force: bool, chain_id: str):
     if hooks_path.exists() and not force:
         existing = list(hooks_path.glob("*.sh"))
         if existing:
-            click.echo(click.style(
-                f"Hooks directory already contains {len(existing)} scripts.",
-                fg="yellow"
-            ))
+            click.echo(
+                click.style(
+                    f"Hooks directory already contains {len(existing)} scripts.", fg="yellow"
+                )
+            )
             click.echo("Use --force to overwrite.")
             sys.exit(1)
 
@@ -861,27 +901,43 @@ def claude_init(hooks_dir: str, force: bool, chain_id: str):
                 "PreToolUse": [
                     {
                         "matcher": "Task",
-                        "hooks": [{"type": "command", "command": f"cd {project_root} && bash {hooks_dir}/PreToolUse.sh"}]
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": f"cd {project_root} && bash {hooks_dir}/PreToolUse.sh",
+                            }
+                        ],
                     }
                 ],
                 "PostToolUse": [
                     {
                         "matcher": "*",
-                        "hooks": [{"type": "command", "command": f"cd {project_root} && bash {hooks_dir}/PostToolUse.sh"}]
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": f"cd {project_root} && bash {hooks_dir}/PostToolUse.sh",
+                            }
+                        ],
                     }
                 ],
                 "Stop": [
                     {
                         "matcher": "",
-                        "hooks": [{"type": "command", "command": f"cd {project_root} && bash {hooks_dir}/Stop.sh"}]
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": f"cd {project_root} && bash {hooks_dir}/Stop.sh",
+                            }
+                        ],
                     }
-                ]
+                ],
             }
         }
 
         # Merge with existing settings if present
         if settings_path.exists() and not force:
             import json
+
             with open(settings_path) as f:
                 existing = json.load(f)
             existing["hooks"] = settings["hooks"]
@@ -889,6 +945,7 @@ def claude_init(hooks_dir: str, force: bool, chain_id: str):
 
         settings_path.parent.mkdir(parents=True, exist_ok=True)
         import json
+
         with open(settings_path, "w") as f:
             json.dump(settings, f, indent=2)
 
@@ -976,6 +1033,7 @@ def claude_status():
     if state_file.exists():
         try:
             import json
+
             with open(state_file) as f:
                 state = json.load(f)
             click.echo(click.style("Active tracing session:", fg="green"))
@@ -991,7 +1049,9 @@ def claude_status():
 
     # List recent traces
     if traces_dir.exists():
-        traces = sorted(traces_dir.glob("*.lctl.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        traces = sorted(
+            traces_dir.glob("*.lctl.json"), key=lambda p: p.stat().st_mtime, reverse=True
+        )
         if traces:
             click.echo("Recent traces:")
             for trace in traces[:5]:
@@ -999,6 +1059,7 @@ def claude_status():
                     chain = Chain.load(trace)
                     mtime = trace.stat().st_mtime
                     from datetime import datetime
+
                     dt = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
                     click.echo(f"  {trace.name}: {len(chain.events)} events ({dt})")
                 except Exception:
@@ -1036,6 +1097,7 @@ def claude_report(chain_file: str, output: Optional[str], open_browser: bool):
 
         if open_browser:
             import webbrowser
+
             webbrowser.open(f"file://{Path(report_path).absolute()}")
     except Exception as e:
         click.echo(click.style(f"Error generating report: {e}", fg="red"), err=True)
@@ -1060,6 +1122,7 @@ def claude_clean(traces_dir: str, older_than: int, dry_run: bool):
         return
 
     import time
+
     cutoff = time.time() - (older_than * 24 * 60 * 60)
 
     traces = list(traces_path.glob("*.lctl.json"))

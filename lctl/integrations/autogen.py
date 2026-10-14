@@ -34,6 +34,7 @@ try:
     import autogen_core  # noqa: F401 - imported for availability check
     from autogen_core import EVENT_LOGGER_NAME
     from autogen_core import logging as ag_logging
+
     AUTOGEN_MODE = "modern"
     AUTOGEN_AVAILABLE = True
     # Define legacy names as None for compatibility
@@ -45,6 +46,7 @@ except ImportError:
     try:
         # Try legacy AutoGen / AG2
         from autogen import Agent, ConversableAgent, GroupChat, GroupChatManager
+
         AUTOGEN_MODE = "legacy"
         AUTOGEN_AVAILABLE = True
         # Create Dummy references for type hinting if needed
@@ -54,6 +56,7 @@ except ImportError:
         try:
             # Fallback for ag2 renaming of legacy
             from ag2 import Agent, ConversableAgent, GroupChat, GroupChatManager  # noqa: F401
+
             AUTOGEN_MODE = "legacy"
             AUTOGEN_AVAILABLE = True
             ag_logging = None
@@ -166,13 +169,15 @@ class LCTLAutogenHandler(logging.Handler):
 
         with self._lock:
             try:
-                self.session.step_start(agent=agent_name, intent="llm_call", input_summary=input_summary)
+                self.session.step_start(
+                    agent=agent_name, intent="llm_call", input_summary=input_summary
+                )
                 self.session.step_end(
                     agent=agent_name,
                     outcome="success",
                     output_summary=output_summary,
                     tokens_in=prompt_tokens,
-                    tokens_out=completion_tokens
+                    tokens_out=completion_tokens,
                 )
             except Exception:
                 pass  # Graceful degradation - don't break execution if tracing fails
@@ -189,7 +194,7 @@ class LCTLAutogenHandler(logging.Handler):
                     tool=tool_name,
                     input_data=truncate(args, 200),
                     output_data=truncate(result, 200),
-                    duration_ms=0
+                    duration_ms=0,
                 )
             except Exception:
                 pass  # Graceful degradation
@@ -202,8 +207,12 @@ class LCTLAutogenHandler(logging.Handler):
 
         with self._lock:
             try:
-                self.session.step_start(agent=sender, intent="send_message", input_summary=truncate(payload, 50))
-                self.session.step_end(agent=sender, outcome="success", output_summary="Message processed")
+                self.session.step_start(
+                    agent=sender, intent="send_message", input_summary=truncate(payload, 50)
+                )
+                self.session.step_end(
+                    agent=sender, outcome="success", output_summary="Message processed"
+                )
             except Exception:
                 pass  # Graceful degradation
 
@@ -267,7 +276,7 @@ class LCTLAutogenCallback(BaseTracer):
                 fact_id="tracing-enabled",
                 text="Enabled global AutoGen event tracing",
                 confidence=1.0,
-                source="lctl-autogen"
+                source="lctl-autogen",
             )
         except Exception:
             pass  # Graceful degradation
@@ -311,7 +320,7 @@ class LCTLAutogenCallback(BaseTracer):
                     fact_id=f"agent-watched-{name}",
                     text=f"Watching agent {name}",
                     confidence=1.0,
-                    source="lctl-autogen"
+                    source="lctl-autogen",
                 )
             except Exception:
                 pass  # Graceful degradation
@@ -401,6 +410,7 @@ class LCTLAutogenCallback(BaseTracer):
                     pass  # Graceful degradation
 
             return message
+
         return hook
 
     def _create_before_reply_hook(self, agent_name: str):
@@ -408,6 +418,7 @@ class LCTLAutogenCallback(BaseTracer):
 
         Tracks the step start so it can be properly ended in after_reply_hook.
         """
+
         def hook(messages):
             if messages:
                 step_key = f"{agent_name}-generate_reply"
@@ -416,7 +427,7 @@ class LCTLAutogenCallback(BaseTracer):
                         self.session.step_start(
                             agent=agent_name,
                             intent="generate_reply",
-                            input_summary=f"Processing {len(messages)} messages"
+                            input_summary=f"Processing {len(messages)} messages",
                         )
                         self._active_steps[step_key] = {
                             "agent": agent_name,
@@ -425,6 +436,7 @@ class LCTLAutogenCallback(BaseTracer):
                     except Exception:
                         pass  # Graceful degradation
             return messages
+
         return hook
 
     def _create_after_reply_hook(self, agent_name: str):
@@ -432,6 +444,7 @@ class LCTLAutogenCallback(BaseTracer):
 
         Ends the step that was started in before_reply_hook.
         """
+
         def hook(message):
             step_key = f"{agent_name}-generate_reply"
             with self._lock:
@@ -449,11 +462,13 @@ class LCTLAutogenCallback(BaseTracer):
                     except Exception:
                         pass  # Graceful degradation
             return message
+
         return hook
 
     def _create_state_update_hook(self, agent_name: str):
         def hook(agent, messages):
             pass
+
         return hook
 
     def attach_group_chat(self, group_chat: Any, manager: Optional[Any] = None) -> None:
@@ -500,9 +515,7 @@ class LCTLAutogenCallback(BaseTracer):
         except Exception:
             pass  # Graceful degradation
 
-    def end_nested_chat(
-        self, result_summary: str = "", outcome: str = "success"
-    ) -> None:
+    def end_nested_chat(self, result_summary: str = "", outcome: str = "success") -> None:
         """Record the end of a nested conversation."""
         with self._lock:
             if not self._conversation_stack:
@@ -571,7 +584,9 @@ class LCTLAutogenCallback(BaseTracer):
         except Exception:
             pass  # Graceful degradation
 
+
 # Convenience wrappers
+
 
 def trace_agent(agent: Any, chain_id: Optional[str] = None) -> LCTLAutogenCallback:
     callback = LCTLAutogenCallback(chain_id=chain_id)
@@ -579,7 +594,9 @@ def trace_agent(agent: Any, chain_id: Optional[str] = None) -> LCTLAutogenCallba
     return callback
 
 
-def trace_group_chat(group_chat: Any, manager: Optional[Any] = None, chain_id: Optional[str] = None) -> LCTLAutogenCallback:
+def trace_group_chat(
+    group_chat: Any, manager: Optional[Any] = None, chain_id: Optional[str] = None
+) -> LCTLAutogenCallback:
     callback = LCTLAutogenCallback(chain_id=chain_id)
     callback.attach_group_chat(group_chat, manager)
     return callback
@@ -706,7 +723,7 @@ class LCTLConversableAgent:
                     category="autogen_error",
                     error_type=type(e).__name__,
                     message=str(e),
-                    recoverable=False
+                    recoverable=False,
                 )
             except Exception:
                 pass  # Graceful degradation
@@ -737,9 +754,7 @@ class LCTLGroupChatManager:
         if AUTOGEN_MODE == "modern":
             raise AutogenNotAvailableError()
 
-        self._callback = LCTLAutogenCallback(
-            chain_id=chain_id or f"groupchat-{str(uuid4())[:8]}"
-        )
+        self._callback = LCTLAutogenCallback(chain_id=chain_id or f"groupchat-{str(uuid4())[:8]}")
 
         self._manager = GroupChatManager(
             groupchat=groupchat,

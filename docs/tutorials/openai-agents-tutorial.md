@@ -57,6 +57,7 @@ import asyncio
 from agents import Agent, Runner
 from lctl.integrations.openai_agents import LCTLOpenAIAgentTracer
 
+
 async def main():
     # Create the tracer
     tracer = LCTLOpenAIAgentTracer(chain_id="basic-assistant")
@@ -71,13 +72,14 @@ async def main():
     result = await Runner.run(
         agent,
         input="What are three benefits of test-driven development?",
-        run_config=tracer.run_config  # This enables tracing
+        run_config=tracer.run_config,  # This enables tracing
     )
 
     print(f"Result: {result.final_output}")
 
     # Export the trace
     tracer.export("basic_assistant.lctl.json")
+
 
 asyncio.run(main())
 ```
@@ -90,6 +92,7 @@ Wrap an agent for convenient access to both agent and tracer:
 import asyncio
 from agents import Agent, Runner
 from lctl.integrations.openai_agents import trace_agent
+
 
 async def main():
     # Create and wrap the agent
@@ -108,13 +111,14 @@ async def main():
     result = await Runner.run(
         traced.agent,
         input="Summarize the key features of Python 3.12",
-        run_config=traced.run_config
+        run_config=traced.run_config,
     )
 
     print(f"Result: {result.final_output}")
 
     # Export via the wrapper
     traced.export("research_trace.lctl.json")
+
 
 asyncio.run(main())
 ```
@@ -128,12 +132,14 @@ import asyncio
 from agents import Agent, Runner, function_tool
 from lctl.integrations.openai_agents import LCTLOpenAIAgentTracer
 
+
 # Define tools using @function_tool decorator
 @function_tool
 def get_weather(city: str) -> str:
     """Get the current weather for a city."""
     # Simulated response
     return f"Weather in {city}: Sunny, 72F, humidity 45%"
+
 
 @function_tool
 def calculate(expression: str) -> str:
@@ -144,11 +150,13 @@ def calculate(expression: str) -> str:
     except Exception as e:
         return f"Error: {e}"
 
+
 @function_tool
 def search_web(query: str) -> str:
     """Search the web for information."""
     # Simulated response
     return f"Found 5 results for: {query}. Top result: ..."
+
 
 async def main():
     tracer = LCTLOpenAIAgentTracer(chain_id="tool-agent", verbose=True)
@@ -165,13 +173,14 @@ async def main():
     result = await Runner.run(
         agent,
         input="What's the weather in Tokyo? Also, what is 25 * 17?",
-        run_config=tracer.run_config
+        run_config=tracer.run_config,
     )
 
     print(f"Result: {result.final_output}")
     print(f"Events captured: {len(tracer.chain.events)}")
 
     tracer.export("tool_calls.lctl.json")
+
 
 asyncio.run(main())
 ```
@@ -184,6 +193,7 @@ Trace control transfers between agents:
 import asyncio
 from agents import Agent, Runner
 from lctl.integrations.openai_agents import LCTLOpenAIAgentTracer
+
 
 async def main():
     tracer = LCTLOpenAIAgentTracer(chain_id="triage-system", verbose=True)
@@ -211,11 +221,12 @@ async def main():
     result = await Runner.run(
         triage_agent,
         input="I'm having trouble logging into my account",
-        run_config=tracer.run_config
+        run_config=tracer.run_config,
     )
 
     print(f"Final result: {result.final_output}")
     tracer.export("triage_trace.lctl.json")
+
 
 asyncio.run(main())
 ```
@@ -226,6 +237,7 @@ For fine-grained control or custom agent implementations:
 
 ```python
 from lctl.integrations.openai_agents import LCTLOpenAIAgentTracer
+
 
 def main():
     tracer = LCTLOpenAIAgentTracer(chain_id="manual-tracing")
@@ -253,6 +265,7 @@ def main():
     print(f"Recorded {len(tracer.chain.events)} events")
     tracer.export("manual_trace.lctl.json")
 
+
 main()
 ```
 
@@ -262,6 +275,7 @@ When you need explicit control over handoff recording:
 
 ```python
 from lctl.integrations.openai_agents import LCTLOpenAIAgentTracer
+
 
 def main():
     tracer = LCTLOpenAIAgentTracer(chain_id="explicit-handoffs")
@@ -286,6 +300,7 @@ def main():
     print(f"Total events: {len(tracer.chain.events)}")
     tracer.export("handoffs_trace.lctl.json")
 
+
 main()
 ```
 
@@ -296,6 +311,7 @@ Errors are automatically captured in traces:
 ```python
 import asyncio
 from lctl.integrations.openai_agents import LCTLOpenAIAgentTracer
+
 
 async def main():
     tracer = LCTLOpenAIAgentTracer(chain_id="error-handling")
@@ -320,6 +336,7 @@ async def main():
 
     tracer.export("error_trace.lctl.json")
 
+
 asyncio.run(main())
 ```
 
@@ -330,6 +347,7 @@ The context manager supports async operations:
 ```python
 import asyncio
 from lctl.integrations.openai_agents import LCTLOpenAIAgentTracer
+
 
 async def main():
     tracer = LCTLOpenAIAgentTracer(chain_id="async-demo")
@@ -349,6 +367,7 @@ async def main():
 
     tracer.export("async_trace.lctl.json")
 
+
 asyncio.run(main())
 ```
 
@@ -358,6 +377,7 @@ Track token usage and output summaries:
 
 ```python
 from lctl.integrations.openai_agents import LCTLOpenAIAgentTracer
+
 
 def main():
     tracer = LCTLOpenAIAgentTracer(chain_id="usage-tracking")
@@ -381,6 +401,7 @@ def main():
         )
 
     tracer.export("usage_trace.lctl.json")
+
 
 main()
 ```
@@ -538,10 +559,7 @@ trace_data = tracer.to_dict()
 import json
 import requests
 
-requests.post(
-    "https://monitoring.example.com/traces",
-    json=trace_data
-)
+requests.post("https://monitoring.example.com/traces", json=trace_data)
 
 # Or log for analysis
 print(json.dumps(trace_data, indent=2))
@@ -554,6 +572,7 @@ import asyncio
 from agents import Agent, Runner
 from lctl.integrations.openai_agents import LCTLOpenAIAgentTracer
 
+
 async def process_batch(questions: list):
     tracer = LCTLOpenAIAgentTracer(chain_id="batch-processing")
 
@@ -562,14 +581,11 @@ async def process_batch(questions: list):
     for i, question in enumerate(questions):
         # Each question gets traced
         with tracer.trace_agent_run(f"question_{i}", f"Processing: {question[:50]}"):
-            result = await Runner.run(
-                agent,
-                input=question,
-                run_config=tracer.run_config
-            )
+            result = await Runner.run(agent, input=question, run_config=tracer.run_config)
             print(f"Q{i}: {result.final_output[:50]}...")
 
     tracer.export("batch_trace.lctl.json")
+
 
 questions = [
     "What is Python?",
@@ -661,6 +677,7 @@ tracer.record_handoff("from_agent", "to_agent")
 async def main():
     async with tracer.trace_agent_run("agent", "task"):
         await do_async_work()
+
 
 asyncio.run(main())
 ```

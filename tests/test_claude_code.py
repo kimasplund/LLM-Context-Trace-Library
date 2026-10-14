@@ -425,7 +425,9 @@ class TestLCTLClaudeCodeTracer:
         tracer.on_task_start(agent_type="analyzer", description="Analyze", prompt="Analyze code")
         tracer.on_fact_discovered("f1", "Found issue", confidence=0.8)
         tracer.on_tool_call("Bash", {"command": "ls"}, {"files": ["a.py"]})
-        tracer.on_task_complete(agent_type="analyzer", result="Done", success=True, tokens_in=100, tokens_out=50)
+        tracer.on_task_complete(
+            agent_type="analyzer", result="Done", success=True, tokens_in=100, tokens_out=50
+        )
         tracer.on_file_change("/test.py", "edit")
 
         summary = tracer.get_summary()
@@ -516,6 +518,7 @@ class TestGetOrCreate:
         """Test creating new tracer instance."""
         # Clear global state
         import lctl.integrations.claude_code as cc
+
         cc._tracer_instance = None
         cc._tracer_file = None
 
@@ -534,6 +537,7 @@ class TestGetOrCreate:
     def test_get_or_create_returns_same(self, tmp_path):
         """Test that get_or_create returns same instance."""
         import lctl.integrations.claude_code as cc
+
         cc._tracer_instance = None
         cc._tracer_file = None
 
@@ -625,7 +629,9 @@ class TestGenerateHtmlReport:
         tracer = LCTLClaudeCodeTracer(chain_id="report-test")
         tracer.on_task_start(agent_type="analyzer", description="Analyze", prompt="Test")
         tracer.on_fact_discovered("f1", "Found something", confidence=0.9)
-        tracer.on_task_complete(agent_type="analyzer", result="Done", success=True, tokens_in=1000, tokens_out=500)
+        tracer.on_task_complete(
+            agent_type="analyzer", result="Done", success=True, tokens_in=1000, tokens_out=500
+        )
 
         output_path = tmp_path / "report.html"
         result = generate_html_report(tracer.session.chain, str(output_path))
@@ -641,7 +647,9 @@ class TestGenerateHtmlReport:
         """Test that HTML report includes key metrics."""
         tracer = LCTLClaudeCodeTracer(chain_id="metrics-test")
         tracer.on_task_start(agent_type="test", description="Test", prompt="Test")
-        tracer.on_task_complete(agent_type="test", result="Done", success=True, tokens_in=5000, tokens_out=2000)
+        tracer.on_task_complete(
+            agent_type="test", result="Done", success=True, tokens_in=5000, tokens_out=2000
+        )
 
         output_path = tmp_path / "report.html"
         generate_html_report(tracer.session.chain, str(output_path))
@@ -880,7 +888,9 @@ class TestIntegration:
         )
 
         # Second attempt succeeds
-        tracer.on_task_start(agent_type="builder", description="Build", prompt="Build project again")
+        tracer.on_task_start(
+            agent_type="builder", description="Build", prompt="Build project again"
+        )
         tracer.on_task_complete(
             agent_type="builder",
             result="Build successful",

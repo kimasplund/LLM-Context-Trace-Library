@@ -5,15 +5,17 @@ from typing import Any, Dict, List, Optional, Pattern, Set
 
 DEFAULT_PATTERNS: Dict[str, Pattern] = {
     "api_key": re.compile(r'(?i)(api[_-]?key|apikey)["\s:=]+["\']?([a-zA-Z0-9_-]{20,})["\']?'),
-    "bearer_token": re.compile(r'(?i)bearer\s+([a-zA-Z0-9_.-]+)'),
+    "bearer_token": re.compile(r"(?i)bearer\s+([a-zA-Z0-9_.-]+)"),
     "password": re.compile(r'(?i)(password|passwd|pwd)["\s:=]+["\']?([^\s"\',}{]+)["\']?'),
     "secret": re.compile(r'(?i)(secret|client_secret)["\s:=]+["\']?([a-zA-Z0-9_-]{10,})["\']?'),
-    "token": re.compile(r'(?i)(token|access_token|refresh_token)["\s:=]+["\']?([a-zA-Z0-9_.-]{20,})["\']?'),
-    "aws_key": re.compile(r'(?i)(AKIA|ABIA|ACCA|ASIA)[A-Z0-9]{16}'),
-    "private_key": re.compile(r'-----BEGIN [A-Z]+ PRIVATE KEY-----'),
-    "credit_card": re.compile(r'\b(?:\d{4}[- ]?){3}\d{4}\b'),
-    "ssn": re.compile(r'\b\d{3}-\d{2}-\d{4}\b'),
-    "email": re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'),
+    "token": re.compile(
+        r'(?i)(token|access_token|refresh_token)["\s:=]+["\']?([a-zA-Z0-9_.-]{20,})["\']?'
+    ),
+    "aws_key": re.compile(r"(?i)(AKIA|ABIA|ACCA|ASIA)[A-Z0-9]{16}"),
+    "private_key": re.compile(r"-----BEGIN [A-Z]+ PRIVATE KEY-----"),
+    "credit_card": re.compile(r"\b(?:\d{4}[- ]?){3}\d{4}\b"),
+    "ssn": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
+    "email": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"),
 }
 
 REDACTED_VALUE = "[REDACTED]"
@@ -27,7 +29,7 @@ class Redactor:
         patterns: Optional[Dict[str, Pattern]] = None,
         additional_patterns: Optional[Dict[str, Pattern]] = None,
         redact_emails: bool = False,
-        enabled: bool = True
+        enabled: bool = True,
     ):
         """Initialize the redactor.
 
@@ -57,10 +59,12 @@ class Redactor:
             return text
         result = text
         for name, pattern in self.patterns.items():
-            result = pattern.sub(f'{name}={REDACTED_VALUE}', result)
+            result = pattern.sub(f"{name}={REDACTED_VALUE}", result)
         return result
 
-    def redact_dict(self, data: Dict[str, Any], depth: int = 0, max_depth: int = 10) -> Dict[str, Any]:
+    def redact_dict(
+        self, data: Dict[str, Any], depth: int = 0, max_depth: int = 10
+    ) -> Dict[str, Any]:
         """Recursively redact sensitive data from a dictionary.
 
         Args:
@@ -75,19 +79,29 @@ class Redactor:
             return data
 
         result = {}
-        sensitive_key_exact = {'password', 'secret', 'token', 'api_key', 'apikey',
-                               'authorization', 'credential', 'private_key',
-                               'access_token', 'refresh_token', 'bearer_token',
-                               'client_secret', 'auth_token', 'session_token'}
-        sensitive_key_suffix = {'_password', '_secret', '_token', '_key', '_credential',
-                                '_auth'}
+        sensitive_key_exact = {
+            "password",
+            "secret",
+            "token",
+            "api_key",
+            "apikey",
+            "authorization",
+            "credential",
+            "private_key",
+            "access_token",
+            "refresh_token",
+            "bearer_token",
+            "client_secret",
+            "auth_token",
+            "session_token",
+        }
+        sensitive_key_suffix = {"_password", "_secret", "_token", "_key", "_credential", "_auth"}
 
         for key, value in data.items():
             key_lower = key.lower()
 
-            is_sensitive = (
-                key_lower in sensitive_key_exact or
-                any(key_lower.endswith(suffix) for suffix in sensitive_key_suffix)
+            is_sensitive = key_lower in sensitive_key_exact or any(
+                key_lower.endswith(suffix) for suffix in sensitive_key_suffix
             )
             if is_sensitive:
                 result[key] = REDACTED_VALUE
@@ -97,8 +111,10 @@ class Redactor:
                 result[key] = self.redact_dict(value, depth + 1, max_depth)
             elif isinstance(value, list):
                 result[key] = [
-                    self.redact_dict(item, depth + 1, max_depth) if isinstance(item, dict)
-                    else self.redact_string(item) if isinstance(item, str)
+                    self.redact_dict(item, depth + 1, max_depth)
+                    if isinstance(item, dict)
+                    else self.redact_string(item)
+                    if isinstance(item, str)
                     else item
                     for item in value
                 ]
@@ -137,7 +153,7 @@ def get_redactor() -> Redactor:
 def configure_redaction(
     enabled: bool = True,
     additional_patterns: Optional[Dict[str, Pattern]] = None,
-    redact_emails: bool = False
+    redact_emails: bool = False,
 ) -> Redactor:
     """Configure the global redactor.
 
@@ -151,9 +167,7 @@ def configure_redaction(
     """
     global _default_redactor
     _default_redactor = Redactor(
-        additional_patterns=additional_patterns,
-        redact_emails=redact_emails,
-        enabled=enabled
+        additional_patterns=additional_patterns, redact_emails=redact_emails, enabled=enabled
     )
     return _default_redactor
 

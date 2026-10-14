@@ -133,6 +133,7 @@ class TestTracedDecorator:
 
     def test_traced_decorator_preserves_function_metadata(self):
         """Test traced decorator preserves function name and docstring."""
+
         @lctl.traced("agent", "intent")
         def documented_function():
             """This is the docstring."""

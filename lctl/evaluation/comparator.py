@@ -61,47 +61,43 @@ class ComparisonResult:
 
             pct_str = (
                 f"{comparison.percent_change:+.1f}%"
-                if not (comparison.percent_change == float("inf") or
-                        comparison.percent_change == float("-inf"))
+                if not (
+                    comparison.percent_change == float("inf")
+                    or comparison.percent_change == float("-inf")
+                )
                 else "N/A"
             )
 
-            lines.append(
-                f"  {name}:"
-            )
-            lines.append(
-                f"    A: {comparison.value_a:.4f} -> B: {comparison.value_b:.4f}"
-            )
-            lines.append(
-                f"    Change: {comparison.difference:+.4f} ({pct_str}){improvement_str}"
-            )
+            lines.append(f"  {name}:")
+            lines.append(f"    A: {comparison.value_a:.4f} -> B: {comparison.value_b:.4f}")
+            lines.append(f"    Change: {comparison.difference:+.4f} ({pct_str}){improvement_str}")
 
-        lines.extend([
-            "",
-            "-" * 60,
-            "STATISTICAL SIGNIFICANCE",
-            "-" * 60,
-        ])
+        lines.extend(
+            [
+                "",
+                "-" * 60,
+                "STATISTICAL SIGNIFICANCE",
+                "-" * 60,
+            ]
+        )
 
         for metric_name, tests in self.statistical_results.items():
             lines.append(f"  {metric_name}:")
             for test_name, result in tests.items():
                 sig_str = "SIGNIFICANT" if result.significant else "not significant"
-                lines.append(
-                    f"    {test_name}: p={result.p_value:.4f} ({sig_str})"
-                )
+                lines.append(f"    {test_name}: p={result.p_value:.4f} ({sig_str})")
                 if result.confidence_interval:
                     ci = result.confidence_interval
-                    lines.append(
-                        f"      95% CI: [{ci[0]:.4f}, {ci[1]:.4f}]"
-                    )
+                    lines.append(f"      95% CI: [{ci[0]:.4f}, {ci[1]:.4f}]")
 
-        lines.extend([
-            "",
-            "-" * 60,
-            "DIVERGENCES",
-            "-" * 60,
-        ])
+        lines.extend(
+            [
+                "",
+                "-" * 60,
+                "DIVERGENCES",
+                "-" * 60,
+            ]
+        )
 
         if self.divergences:
             lines.append(f"  Found {len(self.divergences)} divergence(s)")
@@ -110,12 +106,14 @@ class ComparisonResult:
         else:
             lines.append("  No divergences found")
 
-        lines.extend([
-            "",
-            "-" * 60,
-            "CONCLUSION",
-            "-" * 60,
-        ])
+        lines.extend(
+            [
+                "",
+                "-" * 60,
+                "CONCLUSION",
+                "-" * 60,
+            ]
+        )
 
         if self.winner:
             lines.append(f"  Winner: {self.winner}")
@@ -152,9 +150,7 @@ class ComparisonResult:
             "chain_b_id": self.chain_b_id,
             "metrics_a": self.metrics_a.to_dict(),
             "metrics_b": self.metrics_b.to_dict(),
-            "metric_comparisons": {
-                k: v.to_dict() for k, v in self.metric_comparisons.items()
-            },
+            "metric_comparisons": {k: v.to_dict() for k, v in self.metric_comparisons.items()},
             "statistical_results": {
                 metric: {test: result.to_dict() for test, result in tests.items()}
                 for metric, tests in self.statistical_results.items()
@@ -272,14 +268,14 @@ class ChainComparator:
         durations_b = self._extract_step_durations(self.chain_b)
 
         if len(durations_a) >= 2 and len(durations_b) >= 2:
-            results["latency"] = run_all_tests(
-                durations_a, durations_b, self.alpha, bootstrap_seed
-            )
+            results["latency"] = run_all_tests(durations_a, durations_b, self.alpha, bootstrap_seed)
 
-        confidences_a = list(self.metrics_a.facts.get(fid, {}).get("confidence", 1.0)
-                            for fid in self.metrics_a.facts)
-        confidences_b = list(self.metrics_b.facts.get(fid, {}).get("confidence", 1.0)
-                            for fid in self.metrics_b.facts)
+        confidences_a = list(
+            self.metrics_a.facts.get(fid, {}).get("confidence", 1.0) for fid in self.metrics_a.facts
+        )
+        confidences_b = list(
+            self.metrics_b.facts.get(fid, {}).get("confidence", 1.0) for fid in self.metrics_b.facts
+        )
 
         if len(confidences_a) >= 2 and len(confidences_b) >= 2:
             results["confidence"] = run_all_tests(
@@ -312,10 +308,7 @@ class ChainComparator:
             elif comparison.improvement is False:
                 improvements_a += 1
 
-        has_significance = any(
-            is_significant(tests)
-            for tests in statistical_results.values()
-        )
+        has_significance = any(is_significant(tests) for tests in statistical_results.values())
 
         if not has_significance:
             return None
@@ -433,7 +426,8 @@ def compare_chain_sets(
         step_count=sum(m.step_count for m in metrics_list_a),
         agent_count=len(set(a for m in metrics_list_a for a in m.agents)),
         agents=list(set(a for m in metrics_list_a for a in m.agents)),
-        avg_step_duration_ms=sum(m.avg_step_duration_ms for m in metrics_list_a) / len(metrics_list_a),
+        avg_step_duration_ms=sum(m.avg_step_duration_ms for m in metrics_list_a)
+        / len(metrics_list_a),
         avg_fact_confidence=sum(confidences_a) / len(confidences_a) if confidences_a else 0.0,
         token_efficiency=sum(token_eff_a) / len(token_eff_a) if token_eff_a else 0.0,
         error_rate=sum(error_rates_a) / len(error_rates_a) if error_rates_a else 0.0,
@@ -451,7 +445,8 @@ def compare_chain_sets(
         step_count=sum(m.step_count for m in metrics_list_b),
         agent_count=len(set(a for m in metrics_list_b for a in m.agents)),
         agents=list(set(a for m in metrics_list_b for a in m.agents)),
-        avg_step_duration_ms=sum(m.avg_step_duration_ms for m in metrics_list_b) / len(metrics_list_b),
+        avg_step_duration_ms=sum(m.avg_step_duration_ms for m in metrics_list_b)
+        / len(metrics_list_b),
         avg_fact_confidence=sum(confidences_b) / len(confidences_b) if confidences_b else 0.0,
         token_efficiency=sum(token_eff_b) / len(token_eff_b) if token_eff_b else 0.0,
         error_rate=sum(error_rates_b) / len(error_rates_b) if error_rates_b else 0.0,
@@ -490,8 +485,7 @@ def compare_chain_sets(
             improvements_a += 1
 
     has_significance = any(
-        any(r.significant for r in tests.values())
-        for tests in statistical_results.values()
+        any(r.significant for r in tests.values()) for tests in statistical_results.values()
     )
 
     winner = None

@@ -22,6 +22,7 @@ except ImportError:
 if "OPENAI_API_KEY" not in os.environ:
     print("Warning: OPENAI_API_KEY not set. This example may fail if run directly.")
 
+
 async def main():
     print("=== LCTL OpenAI Agents Example ===")
 
@@ -37,11 +38,11 @@ async def main():
     # 3. Run with LCTL tracing via run_config
     query = "What is 10 + 5?"
     print(f"Running agent with query: '{query}'...")
-    
+
     result = await Runner.run(
         agent,
         input=query,
-        run_config=tracer.run_config  # Critical: Attach the tracer
+        run_config=tracer.run_config,  # Critical: Attach the tracer
     )
 
     print(f"Agent Response: {result.final_output}")
@@ -51,6 +52,7 @@ async def main():
     tracer.export(output_file)
     print(f"Trace exported to {output_file}")
     print(f"Captured {len(tracer.chain.events)} events.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -15,11 +15,13 @@ import os
 try:
     from llama_index.core import VectorStoreIndex, Document
     from llama_index.core.callbacks import CallbackManager
+
     LLAMAINDEX_INSTALLED = True
 except ImportError:
     try:
         from llama_index import VectorStoreIndex, Document
         from llama_index.callbacks import CallbackManager
+
         LLAMAINDEX_INSTALLED = True
     except ImportError:
         LLAMAINDEX_INSTALLED = False
@@ -171,7 +173,7 @@ def main() -> None:
 
 def print_example_code() -> None:
     """Print example code when LlamaIndex is not installed."""
-    code = '''
+    code = """
 from llama_index.core import VectorStoreIndex, Document
 from lctl.integrations.llamaindex import (
     LCTLLlamaIndexCallback,
@@ -241,7 +243,7 @@ print(f"Events recorded: {len(trace_data['events'])}")
 
 for event in trace_data['events']:
     print(f"  [{event['seq']}] {event['type']} by {event['agent']}")
-'''
+"""
     print(code)
     print()
     print("The trace captures:")

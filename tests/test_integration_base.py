@@ -176,9 +176,7 @@ class TestIntegrationNotAvailableError:
 
     def test_error_attributes(self):
         """Test error has framework and install_hint attributes."""
-        error = IntegrationNotAvailableError(
-            framework="CrewAI", install_hint="pip install crewai"
-        )
+        error = IntegrationNotAvailableError(framework="CrewAI", install_hint="pip install crewai")
 
         assert error.framework == "CrewAI"
         assert error.install_hint == "pip install crewai"
@@ -321,7 +319,7 @@ class TestBaseTracer:
         tracer._tracked_items = {
             "old1": now - 4000,  # Older than 3600s
             "old2": now - 5000,  # Older than 3600s
-            "new1": now - 100,   # Newer than 3600s
+            "new1": now - 100,  # Newer than 3600s
         }
 
         removed = tracer.cleanup_stale_entries(max_age_seconds=3600.0)
@@ -587,7 +585,7 @@ class TestTracerDelegate:
         now = time.time()
         delegate._tracked_items = {
             "old": now - 4000,  # Older than 3600s
-            "new": now - 100,   # Newer than 3600s
+            "new": now - 100,  # Newer than 3600s
         }
 
         removed = delegate.cleanup_stale_entries(max_age_seconds=3600.0)

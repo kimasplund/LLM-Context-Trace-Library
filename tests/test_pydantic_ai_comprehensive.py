@@ -460,7 +460,9 @@ class TestTracedAgent:
 
         result = await traced.run("test input")
 
-        step_end = [e for e in traced.tracer.session.chain.events if e.type == EventType.STEP_END][0]
+        step_end = [e for e in traced.tracer.session.chain.events if e.type == EventType.STEP_END][
+            0
+        ]
         assert "output via output attribute" in step_end.data["output_summary"]
 
     @pytest.mark.asyncio
@@ -476,7 +478,9 @@ class TestTracedAgent:
 
         result = await traced.run("test input")
 
-        step_end = [e for e in traced.tracer.session.chain.events if e.type == EventType.STEP_END][0]
+        step_end = [e for e in traced.tracer.session.chain.events if e.type == EventType.STEP_END][
+            0
+        ]
         assert step_end.data["outcome"] == "success"
         assert step_end.data["tokens"]["input"] == 0
         assert step_end.data["tokens"]["output"] == 0
@@ -529,7 +533,9 @@ class TestTracedAgent:
 
         await traced.run("test input")
 
-        llm_traces = [e for e in traced.tracer.session.chain.events if e.type == EventType.LLM_TRACE]
+        llm_traces = [
+            e for e in traced.tracer.session.chain.events if e.type == EventType.LLM_TRACE
+        ]
         assert len(llm_traces) >= 1
         assert llm_traces[0].data["model"] == "gpt-4-turbo"
 
@@ -785,9 +791,7 @@ class TestConcurrentAgents:
         async def run_agent(traced, prompt):
             return await traced.run(prompt)
 
-        results = await asyncio.gather(*[
-            run_agent(agents[i], f"prompt_{i}") for i in range(3)
-        ])
+        results = await asyncio.gather(*[run_agent(agents[i], f"prompt_{i}") for i in range(3)])
 
         assert len(results) == 3
         for i, agent in enumerate(agents):
@@ -827,7 +831,9 @@ class TestEdgeCases:
         traced = TracedAgent(mock_agent, chain_id="long-output-test")
         await traced.run("test")
 
-        step_end = [e for e in traced.tracer.session.chain.events if e.type == EventType.STEP_END][0]
+        step_end = [e for e in traced.tracer.session.chain.events if e.type == EventType.STEP_END][
+            0
+        ]
         # Output should be the full string since we capture it fully, truncation happens at tool level
         assert "x" in step_end.data["output_summary"]
 
@@ -880,7 +886,9 @@ class TestEdgeCases:
         traced = TracedAgent(mock_agent, chain_id="no-model-dump-test")
         await traced.run("test")
 
-        llm_traces = [e for e in traced.tracer.session.chain.events if e.type == EventType.LLM_TRACE]
+        llm_traces = [
+            e for e in traced.tracer.session.chain.events if e.type == EventType.LLM_TRACE
+        ]
         assert len(llm_traces) >= 1
         # Should fallback to str(msg)
         assert "plain string message" in str(llm_traces[0].data["messages"])
@@ -1007,7 +1015,9 @@ class TestAsyncContextHandling:
                     yield char
 
             result.stream_text = stream_text
-            result.usage = MagicMock(return_value=MagicMock(request_tokens=1, response_tokens=len(text)))
+            result.usage = MagicMock(
+                return_value=MagicMock(request_tokens=1, response_tokens=len(text))
+            )
             del result.all_messages
             return result
 
@@ -1032,9 +1042,7 @@ class TestAsyncContextHandling:
                     chunks.append(chunk)
             return "".join(chunks)
 
-        results = await asyncio.gather(*[
-            run_stream(agents[i], f"prompt_{i}") for i in range(2)
-        ])
+        results = await asyncio.gather(*[run_stream(agents[i], f"prompt_{i}") for i in range(2)])
 
         assert results[0] == "abc"
         assert results[1] == "xyz"

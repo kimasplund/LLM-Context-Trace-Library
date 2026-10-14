@@ -42,14 +42,14 @@ def rpa_sample_chain_data():
                 "type": "step_start",
                 "timestamp": base_time.isoformat(),
                 "agent": "analyzer",
-                "data": {"intent": "analyze", "input_summary": "document.pdf"}
+                "data": {"intent": "analyze", "input_summary": "document.pdf"},
             },
             {
                 "seq": 2,
                 "type": "fact_added",
                 "timestamp": (base_time + timedelta(seconds=1)).isoformat(),
                 "agent": "analyzer",
-                "data": {"id": "F1", "text": "Document contains invoice data", "confidence": 0.85}
+                "data": {"id": "F1", "text": "Document contains invoice data", "confidence": 0.85},
             },
             {
                 "seq": 3,
@@ -60,8 +60,8 @@ def rpa_sample_chain_data():
                     "tool_name": "ocr",
                     "input": "page1",
                     "output": "text extracted",
-                    "duration_ms": 500
-                }
+                    "duration_ms": 500,
+                },
             },
             {
                 "seq": 4,
@@ -73,15 +73,15 @@ def rpa_sample_chain_data():
                     "output_summary": "analysis complete",
                     "duration_ms": 3000,
                     "tokens_in": 100,
-                    "tokens_out": 50
-                }
+                    "tokens_out": 50,
+                },
             },
             {
                 "seq": 5,
                 "type": "step_start",
                 "timestamp": (base_time + timedelta(seconds=4)).isoformat(),
                 "agent": "processor",
-                "data": {"intent": "process", "input_summary": "invoice data"}
+                "data": {"intent": "process", "input_summary": "invoice data"},
             },
             {
                 "seq": 6,
@@ -92,8 +92,8 @@ def rpa_sample_chain_data():
                     "category": "validation",
                     "type": "ValidationError",
                     "message": "Missing required field: amount",
-                    "recoverable": True
-                }
+                    "recoverable": True,
+                },
             },
             {
                 "seq": 7,
@@ -105,10 +105,10 @@ def rpa_sample_chain_data():
                     "output_summary": "processing failed",
                     "duration_ms": 2000,
                     "tokens_in": 75,
-                    "tokens_out": 25
-                }
-            }
-        ]
+                    "tokens_out": 25,
+                },
+            },
+        ],
     }
 
 
@@ -135,16 +135,16 @@ def rpa_temp_chain_dir(rpa_sample_chain_data, tmp_path):
                 "type": "step_start",
                 "timestamp": datetime(2025, 1, 15, 10, 0, 0).isoformat(),
                 "agent": "worker",
-                "data": {"intent": "work"}
+                "data": {"intent": "work"},
             },
             {
                 "seq": 2,
                 "type": "step_end",
                 "timestamp": datetime(2025, 1, 15, 10, 0, 1).isoformat(),
                 "agent": "worker",
-                "data": {"outcome": "success", "duration_ms": 1000}
-            }
-        ]
+                "data": {"outcome": "success", "duration_ms": 1000},
+            },
+        ],
     }
     success_file = tmp_path / "success.lctl.json"
     success_file.write_text(json.dumps(success_chain, indent=2))
@@ -204,8 +204,7 @@ class TestRpaApiKeyAuthentication:
     def test_rpa_endpoint_accepts_valid_api_key(self, rpa_client_with_api_key):
         """Test that valid API key grants access."""
         response = rpa_client_with_api_key.get(
-            "/api/rpa/summary/rpa-test.lctl.json",
-            headers={"X-API-Key": "test-api-key-12345"}
+            "/api/rpa/summary/rpa-test.lctl.json", headers={"X-API-Key": "test-api-key-12345"}
         )
 
         assert response.status_code == 200
@@ -215,8 +214,7 @@ class TestRpaApiKeyAuthentication:
     def test_rpa_endpoint_rejects_invalid_api_key(self, rpa_client_with_api_key):
         """Test that invalid API key is rejected."""
         response = rpa_client_with_api_key.get(
-            "/api/rpa/summary/rpa-test.lctl.json",
-            headers={"X-API-Key": "invalid-key"}
+            "/api/rpa/summary/rpa-test.lctl.json", headers={"X-API-Key": "invalid-key"}
         )
 
         assert response.status_code == 403
@@ -253,15 +251,13 @@ class TestRpaApiKeyAuthentication:
         """Test that multiple API keys can be configured and used."""
         # Test first key
         response1 = rpa_client_with_api_key.get(
-            "/api/rpa/summary/rpa-test.lctl.json",
-            headers={"X-API-Key": "test-api-key-12345"}
+            "/api/rpa/summary/rpa-test.lctl.json", headers={"X-API-Key": "test-api-key-12345"}
         )
         assert response1.status_code == 200
 
         # Test second key
         response2 = rpa_client_with_api_key.get(
-            "/api/rpa/summary/rpa-test.lctl.json",
-            headers={"X-API-Key": "another-valid-key"}
+            "/api/rpa/summary/rpa-test.lctl.json", headers={"X-API-Key": "another-valid-key"}
         )
         assert response2.status_code == 200
 
@@ -276,8 +272,7 @@ class TestRpaApiKeyGeneration:
         dependency, so we must provide a valid API key to generate new ones.
         """
         response = rpa_client_with_api_key.post(
-            "/api/rpa/auth/generate-key",
-            headers={"X-API-Key": "test-api-key-12345"}
+            "/api/rpa/auth/generate-key", headers={"X-API-Key": "test-api-key-12345"}
         )
 
         assert response.status_code == 200
@@ -449,7 +444,7 @@ class TestRpaBatchEndpoints:
         """Test /api/rpa/batch/metrics returns aggregated data."""
         response = rpa_client.post(
             "/api/rpa/batch/metrics",
-            json={"filenames": ["rpa-test.lctl.json", "second-rpa.lctl.json", "success.lctl.json"]}
+            json={"filenames": ["rpa-test.lctl.json", "second-rpa.lctl.json", "success.lctl.json"]},
         )
 
         assert response.status_code == 200
@@ -470,7 +465,7 @@ class TestRpaBatchEndpoints:
         """Test batch metrics handles missing files gracefully."""
         response = rpa_client.post(
             "/api/rpa/batch/metrics",
-            json={"filenames": ["rpa-test.lctl.json", "nonexistent.lctl.json"]}
+            json={"filenames": ["rpa-test.lctl.json", "nonexistent.lctl.json"]},
         )
 
         assert response.status_code == 200
@@ -490,10 +485,7 @@ class TestRpaBatchEndpoints:
         """
         filenames = [f"file{i}.lctl.json" for i in range(150)]
 
-        response = rpa_client.post(
-            "/api/rpa/batch/metrics",
-            json={"filenames": filenames}
-        )
+        response = rpa_client.post("/api/rpa/batch/metrics", json={"filenames": filenames})
 
         # Should return 422 Unprocessable Entity due to Pydantic validation
         assert response.status_code == 422
@@ -506,10 +498,7 @@ class TestRpaBatchEndpoints:
         # Create list of exactly 100 filenames (all non-existent)
         filenames = [f"file{i}.lctl.json" for i in range(100)]
 
-        response = rpa_client.post(
-            "/api/rpa/batch/metrics",
-            json={"filenames": filenames}
-        )
+        response = rpa_client.post("/api/rpa/batch/metrics", json={"filenames": filenames})
 
         # Should accept 100 files
         assert response.status_code == 200
@@ -519,10 +508,7 @@ class TestRpaBatchEndpoints:
 
     def test_rpa_batch_metrics_empty_list(self, rpa_client):
         """Test batch metrics with empty file list."""
-        response = rpa_client.post(
-            "/api/rpa/batch/metrics",
-            json={"filenames": []}
-        )
+        response = rpa_client.post("/api/rpa/batch/metrics", json={"filenames": []})
 
         assert response.status_code == 200
         data = response.json()
@@ -540,10 +526,7 @@ class TestRpaSearchEndpoint:
 
     def test_rpa_search_finds_matching_events(self, rpa_client):
         """Test /api/rpa/search finds events matching query."""
-        response = rpa_client.post(
-            "/api/rpa/search",
-            json={"query": "invoice", "limit": 100}
-        )
+        response = rpa_client.post("/api/rpa/search", json={"query": "invoice", "limit": 100})
 
         assert response.status_code == 200
         data = response.json()
@@ -557,7 +540,7 @@ class TestRpaSearchEndpoint:
         """Test search with event type filter."""
         response = rpa_client.post(
             "/api/rpa/search",
-            json={"query": "analyzer", "event_types": ["step_start"], "limit": 100}
+            json={"query": "analyzer", "event_types": ["step_start"], "limit": 100},
         )
 
         assert response.status_code == 200
@@ -569,8 +552,7 @@ class TestRpaSearchEndpoint:
     def test_rpa_search_with_agent_filter(self, rpa_client):
         """Test search with agent filter."""
         response = rpa_client.post(
-            "/api/rpa/search",
-            json={"query": "error", "agents": ["processor"], "limit": 100}
+            "/api/rpa/search", json={"query": "error", "agents": ["processor"], "limit": 100}
         )
 
         assert response.status_code == 200
@@ -583,7 +565,7 @@ class TestRpaSearchEndpoint:
         """Test search respects result limit."""
         response = rpa_client.post(
             "/api/rpa/search",
-            json={"query": "a", "limit": 2}  # Broad search
+            json={"query": "a", "limit": 2},  # Broad search
         )
 
         assert response.status_code == 200
@@ -596,8 +578,7 @@ class TestRpaSearchEndpoint:
     def test_rpa_search_no_results(self, rpa_client):
         """Test search with query that matches nothing."""
         response = rpa_client.post(
-            "/api/rpa/search",
-            json={"query": "xyznonexistent123", "limit": 100}
+            "/api/rpa/search", json={"query": "xyznonexistent123", "limit": 100}
         )
 
         assert response.status_code == 200
@@ -610,12 +591,10 @@ class TestRpaSearchEndpoint:
     def test_rpa_search_case_insensitive(self, rpa_client):
         """Test search is case-insensitive."""
         response_lower = rpa_client.post(
-            "/api/rpa/search",
-            json={"query": "validation", "limit": 100}
+            "/api/rpa/search", json={"query": "validation", "limit": 100}
         )
         response_upper = rpa_client.post(
-            "/api/rpa/search",
-            json={"query": "VALIDATION", "limit": 100}
+            "/api/rpa/search", json={"query": "VALIDATION", "limit": 100}
         )
 
         assert response_lower.json()["total"] == response_upper.json()["total"]
@@ -717,8 +696,8 @@ class TestWebhookRegistration:
             json={
                 "url": "https://example.com/webhook",
                 "events": ["error", "step_end"],
-                "chain_id": "rpa-test-chain"
-            }
+                "chain_id": "rpa-test-chain",
+            },
         )
 
         assert response.status_code == 200
@@ -737,8 +716,8 @@ class TestWebhookRegistration:
             json={
                 "url": "https://example.com/webhook",
                 "events": ["error"],
-                "secret": "my-webhook-secret"
-            }
+                "secret": "my-webhook-secret",
+            },
         )
 
         assert response.status_code == 200
@@ -749,12 +728,10 @@ class TestWebhookRegistration:
         """Test /api/rpa/webhooks GET lists registered webhooks."""
         # Register a webhook first
         rpa_client.post(
-            "/api/rpa/webhooks",
-            json={"url": "https://example.com/hook1", "events": ["error"]}
+            "/api/rpa/webhooks", json={"url": "https://example.com/hook1", "events": ["error"]}
         )
         rpa_client.post(
-            "/api/rpa/webhooks",
-            json={"url": "https://example.com/hook2", "events": ["step_end"]}
+            "/api/rpa/webhooks", json={"url": "https://example.com/hook2", "events": ["step_end"]}
         )
 
         # List webhooks
@@ -775,8 +752,7 @@ class TestWebhookRegistration:
         """Test webhook deletion."""
         # Register a webhook
         register_response = rpa_client.post(
-            "/api/rpa/webhooks",
-            json={"url": "https://example.com/to-delete", "events": ["error"]}
+            "/api/rpa/webhooks", json={"url": "https://example.com/to-delete", "events": ["error"]}
         )
         webhook_id = register_response.json()["webhook_id"]
 
@@ -801,10 +777,7 @@ class TestWebhookRegistration:
 
     def test_webhook_default_events(self, rpa_client):
         """Test webhook registration with default events."""
-        response = rpa_client.post(
-            "/api/rpa/webhooks",
-            json={"url": "https://example.com/default"}
-        )
+        response = rpa_client.post("/api/rpa/webhooks", json={"url": "https://example.com/default"})
 
         assert response.status_code == 200
         data = response.json()
@@ -908,8 +881,8 @@ class TestRpaSubmitEndpoint:
                 "chain_id": "uipath-workflow-123",
                 "agent": "UiPath.Bot",
                 "event_type": "step_start",
-                "data": {"intent": "process_document", "input_summary": "invoice.pdf"}
-            }
+                "data": {"intent": "process_document", "input_summary": "invoice.pdf"},
+            },
         )
 
         assert response.status_code == 200
@@ -924,11 +897,7 @@ class TestRpaSubmitEndpoint:
         """Test submitting event with minimal data."""
         response = rpa_client.post(
             "/api/rpa/submit",
-            json={
-                "chain_id": "minimal-chain",
-                "agent": "bot",
-                "event_type": "custom"
-            }
+            json={"chain_id": "minimal-chain", "agent": "bot", "event_type": "custom"},
         )
 
         assert response.status_code == 200
@@ -955,10 +924,7 @@ class TestRpaIntegration:
         assert errors["count"] == 1
 
         # Step 3: Search for related events
-        search = rpa_client.post(
-            "/api/rpa/search",
-            json={"query": "processor", "limit": 10}
-        ).json()
+        search = rpa_client.post("/api/rpa/search", json={"query": "processor", "limit": 10}).json()
         assert search["total"] > 0
 
         # Step 4: Export for reporting
@@ -970,7 +936,7 @@ class TestRpaIntegration:
         # Get metrics for all chains
         response = rpa_client.post(
             "/api/rpa/batch/metrics",
-            json={"filenames": ["rpa-test.lctl.json", "second-rpa.lctl.json", "success.lctl.json"]}
+            json={"filenames": ["rpa-test.lctl.json", "second-rpa.lctl.json", "success.lctl.json"]},
         )
 
         data = response.json()
@@ -987,7 +953,7 @@ class TestRpaIntegration:
         # Register webhook
         webhook = rpa_client.post(
             "/api/rpa/webhooks",
-            json={"url": "https://rpa.example.com/callback", "events": ["error"]}
+            json={"url": "https://rpa.example.com/callback", "events": ["error"]},
         ).json()
 
         assert webhook["status"] == "registered"
@@ -1027,10 +993,7 @@ class TestRpaEdgeCases:
 
     def test_rpa_search_special_characters(self, rpa_client):
         """Test search with special characters in query."""
-        response = rpa_client.post(
-            "/api/rpa/search",
-            json={"query": "field: amount", "limit": 100}
-        )
+        response = rpa_client.post("/api/rpa/search", json={"query": "field: amount", "limit": 100})
         assert response.status_code == 200
 
     def test_rpa_export_nonexistent_file(self, rpa_client):
@@ -1042,7 +1005,7 @@ class TestRpaEdgeCases:
         """Test batch metrics with duplicate filenames."""
         response = rpa_client.post(
             "/api/rpa/batch/metrics",
-            json={"filenames": ["rpa-test.lctl.json", "rpa-test.lctl.json"]}
+            json={"filenames": ["rpa-test.lctl.json", "rpa-test.lctl.json"]},
         )
 
         assert response.status_code == 200

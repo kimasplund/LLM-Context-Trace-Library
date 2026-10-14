@@ -166,9 +166,7 @@ class TestRedactorClass:
 
     def test_custom_patterns(self):
         """Test redactor with custom patterns only."""
-        custom_patterns = {
-            "custom": re.compile(r"CUSTOM-\d{6}")
-        }
+        custom_patterns = {"custom": re.compile(r"CUSTOM-\d{6}")}
         redactor = Redactor(patterns=custom_patterns)
 
         text = "ID: CUSTOM-123456 and api_key='should_not_be_redacted'"
@@ -179,9 +177,7 @@ class TestRedactorClass:
 
     def test_additional_patterns(self):
         """Test redactor with additional patterns."""
-        additional_patterns = {
-            "custom_id": re.compile(r"ID-[A-Z]{3}-\d{4}")
-        }
+        additional_patterns = {"custom_id": re.compile(r"ID-[A-Z]{3}-\d{4}")}
         redactor = Redactor(additional_patterns=additional_patterns)
 
         text = 'api_key="test12345678901234567890" ID-ABC-1234'
@@ -253,7 +249,7 @@ class TestDictRedaction:
             "api": {
                 "key": "normal_key",
                 "api_key": "secret_key",
-            }
+            },
         }
         result = redactor.redact_dict(data)
 
@@ -273,7 +269,7 @@ class TestDictRedaction:
             "messages": [
                 "Contact: 123-45-6789",
                 "Normal message",
-            ]
+            ],
         }
         result = redactor.redact_dict(data)
 
@@ -286,7 +282,19 @@ class TestDictRedaction:
     def test_redact_dict_max_depth(self):
         """Test redaction respects max depth."""
         redactor = Redactor()
-        deep_data = {"l1": {"l2": {"l3": {"l4": {"l5": {"l6": {"l7": {"l8": {"l9": {"l10": {"l11": {"password": "deep"}}}}}}}}}}}}
+        deep_data = {
+            "l1": {
+                "l2": {
+                    "l3": {
+                        "l4": {
+                            "l5": {
+                                "l6": {"l7": {"l8": {"l9": {"l10": {"l11": {"password": "deep"}}}}}}
+                            }
+                        }
+                    }
+                }
+            }
+        }
         result = redactor.redact_dict(deep_data, max_depth=5)
 
         inner = result["l1"]["l2"]["l3"]["l4"]["l5"]["l6"]
@@ -331,12 +339,9 @@ class TestRedactEventData:
                 "headers": {
                     "Authorization": "Bearer secret_token",
                     "Content-Type": "application/json",
-                }
+                },
             },
-            "output": {
-                "status": 200,
-                "body": "Response with api_key='sk-12345678901234567890'"
-            }
+            "output": {"status": 200, "body": "Response with api_key='sk-12345678901234567890'"},
         }
         result = redactor.redact_event_data(event_data)
 
@@ -351,6 +356,7 @@ class TestGlobalRedactor:
     def test_get_redactor_singleton(self):
         """Test get_redactor returns consistent instance."""
         import lctl.core.redaction as redaction_module
+
         redaction_module._default_redactor = None
 
         r1 = get_redactor()
@@ -379,6 +385,7 @@ class TestGlobalRedactor:
     def test_redact_convenience_function_string(self):
         """Test redact() convenience function with string."""
         import lctl.core.redaction as redaction_module
+
         redaction_module._default_redactor = None
         configure_redaction(enabled=True)
 
@@ -388,6 +395,7 @@ class TestGlobalRedactor:
     def test_redact_convenience_function_dict(self):
         """Test redact() convenience function with dict."""
         import lctl.core.redaction as redaction_module
+
         redaction_module._default_redactor = None
         configure_redaction(enabled=True)
 
@@ -419,7 +427,7 @@ class TestSessionRedactionIntegration:
                 "headers": {"Authorization": "Bearer my_secret_token"},
             },
             output_data={"status": 200},
-            duration_ms=100
+            duration_ms=100,
         )
 
         event = session.chain.events[0]
@@ -439,8 +447,8 @@ class TestSessionRedactionIntegration:
         session.error(
             category="auth",
             error_type="AuthError",
-            message='Invalid token: Bearer abc123.def456.ghi789',
-            recoverable=False
+            message="Invalid token: Bearer abc123.def456.ghi789",
+            recoverable=False,
         )
 
         event = session.chain.events[0]
@@ -450,10 +458,7 @@ class TestSessionRedactionIntegration:
         """Test that redaction can be disabled per-session."""
         session = LCTLSession(chain_id="no-redact", redaction_enabled=False)
         session.tool_call(
-            tool="test",
-            input_data={"password": "mysecret"},
-            output_data={},
-            duration_ms=0
+            tool="test", input_data={"password": "mysecret"}, output_data={}, duration_ms=0
         )
 
         event = session.chain.events[0]
@@ -479,13 +484,7 @@ class TestEdgeCases:
     def test_redact_dict_with_empty_nested_structures(self):
         """Test redacting dict with empty nested structures."""
         redactor = Redactor()
-        data = {
-            "empty_dict": {},
-            "empty_list": [],
-            "nested": {
-                "also_empty": {}
-            }
-        }
+        data = {"empty_dict": {}, "empty_list": [], "nested": {"also_empty": {}}}
         result = redactor.redact_dict(data)
 
         assert result["empty_dict"] == {}

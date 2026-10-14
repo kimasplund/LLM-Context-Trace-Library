@@ -133,6 +133,7 @@ session.export("workflow.lctl.json")
 ```python
 import lctl
 
+
 @lctl.traced("analyzer", "analyze")
 def analyze_code(filepath):
     """Automatically traced function."""
@@ -144,6 +145,7 @@ def analyze_code(filepath):
         session.add_fact(finding.id, finding.text, confidence=finding.score)
 
     return findings
+
 
 # Run your code - tracing happens automatically
 result = analyze_code("vulnerable.py")
@@ -160,8 +162,7 @@ from lctl.integrations.langchain import LCTLCallbackHandler, trace_chain
 # Option 1: Callback handler
 handler = LCTLCallbackHandler(chain_id="langchain-demo")
 result = chain.invoke(
-    {"input": "Analyze this code for security issues"},
-    config={"callbacks": [handler]}
+    {"input": "Analyze this code for security issues"}, config={"callbacks": [handler]}
 )
 handler.export("langchain_trace.lctl.json")
 
@@ -169,10 +170,9 @@ handler.export("langchain_trace.lctl.json")
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a security analyst."),
-    ("human", "{input}")
-])
+prompt = ChatPromptTemplate.from_messages(
+    [("system", "You are a security analyst."), ("human", "{input}")]
+)
 llm = ChatOpenAI(model="gpt-4")
 chain = prompt | llm
 
@@ -190,28 +190,24 @@ from lctl.integrations.crewai import LCTLAgent, LCTLTask, LCTLCrew
 researcher = LCTLAgent(
     role="Security Researcher",
     goal="Find vulnerabilities in code",
-    backstory="Expert security researcher with 10 years experience"
+    backstory="Expert security researcher with 10 years experience",
 )
 
 analyst = LCTLAgent(
     role="Risk Analyst",
     goal="Assess severity of security findings",
-    backstory="Specializes in risk assessment and prioritization"
+    backstory="Specializes in risk assessment and prioritization",
 )
 
 # Create tasks
 research_task = LCTLTask(
     description="Analyze the codebase for security vulnerabilities",
     expected_output="List of vulnerabilities with severity ratings",
-    agent=researcher
+    agent=researcher,
 )
 
 # Create and run crew
-crew = LCTLCrew(
-    agents=[researcher, analyst],
-    tasks=[research_task],
-    chain_id="security-crew"
-)
+crew = LCTLCrew(agents=[researcher, analyst], tasks=[research_task], chain_id="security-crew")
 
 result = crew.kickoff()
 crew.export_trace("crew_trace.lctl.json")
@@ -230,13 +226,10 @@ callback = LCTLAutogenCallback(chain_id="autogen-demo")
 assistant = ConversableAgent(
     name="assistant",
     system_message="You are a helpful AI assistant.",
-    llm_config={"model": "gpt-4"}
+    llm_config={"model": "gpt-4"},
 )
 
-user = ConversableAgent(
-    name="user",
-    human_input_mode="NEVER"
-)
+user = ConversableAgent(name="user", human_input_mode="NEVER")
 
 # Attach tracing
 callback.attach(assistant)
@@ -252,7 +245,7 @@ from lctl.integrations.autogen import LCTLConversableAgent
 agent = LCTLConversableAgent(
     name="researcher",
     system_message="You research and summarize topics.",
-    chain_id="research-agent"
+    chain_id="research-agent",
 )
 
 result = agent.initiate_chat(other_agent, message="Research LCTL")
@@ -265,34 +258,28 @@ agent.export_trace("research_trace.lctl.json")
 from agents import Agent, Runner, function_tool
 from lctl.integrations.openai_agents import LCTLOpenAIAgentTracer, trace_agent
 
+
 # Define tools
 @function_tool
 def search_docs(query: str) -> str:
     """Search documentation for relevant information."""
     return f"Results for: {query}"
 
+
 # Create agent
 agent = Agent(
-    name="doc_assistant",
-    instructions="Help users find documentation.",
-    tools=[search_docs]
+    name="doc_assistant", instructions="Help users find documentation.", tools=[search_docs]
 )
 
 # Option 1: Tracer with run_config
 tracer = LCTLOpenAIAgentTracer(chain_id="openai-agent")
-result = await Runner.run(
-    agent,
-    input="How do I use LCTL?",
-    run_config=tracer.run_config
-)
+result = await Runner.run(agent, input="How do I use LCTL?", run_config=tracer.run_config)
 tracer.export("openai_trace.lctl.json")
 
 # Option 2: Traced agent wrapper
 traced = trace_agent(agent, chain_id="doc-helper")
 result = await Runner.run(
-    traced.agent,
-    input="Explain time-travel debugging",
-    run_config=traced.run_config
+    traced.agent, input="Explain time-travel debugging", run_config=traced.run_config
 )
 traced.export("helper_trace.lctl.json")
 ```
@@ -310,6 +297,7 @@ dspy.configure(lm=lm)
 # Create callback
 callback = LCTLDSPyCallback(chain_id="dspy-demo")
 
+
 # Define and trace a module
 class QAModule(dspy.Module):
     def __init__(self):
@@ -318,6 +306,7 @@ class QAModule(dspy.Module):
 
     def forward(self, question):
         return self.predictor(question=question)
+
 
 qa = QAModule()
 traced_qa = trace_module(qa, callback)
@@ -348,15 +337,10 @@ documents = [
     Document(text="LCTL provides time-travel debugging for LLM workflows."),
     Document(text="LCTL uses event sourcing to record agent execution."),
 ]
-index = VectorStoreIndex.from_documents(
-    documents,
-    callback_manager=callback.get_callback_manager()
-)
+index = VectorStoreIndex.from_documents(documents, callback_manager=callback.get_callback_manager())
 
 # Query with tracing
-query_engine = index.as_query_engine(
-    callback_manager=callback.get_callback_manager()
-)
+query_engine = index.as_query_engine(callback_manager=callback.get_callback_manager())
 response = query_engine.query("What is LCTL?")
 print(f"Answer: {response}")
 
@@ -374,10 +358,7 @@ from lctl.integrations.pydantic_ai import LCTLPydanticAITracer, trace_agent
 tracer = LCTLPydanticAITracer(chain_id="pydantic-ai-demo")
 
 # Create agent
-agent = Agent(
-    "openai:gpt-4",
-    system_prompt="You are a helpful assistant."
-)
+agent = Agent("openai:gpt-4", system_prompt="You are a helpful assistant.")
 
 # Option 1: Use tracer directly
 traced_agent = tracer.trace(agent)

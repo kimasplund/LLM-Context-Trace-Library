@@ -87,7 +87,9 @@ def _format_collected_prometheus(metrics: CollectedMetrics, prefix: str) -> List
 
     lines.append(f"# HELP {prefix}_avg_step_duration_ms Average step duration in milliseconds")
     lines.append(f"# TYPE {prefix}_avg_step_duration_ms gauge")
-    lines.append(f'{prefix}_avg_step_duration_ms{{chain_id="{chain_id}"}} {metrics.latency.avg_step_duration_ms:.2f}')
+    lines.append(
+        f'{prefix}_avg_step_duration_ms{{chain_id="{chain_id}"}} {metrics.latency.avg_step_duration_ms:.2f}'
+    )
     lines.append("")
 
     lines.append(f"# HELP {prefix}_total_tokens Total tokens used")
@@ -97,17 +99,23 @@ def _format_collected_prometheus(metrics: CollectedMetrics, prefix: str) -> List
 
     lines.append(f"# HELP {prefix}_input_tokens Total input tokens")
     lines.append(f"# TYPE {prefix}_input_tokens gauge")
-    lines.append(f'{prefix}_input_tokens{{chain_id="{chain_id}"}} {metrics.tokens.total_input_tokens}')
+    lines.append(
+        f'{prefix}_input_tokens{{chain_id="{chain_id}"}} {metrics.tokens.total_input_tokens}'
+    )
     lines.append("")
 
     lines.append(f"# HELP {prefix}_output_tokens Total output tokens")
     lines.append(f"# TYPE {prefix}_output_tokens gauge")
-    lines.append(f'{prefix}_output_tokens{{chain_id="{chain_id}"}} {metrics.tokens.total_output_tokens}')
+    lines.append(
+        f'{prefix}_output_tokens{{chain_id="{chain_id}"}} {metrics.tokens.total_output_tokens}'
+    )
     lines.append("")
 
     lines.append(f"# HELP {prefix}_token_efficiency Token efficiency ratio")
     lines.append(f"# TYPE {prefix}_token_efficiency gauge")
-    lines.append(f'{prefix}_token_efficiency{{chain_id="{chain_id}"}} {metrics.tokens.efficiency_ratio:.4f}')
+    lines.append(
+        f'{prefix}_token_efficiency{{chain_id="{chain_id}"}} {metrics.tokens.efficiency_ratio:.4f}'
+    )
     lines.append("")
 
     lines.append(f"# HELP {prefix}_error_count Total error count")
@@ -124,7 +132,9 @@ def _format_collected_prometheus(metrics: CollectedMetrics, prefix: str) -> List
         lines.append(f"# HELP {prefix}_errors_by_type Errors by type")
         lines.append(f"# TYPE {prefix}_errors_by_type gauge")
         for error_type, count in metrics.errors.error_types.items():
-            lines.append(f'{prefix}_errors_by_type{{chain_id="{chain_id}",type="{error_type}"}} {count}')
+            lines.append(
+                f'{prefix}_errors_by_type{{chain_id="{chain_id}",type="{error_type}"}} {count}'
+            )
         lines.append("")
 
     lines.append(f"# HELP {prefix}_fact_count Total fact count")
@@ -134,7 +144,9 @@ def _format_collected_prometheus(metrics: CollectedMetrics, prefix: str) -> List
 
     lines.append(f"# HELP {prefix}_avg_confidence Average fact confidence")
     lines.append(f"# TYPE {prefix}_avg_confidence gauge")
-    lines.append(f'{prefix}_avg_confidence{{chain_id="{chain_id}"}} {metrics.facts.avg_confidence:.4f}')
+    lines.append(
+        f'{prefix}_avg_confidence{{chain_id="{chain_id}"}} {metrics.facts.avg_confidence:.4f}'
+    )
     lines.append("")
 
     lines.append(f"# HELP {prefix}_agent_count Number of unique agents")
@@ -151,7 +163,9 @@ def _format_collected_prometheus(metrics: CollectedMetrics, prefix: str) -> List
         lines.append(f"# HELP {prefix}_steps_per_agent Steps per agent")
         lines.append(f"# TYPE {prefix}_steps_per_agent gauge")
         for agent, steps in metrics.agents.steps_per_agent.items():
-            lines.append(f'{prefix}_steps_per_agent{{chain_id="{chain_id}",agent="{agent}"}} {steps}')
+            lines.append(
+                f'{prefix}_steps_per_agent{{chain_id="{chain_id}",agent="{agent}"}} {steps}'
+            )
         lines.append("")
 
     if metrics.tokens.tokens_by_agent:
@@ -190,9 +204,15 @@ def _format_aggregated_prometheus(metrics: AggregatedMetrics, prefix: str) -> Li
 
     lines.append(f"# HELP {prefix}_agg_step_duration_ms Step duration percentiles")
     lines.append(f"# TYPE {prefix}_agg_step_duration_ms gauge")
-    lines.append(f'{prefix}_agg_step_duration_ms{{quantile="0.5"}} {metrics.latency.p50_step_duration_ms:.2f}')
-    lines.append(f'{prefix}_agg_step_duration_ms{{quantile="0.9"}} {metrics.latency.p90_step_duration_ms:.2f}')
-    lines.append(f'{prefix}_agg_step_duration_ms{{quantile="0.99"}} {metrics.latency.p99_step_duration_ms:.2f}')
+    lines.append(
+        f'{prefix}_agg_step_duration_ms{{quantile="0.5"}} {metrics.latency.p50_step_duration_ms:.2f}'
+    )
+    lines.append(
+        f'{prefix}_agg_step_duration_ms{{quantile="0.9"}} {metrics.latency.p90_step_duration_ms:.2f}'
+    )
+    lines.append(
+        f'{prefix}_agg_step_duration_ms{{quantile="0.99"}} {metrics.latency.p99_step_duration_ms:.2f}'
+    )
     lines.append("")
 
     lines.append(f"# HELP {prefix}_agg_total_tokens Total tokens across all chains")

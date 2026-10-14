@@ -83,6 +83,7 @@ class LRUCache:
 
 class EventType(str, Enum):
     """Standard LCTL event types."""
+
     STEP_START = "step_start"
     STEP_END = "step_end"
     FACT_ADDED = "fact_added"
@@ -101,6 +102,7 @@ class EventType(str, Enum):
 @dataclass
 class Event:
     """A single LCTL event."""
+
     seq: int
     type: EventType
     timestamp: datetime
@@ -113,7 +115,7 @@ class Event:
             "type": self.type.value if isinstance(self.type, EventType) else self.type,
             "timestamp": self.timestamp.isoformat(),
             "agent": self.agent,
-            "data": self.data
+            "data": self.data,
         }
 
     @classmethod
@@ -154,17 +156,14 @@ class Event:
                 raise ValueError(f"Invalid timestamp format '{d['timestamp']}': {e}")
 
         return cls(
-            seq=seq,
-            type=event_type,
-            timestamp=timestamp,
-            agent=d["agent"],
-            data=d.get("data", {})
+            seq=seq, type=event_type, timestamp=timestamp, agent=d["agent"], data=d.get("data", {})
         )
 
 
 @dataclass
 class Chain:
     """An LCTL chain - a collection of events."""
+
     id: str
     events: List[Event] = field(default_factory=list)
     version: str = CURRENT_VERSION
@@ -177,7 +176,7 @@ class Chain:
         return {
             "lctl": self.version,
             "chain": {"id": self.id},
-            "events": [e.to_dict() for e in self.events]
+            "events": [e.to_dict() for e in self.events],
         }
 
     @classmethod
@@ -202,7 +201,7 @@ class Chain:
         return cls(
             id=chain_meta.get("id", "unknown"),
             version=d.get("lctl", CURRENT_VERSION),
-            events=[Event.from_dict(e) for e in d.get("events", [])]
+            events=[Event.from_dict(e) for e in d.get("events", [])],
         )
 
     @classmethod
@@ -236,7 +235,9 @@ class Chain:
             raise ValueError(f"Chain file contains no data: {path}")
 
         if not isinstance(data, dict):
-            raise ValueError(f"Chain file must contain a dictionary, got {type(data).__name__}: {path}")
+            raise ValueError(
+                f"Chain file must contain a dictionary, got {type(data).__name__}: {path}"
+            )
 
         return cls.from_dict(data)
 
@@ -253,17 +254,20 @@ class Chain:
 @dataclass
 class State:
     """Materialized state derived from events."""
+
     facts: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     current_agent: Optional[str] = None
     current_step: Optional[int] = None
     errors: List[Dict[str, Any]] = field(default_factory=list)
-    metrics: Dict[str, Any] = field(default_factory=lambda: {
-        "total_duration_ms": 0,
-        "total_tokens_in": 0,
-        "total_tokens_out": 0,
-        "event_count": 0,
-        "error_count": 0
-    })
+    metrics: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "total_duration_ms": 0,
+            "total_tokens_in": 0,
+            "total_tokens_out": 0,
+            "event_count": 0,
+            "error_count": 0,
+        }
+    )
 
     def apply_event(self, event: Event) -> None:
         """Apply an event to update state."""
@@ -287,7 +291,7 @@ class State:
                     "text": event.data.get("text", ""),
                     "confidence": event.data.get("confidence", 1.0),
                     "source": event.data.get("source", event.agent),
-                    "seq": event.seq
+                    "seq": event.seq,
                 }
 
         elif event.type == EventType.FACT_MODIFIED:
@@ -295,23 +299,29 @@ class State:
             if fact_id and fact_id in self.facts:
                 # Use copy-on-write to allow shallow copying of State
                 new_fact = self.facts[fact_id].copy()
-                new_fact.update({
-                    "text": event.data.get("text", self.facts[fact_id]["text"]),
-                    "confidence": event.data.get("confidence", self.facts[fact_id]["confidence"]),
-                    "modified_at": event.seq,
-                    "reason": event.data.get("reason", "")
-                })
+                new_fact.update(
+                    {
+                        "text": event.data.get("text", self.facts[fact_id]["text"]),
+                        "confidence": event.data.get(
+                            "confidence", self.facts[fact_id]["confidence"]
+                        ),
+                        "modified_at": event.seq,
+                        "reason": event.data.get("reason", ""),
+                    }
+                )
                 self.facts[fact_id] = new_fact
 
         elif event.type == EventType.ERROR:
-            self.errors.append({
-                "seq": event.seq,
-                "agent": event.agent,
-                "category": event.data.get("category", "unknown"),
-                "type": event.data.get("type", "unknown"),
-                "message": event.data.get("message", ""),
-                "recoverable": event.data.get("recoverable", False)
-            })
+            self.errors.append(
+                {
+                    "seq": event.seq,
+                    "agent": event.agent,
+                    "category": event.data.get("category", "unknown"),
+                    "type": event.data.get("type", "unknown"),
+                    "message": event.data.get("message", ""),
+                    "recoverable": event.data.get("recoverable", False),
+                }
+            )
             self.metrics["error_count"] += 1
 
         elif event.type == EventType.TOOL_CALL:
@@ -353,7 +363,7 @@ class ReplayEngine:
                     metrics=cached_state.metrics.copy(),  # Simple dict, shallow OK
                     errors=copy.deepcopy(cached_state.errors),  # List of dicts
                     current_agent=cached_state.current_agent,
-                    current_step=cached_state.current_step
+                    current_step=cached_state.current_step,
                 )
                 start_seq = nearest_cached + 1
             else:
@@ -368,10 +378,10 @@ class ReplayEngine:
         # (Assuming events are always appended in order, which is the contract)
         events_start_idx = 0
         if start_seq > 1 and self.chain.events:
-             # Binary search to find the first event with seq >= start_seq.
-             # Note: This relies on chain.events being sorted by seq.
-             # Requires Python >= 3.10 for key argument support in bisect.
-             events_start_idx = bisect.bisect_left(self.chain.events, start_seq, key=lambda e: e.seq)
+            # Binary search to find the first event with seq >= start_seq.
+            # Note: This relies on chain.events being sorted by seq.
+            # Requires Python >= 3.10 for key argument support in bisect.
+            events_start_idx = bisect.bisect_left(self.chain.events, start_seq, key=lambda e: e.seq)
 
         # Apply events
         for i in range(events_start_idx, len(self.chain.events)):
@@ -401,13 +411,15 @@ class ReplayEngine:
         trace = []
         for event in self.chain.events:
             if event.type in (EventType.STEP_START, EventType.STEP_END):
-                trace.append({
-                    "seq": event.seq,
-                    "type": event.type.value,
-                    "agent": event.agent,
-                    "timestamp": event.timestamp.isoformat(),
-                    **event.data
-                })
+                trace.append(
+                    {
+                        "seq": event.seq,
+                        "type": event.type.value,
+                        "agent": event.agent,
+                        "timestamp": event.timestamp.isoformat(),
+                        **event.data,
+                    }
+                )
         return trace
 
     def diff(self, other: "ReplayEngine") -> List[Dict[str, Any]]:
@@ -424,12 +436,14 @@ class ReplayEngine:
             elif e2 is None and e1 is not None:
                 diffs.append({"seq": i + 1, "type": "missing_in_second", "event": e1.to_dict()})
             elif e1 is not None and e2 is not None and e1.to_dict() != e2.to_dict():
-                diffs.append({
-                    "seq": e1.seq,
-                    "type": "diverged",
-                    "first": e1.to_dict(),
-                    "second": e2.to_dict()
-                })
+                diffs.append(
+                    {
+                        "seq": e1.seq,
+                        "type": "diverged",
+                        "first": e1.to_dict(),
+                        "second": e2.to_dict(),
+                    }
+                )
 
         return diffs
 
@@ -451,35 +465,39 @@ class ReplayEngine:
 
         for event in self.chain.events:
             if event.type == EventType.STEP_START:
-                step_stack.append({
-                    'agent': event.agent,
-                    'seq': event.seq,
-                    'start_time': event.timestamp
-                })
+                step_stack.append(
+                    {"agent": event.agent, "seq": event.seq, "start_time": event.timestamp}
+                )
             elif event.type == EventType.STEP_END and step_stack:
                 # Find matching start (same agent, LIFO)
                 for i in range(len(step_stack) - 1, -1, -1):
-                    if step_stack[i]['agent'] == event.agent:
+                    if step_stack[i]["agent"] == event.agent:
                         start_info = step_stack.pop(i)
-                        duration_ms = event.data.get('duration_ms', 0)
-                        if duration_ms == 0 and start_info['start_time']:
-                            duration_ms = (event.timestamp - start_info['start_time']).total_seconds() * 1000
+                        duration_ms = event.data.get("duration_ms", 0)
+                        if duration_ms == 0 and start_info["start_time"]:
+                            duration_ms = (
+                                event.timestamp - start_info["start_time"]
+                            ).total_seconds() * 1000
                         if duration_ms >= threshold_ms:
-                            step_durations.append({
-                                'agent': event.agent,
-                                'seq': start_info['seq'],
-                                'duration_ms': duration_ms,
-                                'tokens': event.data.get('tokens', {})
-                            })
+                            step_durations.append(
+                                {
+                                    "agent": event.agent,
+                                    "seq": start_info["seq"],
+                                    "duration_ms": duration_ms,
+                                    "tokens": event.data.get("tokens", {}),
+                                }
+                            )
                         break
 
         # Sort by duration
-        sorted_steps = sorted(step_durations, key=lambda x: x['duration_ms'], reverse=True)
+        sorted_steps = sorted(step_durations, key=lambda x: x["duration_ms"], reverse=True)
 
         # Calculate percentages
-        total_duration = sum(s['duration_ms'] for s in sorted_steps)
+        total_duration = sum(s["duration_ms"] for s in sorted_steps)
         for step in sorted_steps:
-            step['percentage'] = (step['duration_ms'] / total_duration * 100) if total_duration > 0 else 0
+            step["percentage"] = (
+                (step["duration_ms"] / total_duration * 100) if total_duration > 0 else 0
+            )
 
         return sorted_steps
 
@@ -493,11 +511,13 @@ class ReplayEngine:
                 if fact_id:
                     if fact_id not in timelines:
                         timelines[fact_id] = []
-                    timelines[fact_id].append({
-                        "seq": event.seq,
-                        "confidence": event.data.get("confidence", 1.0),
-                        "agent": event.agent,
-                        "action": "added" if event.type == EventType.FACT_ADDED else "modified"
-                    })
+                    timelines[fact_id].append(
+                        {
+                            "seq": event.seq,
+                            "confidence": event.data.get("confidence", 1.0),
+                            "agent": event.agent,
+                            "action": "added" if event.type == EventType.FACT_ADDED else "modified",
+                        }
+                    )
 
         return timelines

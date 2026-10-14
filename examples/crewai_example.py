@@ -15,6 +15,7 @@ import os
 # Check if CrewAI is available
 try:
     from crewai import Task
+
     CREWAI_INSTALLED = True
 except ImportError:
     CREWAI_INSTALLED = False
@@ -140,7 +141,7 @@ def main() -> None:
 
 def print_example_code() -> None:
     """Print example code when CrewAI is not installed."""
-    code = '''
+    code = """
 from lctl.integrations.crewai import LCTLAgent, LCTLCrew, LCTLTask
 
 # Create agents with automatic tracing
@@ -188,7 +189,7 @@ crew.export_trace("research_crew.lctl.json")
 
 # Or get trace as dict
 trace_data = crew.get_trace()
-'''
+"""
     print(code)
     print()
     print("The trace captures:")
