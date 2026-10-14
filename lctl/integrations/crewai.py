@@ -26,11 +26,11 @@ Usage:
 
 import threading
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Union
 from uuid import uuid4
 
 from ..core.session import LCTLSession
-from .base import BaseTracer, truncate
+from .base import truncate
 
 # Try to import CrewAI - graceful degradation if not available
 try:
@@ -51,7 +51,7 @@ except ImportError:
 
 
 # Global map for agent_id -> session with thread safety
-_agent_id_session_map: Dict[str, LCTLSession] = {}
+_agent_id_session_map: dict[str, LCTLSession] = {}
 _agent_map_lock = threading.Lock()
 
 
@@ -122,13 +122,13 @@ class LCTLAgent:
         role: str,
         goal: str,
         backstory: str,
-        tools: Optional[List[Any]] = None,
-        llm: Optional[Any] = None,
+        tools: list[Any] | None = None,
+        llm: Any | None = None,
         verbose: bool = False,
         allow_delegation: bool = True,
         max_iter: int = 25,
-        max_rpm: Optional[int] = None,
-        max_execution_time: Optional[int] = None,
+        max_rpm: int | None = None,
+        max_execution_time: int | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize an LCTL-traced CrewAI agent.
@@ -156,7 +156,7 @@ class LCTLAgent:
         self.verbose = verbose
 
         # Store metadata for tracing
-        self._metadata: Dict[str, Any] = {
+        self._metadata: dict[str, Any] = {
             "role": role,
             "goal": goal,
             "backstory": backstory,
@@ -186,7 +186,7 @@ class LCTLAgent:
         return self._agent
 
     @property
-    def metadata(self) -> Dict[str, Any]:
+    def metadata(self) -> dict[str, Any]:
         """Get agent metadata for tracing."""
         return self._metadata
 
@@ -205,10 +205,10 @@ class LCTLTask:
         self,
         description: str,
         expected_output: str,
-        agent: Optional[Union[LCTLAgent, "Agent"]] = None,
-        tools: Optional[List[Any]] = None,
+        agent: Union[LCTLAgent, "Agent"] | None = None,
+        tools: list[Any] | None = None,
         async_execution: bool = False,
-        context: Optional[List["LCTLTask"]] = None,
+        context: list["LCTLTask"] | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize an LCTL-traced CrewAI task.
@@ -237,7 +237,7 @@ class LCTLTask:
             underlying_context = [t.task if isinstance(t, LCTLTask) else t for t in context]
 
         # Store metadata for tracing
-        self._metadata: Dict[str, Any] = {
+        self._metadata: dict[str, Any] = {
             "description": description[:200],  # Truncate for readability
             "expected_output": expected_output[:200],
             "async_execution": async_execution,
@@ -261,7 +261,7 @@ class LCTLTask:
         return self._task
 
     @property
-    def metadata(self) -> Dict[str, Any]:
+    def metadata(self) -> dict[str, Any]:
         """Get task metadata for tracing."""
         return self._metadata
 
@@ -286,13 +286,13 @@ class LCTLCrew:
 
     def __init__(
         self,
-        agents: List[Union[LCTLAgent, "Agent"]],
-        tasks: List[Union[LCTLTask, "Task"]],
-        process: Optional[str] = None,
+        agents: list[Union[LCTLAgent, "Agent"]],
+        tasks: list[Union[LCTLTask, "Task"]],
+        process: str | None = None,
         verbose: bool = False,
-        manager_llm: Optional[Any] = None,
-        manager_agent: Optional[Union[LCTLAgent, "Agent"]] = None,
-        chain_id: Optional[str] = None,
+        manager_llm: Any | None = None,
+        manager_agent: Union[LCTLAgent, "Agent"] | None = None,
+        chain_id: str | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize an LCTL-traced CrewAI crew.
@@ -325,7 +325,7 @@ class LCTLCrew:
         self._verbose = verbose
 
         # Store crew metadata
-        self._metadata: Dict[str, Any] = {
+        self._metadata: dict[str, Any] = {
             "process": self._process,
             "agent_count": len(agents),
             "task_count": len(tasks),
@@ -336,7 +336,7 @@ class LCTLCrew:
         }
 
         # Create the underlying CrewAI crew
-        crew_kwargs: Dict[str, Any] = {
+        crew_kwargs: dict[str, Any] = {
             "agents": underlying_agents,
             "tasks": underlying_tasks,
             "verbose": verbose,
@@ -480,7 +480,7 @@ class LCTLCrew:
                 if self._verbose:
                     print(f"[LCTL] Warning: Error in original task callback: {e}")
 
-    def kickoff(self, inputs: Optional[Dict[str, Any]] = None) -> Any:
+    def kickoff(self, inputs: dict[str, Any] | None = None) -> Any:
         """Execute the crew with LCTL tracing.
 
         Args:
@@ -591,7 +591,7 @@ class LCTLCrew:
                         if _agent_id_session_map.get(agent_id) is self._session:
                             del _agent_id_session_map[agent_id]
 
-    async def kickoff_async(self, inputs: Optional[Dict[str, Any]] = None) -> Any:
+    async def kickoff_async(self, inputs: dict[str, Any] | None = None) -> Any:
         """Execute the crew asynchronously with LCTL tracing.
 
         Args:
@@ -690,7 +690,7 @@ class LCTLCrew:
             event_count = len(self._session.chain.events)
             print(f"[LCTL] Exported {event_count} events to {path}")
 
-    def get_trace(self) -> Dict[str, Any]:
+    def get_trace(self) -> dict[str, Any]:
         """Get the LCTL trace as a dictionary.
 
         Returns:
@@ -713,7 +713,7 @@ class LCTLCrew:
         return getattr(self._crew, name)
 
 
-def trace_crew(crew: "Crew", chain_id: Optional[str] = None, verbose: bool = False) -> LCTLCrew:
+def trace_crew(crew: "Crew", chain_id: str | None = None, verbose: bool = False) -> LCTLCrew:
     """Wrap an existing CrewAI Crew with LCTL tracing.
 
     This is useful when you have an existing Crew instance and want to
@@ -762,11 +762,11 @@ def is_available() -> bool:
 
 __all__ = [
     "CREWAI_AVAILABLE",
-    "is_available",
     "CrewAINotAvailableError",
     "LCTLAgent",
-    "LCTLTask",
     "LCTLCrew",
-    "trace_crew",
+    "LCTLTask",
     "_cleanup_stale_entries",
+    "is_available",
+    "trace_crew",
 ]

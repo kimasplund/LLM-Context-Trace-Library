@@ -1,12 +1,8 @@
 """Tests for LCTL sensitive data redaction (lctl/core/redaction.py)."""
 
 import re
-from typing import Dict, Pattern
-
-import pytest
 
 from lctl.core.redaction import (
-    DEFAULT_PATTERNS,
     REDACTED_VALUE,
     Redactor,
     configure_redaction,
@@ -365,7 +361,6 @@ class TestGlobalRedactor:
 
     def test_configure_redaction(self):
         """Test configure_redaction creates new instance."""
-        import lctl.core.redaction as redaction_module
 
         r1 = configure_redaction(enabled=True, redact_emails=False)
         r2 = configure_redaction(enabled=True, redact_emails=True)

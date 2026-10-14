@@ -1,15 +1,11 @@
 """Shared fixtures for LCTL tests."""
 
-import json
-import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List
 
 import pytest
-import yaml
 
-from lctl.core.events import Chain, Event, EventType, ReplayEngine, State
+from lctl.core.events import Chain, Event, EventType, ReplayEngine
 
 
 @pytest.fixture
@@ -19,7 +15,7 @@ def base_timestamp() -> datetime:
 
 
 @pytest.fixture
-def sample_events(base_timestamp: datetime) -> List[Event]:
+def sample_events(base_timestamp: datetime) -> list[Event]:
     """Create a list of sample events for testing."""
     events = [
         Event(
@@ -86,7 +82,7 @@ def sample_events(base_timestamp: datetime) -> List[Event]:
 
 
 @pytest.fixture
-def sample_chain(sample_events: List[Event]) -> Chain:
+def sample_chain(sample_events: list[Event]) -> Chain:
     """Create a sample chain with events."""
     chain = Chain(id="test-chain")
     for event in sample_events:

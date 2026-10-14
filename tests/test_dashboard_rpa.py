@@ -8,10 +8,7 @@ operations, search, export, and webhooks.
 import csv
 import io
 import json
-import os
 from datetime import datetime, timedelta
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -20,9 +17,8 @@ pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient
 
-from lctl.dashboard.app import create_app
 from lctl.core.schema import CURRENT_VERSION
-
+from lctl.dashboard.app import create_app
 
 # =============================================================================
 # Fixtures

@@ -1,7 +1,8 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from lctl.core.session import LCTLSession
-from lctl.integrations.pydantic_ai import trace_agent, TracedAgent, LCTLPydanticAITracer
+
+from lctl.integrations.pydantic_ai import trace_agent
 
 # Mock PydanticAI classes if not available
 try:

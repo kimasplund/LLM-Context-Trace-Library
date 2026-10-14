@@ -7,10 +7,9 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from lctl.cli.main import cli, _estimate_cost
+from lctl.cli.main import _estimate_cost, cli
 from lctl.core.events import Chain, Event, EventType
 from lctl.core.schema import CURRENT_VERSION
-from lctl.evaluation.metrics import ChainMetrics
 
 
 @pytest.fixture
@@ -403,15 +402,17 @@ class TestDebugCommand:
     def test_debug_basic(self, runner: CliRunner, cli_chain_file: Path):
         """Test basic debug command shows chain info before starting dashboard."""
         # Use catch_exceptions=False to see actual errors if any
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         # Mock the dashboard to prevent actual server startup
         mock_run_dashboard = MagicMock()
-        with patch.dict(
-            "sys.modules", {"lctl.dashboard": MagicMock(run_dashboard=mock_run_dashboard)}
+        with (
+            patch.dict(
+                "sys.modules", {"lctl.dashboard": MagicMock(run_dashboard=mock_run_dashboard)}
+            ),
+            patch("lctl.cli.main.run_dashboard", mock_run_dashboard, create=True),
         ):
-            with patch("lctl.cli.main.run_dashboard", mock_run_dashboard, create=True):
-                result = runner.invoke(cli, ["debug", str(cli_chain_file)])
+            result = runner.invoke(cli, ["debug", str(cli_chain_file)])
 
         # Either succeeds with mocked dashboard or exits with error message about dashboard
         assert "Visual Debugger" in result.output
@@ -419,27 +420,31 @@ class TestDebugCommand:
 
     def test_debug_custom_port(self, runner: CliRunner, cli_chain_file: Path):
         """Test debug with custom port."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         mock_run_dashboard = MagicMock()
-        with patch.dict(
-            "sys.modules", {"lctl.dashboard": MagicMock(run_dashboard=mock_run_dashboard)}
+        with (
+            patch.dict(
+                "sys.modules", {"lctl.dashboard": MagicMock(run_dashboard=mock_run_dashboard)}
+            ),
+            patch("lctl.cli.main.run_dashboard", mock_run_dashboard, create=True),
         ):
-            with patch("lctl.cli.main.run_dashboard", mock_run_dashboard, create=True):
-                result = runner.invoke(cli, ["debug", "--port", "3000", str(cli_chain_file)])
+            result = runner.invoke(cli, ["debug", "--port", "3000", str(cli_chain_file)])
 
         assert "3000" in result.output
 
     def test_debug_shows_event_count(self, runner: CliRunner, cli_chain_file: Path):
         """Test debug shows event count."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         mock_run_dashboard = MagicMock()
-        with patch.dict(
-            "sys.modules", {"lctl.dashboard": MagicMock(run_dashboard=mock_run_dashboard)}
+        with (
+            patch.dict(
+                "sys.modules", {"lctl.dashboard": MagicMock(run_dashboard=mock_run_dashboard)}
+            ),
+            patch("lctl.cli.main.run_dashboard", mock_run_dashboard, create=True),
         ):
-            with patch("lctl.cli.main.run_dashboard", mock_run_dashboard, create=True):
-                result = runner.invoke(cli, ["debug", str(cli_chain_file)])
+            result = runner.invoke(cli, ["debug", str(cli_chain_file)])
 
         assert "Events: 7" in result.output
 

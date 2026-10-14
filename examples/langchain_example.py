@@ -10,8 +10,8 @@ Prerequisites:
 from lctl.integrations.langchain import (
     LCTLCallbackHandler,
     LCTLChain,
-    trace_chain,
     langchain_available,
+    trace_chain,
 )
 
 
@@ -188,6 +188,7 @@ def example_analyze_trace():
     replay engine and analysis tools.
     """
     from pathlib import Path
+
     from lctl import Chain, ReplayEngine
 
     trace_path = Path("callback_trace.lctl.json")

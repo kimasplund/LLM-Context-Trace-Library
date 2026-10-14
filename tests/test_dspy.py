@@ -3,12 +3,12 @@
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lctl.core.events import Chain, Event, EventType, ReplayEngine
+from lctl.core.events import EventType, ReplayEngine
 from lctl.core.session import LCTLSession
 
 sys.modules["dspy"] = MagicMock()
@@ -19,8 +19,8 @@ class MockSignature:
 
     def __init__(
         self,
-        input_fields: Optional[Dict[str, Any]] = None,
-        output_fields: Optional[Dict[str, Any]] = None,
+        input_fields: dict[str, Any] | None = None,
+        output_fields: dict[str, Any] | None = None,
     ):
         self.input_fields = input_fields or {"question": "str"}
         self.output_fields = output_fields or {"answer": "str"}
@@ -44,7 +44,7 @@ class MockModule:
     def __init__(
         self,
         name: str = "MockModule",
-        signature: Optional[MockSignature] = None,
+        signature: MockSignature | None = None,
     ):
         self.name = name
         self.signature = signature or MockSignature()
@@ -59,14 +59,14 @@ class MockModule:
 class MockPredict(MockModule):
     """Mock DSPy Predict module for testing."""
 
-    def __init__(self, signature: Optional[MockSignature] = None):
+    def __init__(self, signature: MockSignature | None = None):
         super().__init__(name="Predict", signature=signature)
 
 
 class MockChainOfThought(MockModule):
     """Mock DSPy ChainOfThought module for testing."""
 
-    def __init__(self, signature: Optional[MockSignature] = None):
+    def __init__(self, signature: MockSignature | None = None):
         super().__init__(name="ChainOfThought", signature=signature)
 
 
@@ -80,7 +80,7 @@ class MockTeleprompter:
     def compile(
         self,
         student: Any,
-        trainset: Optional[List[Any]] = None,
+        trainset: list[Any] | None = None,
         **kwargs,
     ) -> Any:
         self._compile_count += 1
@@ -652,7 +652,7 @@ class TestDSPyModuleContext:
     def test_context_manager_records_start_end(self, mock_dspy):
         """Test context manager records start and end events."""
         with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
-            from lctl.integrations.dspy import LCTLDSPyCallback, DSPyModuleContext
+            from lctl.integrations.dspy import DSPyModuleContext, LCTLDSPyCallback
 
             callback = LCTLDSPyCallback()
 
@@ -667,7 +667,7 @@ class TestDSPyModuleContext:
     def test_context_manager_set_result(self, mock_dspy):
         """Test context manager set_result."""
         with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
-            from lctl.integrations.dspy import LCTLDSPyCallback, DSPyModuleContext
+            from lctl.integrations.dspy import DSPyModuleContext, LCTLDSPyCallback
 
             callback = LCTLDSPyCallback()
 
@@ -680,7 +680,7 @@ class TestDSPyModuleContext:
     def test_context_manager_handles_error(self, mock_dspy):
         """Test context manager handles errors."""
         with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
-            from lctl.integrations.dspy import LCTLDSPyCallback, DSPyModuleContext
+            from lctl.integrations.dspy import DSPyModuleContext, LCTLDSPyCallback
 
             callback = LCTLDSPyCallback()
 
@@ -793,7 +793,6 @@ class TestIntegration:
         with patch("lctl.integrations.dspy.DSPY_AVAILABLE", True):
             from lctl.integrations.dspy import (
                 LCTLDSPyCallback,
-                TracedDSPyModule,
                 trace_module,
             )
 

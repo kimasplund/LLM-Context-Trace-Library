@@ -2,15 +2,15 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any
 
 from .aggregators import AggregatedMetrics
 from .collectors import CollectedMetrics
 
 
 def export_json(
-    metrics: Union[CollectedMetrics, AggregatedMetrics],
-    path: Union[str, Path],
+    metrics: CollectedMetrics | AggregatedMetrics,
+    path: str | Path,
     indent: int = 2,
 ) -> None:
     """Export metrics to JSON file.
@@ -37,8 +37,8 @@ def export_json(
 
 
 def export_prometheus(
-    metrics: Union[CollectedMetrics, AggregatedMetrics],
-    path: Union[str, Path],
+    metrics: CollectedMetrics | AggregatedMetrics,
+    path: str | Path,
     prefix: str = "lctl",
 ) -> None:
     """Export metrics in Prometheus exposition format.
@@ -57,7 +57,7 @@ def export_prometheus(
     if not export_path.parent.exists():
         raise FileNotFoundError(f"Directory does not exist: {export_path.parent}")
 
-    lines: List[str] = []
+    lines: list[str] = []
 
     if isinstance(metrics, CollectedMetrics):
         lines.extend(_format_collected_prometheus(metrics, prefix))
@@ -70,9 +70,9 @@ def export_prometheus(
         raise PermissionError(f"Permission denied writing to: {path}")
 
 
-def _format_collected_prometheus(metrics: CollectedMetrics, prefix: str) -> List[str]:
+def _format_collected_prometheus(metrics: CollectedMetrics, prefix: str) -> list[str]:
     """Format CollectedMetrics as Prometheus exposition format."""
-    lines: List[str] = []
+    lines: list[str] = []
     chain_id = metrics.chain_id
 
     lines.append(f"# HELP {prefix}_total_events Total number of events in chain")
@@ -183,9 +183,9 @@ def _format_collected_prometheus(metrics: CollectedMetrics, prefix: str) -> List
     return lines
 
 
-def _format_aggregated_prometheus(metrics: AggregatedMetrics, prefix: str) -> List[str]:
+def _format_aggregated_prometheus(metrics: AggregatedMetrics, prefix: str) -> list[str]:
     """Format AggregatedMetrics as Prometheus exposition format."""
-    lines: List[str] = []
+    lines: list[str] = []
 
     lines.append(f"# HELP {prefix}_chain_count Number of aggregated chains")
     lines.append(f"# TYPE {prefix}_chain_count gauge")
@@ -266,8 +266,8 @@ def _format_aggregated_prometheus(metrics: AggregatedMetrics, prefix: str) -> Li
 
 
 def export_csv(
-    metrics: Union[CollectedMetrics, AggregatedMetrics],
-    path: Union[str, Path],
+    metrics: CollectedMetrics | AggregatedMetrics,
+    path: str | Path,
 ) -> None:
     """Export metrics to CSV file.
 
@@ -284,7 +284,7 @@ def export_csv(
     if not export_path.parent.exists():
         raise FileNotFoundError(f"Directory does not exist: {export_path.parent}")
 
-    lines: List[str] = []
+    lines: list[str] = []
 
     if isinstance(metrics, CollectedMetrics):
         lines.extend(_format_collected_csv(metrics))
@@ -297,9 +297,9 @@ def export_csv(
         raise PermissionError(f"Permission denied writing to: {path}")
 
 
-def _format_collected_csv(metrics: CollectedMetrics) -> List[str]:
+def _format_collected_csv(metrics: CollectedMetrics) -> list[str]:
     """Format CollectedMetrics as CSV."""
-    lines: List[str] = []
+    lines: list[str] = []
 
     lines.append("metric,value")
     lines.append(f"chain_id,{metrics.chain_id}")
@@ -326,9 +326,9 @@ def _format_collected_csv(metrics: CollectedMetrics) -> List[str]:
     return lines
 
 
-def _format_aggregated_csv(metrics: AggregatedMetrics) -> List[str]:
+def _format_aggregated_csv(metrics: AggregatedMetrics) -> list[str]:
     """Format AggregatedMetrics as CSV."""
-    lines: List[str] = []
+    lines: list[str] = []
 
     lines.append("metric,value")
     lines.append(f"chain_count,{metrics.chain_count}")
@@ -357,7 +357,7 @@ def _format_aggregated_csv(metrics: AggregatedMetrics) -> List[str]:
     return lines
 
 
-def to_dict(metrics: Union[CollectedMetrics, AggregatedMetrics]) -> Dict[str, Any]:
+def to_dict(metrics: CollectedMetrics | AggregatedMetrics) -> dict[str, Any]:
     """Convert metrics to dictionary.
 
     Args:
@@ -370,7 +370,7 @@ def to_dict(metrics: Union[CollectedMetrics, AggregatedMetrics]) -> Dict[str, An
 
 
 def to_json(
-    metrics: Union[CollectedMetrics, AggregatedMetrics],
+    metrics: CollectedMetrics | AggregatedMetrics,
     indent: int = 2,
 ) -> str:
     """Convert metrics to JSON string.
@@ -386,7 +386,7 @@ def to_json(
 
 
 def to_prometheus(
-    metrics: Union[CollectedMetrics, AggregatedMetrics],
+    metrics: CollectedMetrics | AggregatedMetrics,
     prefix: str = "lctl",
 ) -> str:
     """Convert metrics to Prometheus exposition format string.

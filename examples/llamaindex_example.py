@@ -10,16 +10,14 @@ Usage:
     python llamaindex_example.py
 """
 
-import os
-
 try:
-    from llama_index.core import VectorStoreIndex, Document
+    from llama_index.core import Document, VectorStoreIndex
     from llama_index.core.callbacks import CallbackManager
 
     LLAMAINDEX_INSTALLED = True
 except ImportError:
     try:
-        from llama_index import VectorStoreIndex, Document
+        from llama_index import Document, VectorStoreIndex
         from llama_index.callbacks import CallbackManager
 
         LLAMAINDEX_INSTALLED = True
@@ -32,9 +30,8 @@ from lctl.integrations.llamaindex import (
     LLAMAINDEX_AVAILABLE,
     LCTLLlamaIndexCallback,
     LCTLQueryEngine,
-    LCTLChatEngine,
-    trace_query_engine,
     trace_chat_engine,
+    trace_query_engine,
 )
 
 

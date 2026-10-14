@@ -1,7 +1,7 @@
 """LCTL Metric Aggregators - Aggregate metrics across multiple chains."""
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any
 
 from .collectors import (
     AgentMetrics,
@@ -27,7 +27,7 @@ class AggregatedLatencyMetrics:
     p90_step_duration_ms: float = 0.0
     p99_step_duration_ms: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "chain_count": self.chain_count,
@@ -53,7 +53,7 @@ class AggregatedTokenMetrics:
     avg_tokens_per_chain: float = 0.0
     avg_efficiency_ratio: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "chain_count": self.chain_count,
@@ -72,11 +72,11 @@ class AggregatedErrorMetrics:
     chain_count: int = 0
     total_error_count: int = 0
     avg_error_rate: float = 0.0
-    error_types: Dict[str, int] = field(default_factory=dict)
+    error_types: dict[str, int] = field(default_factory=dict)
     chains_with_errors: int = 0
     error_free_rate: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "chain_count": self.chain_count,
@@ -99,7 +99,7 @@ class AggregatedFactMetrics:
     min_confidence: float = 1.0
     max_confidence: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "chain_count": self.chain_count,
@@ -116,13 +116,13 @@ class AggregatedAgentMetrics:
     """Aggregated agent metrics across multiple chains."""
 
     chain_count: int = 0
-    unique_agents: List[str] = field(default_factory=list)
+    unique_agents: list[str] = field(default_factory=list)
     total_handoffs: int = 0
     avg_handoffs_per_chain: float = 0.0
     avg_agents_per_chain: float = 0.0
-    agent_participation: Dict[str, int] = field(default_factory=dict)
+    agent_participation: dict[str, int] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "chain_count": self.chain_count,
@@ -139,7 +139,7 @@ class AggregatedMetrics:
     """All aggregated metrics across multiple chains."""
 
     chain_count: int
-    chain_ids: List[str]
+    chain_ids: list[str]
     latency: AggregatedLatencyMetrics
     tokens: AggregatedTokenMetrics
     errors: AggregatedErrorMetrics
@@ -181,7 +181,7 @@ class AggregatedMetrics:
         ]
         return "\n".join(lines)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert all aggregated metrics to dictionary."""
         return {
             "chain_count": self.chain_count,
@@ -194,7 +194,7 @@ class AggregatedMetrics:
         }
 
 
-def _percentile(sorted_values: List[float], p: float) -> float:
+def _percentile(sorted_values: list[float], p: float) -> float:
     """Calculate percentile from sorted values."""
     if not sorted_values:
         return 0.0
@@ -209,15 +209,15 @@ def _percentile(sorted_values: List[float], p: float) -> float:
 class LatencyAggregator:
     """Aggregates latency metrics across multiple chains."""
 
-    def aggregate(self, metrics_list: List[LatencyMetrics]) -> AggregatedLatencyMetrics:
+    def aggregate(self, metrics_list: list[LatencyMetrics]) -> AggregatedLatencyMetrics:
         """Aggregate latency metrics from multiple chains."""
         if not metrics_list:
             return AggregatedLatencyMetrics()
 
         result = AggregatedLatencyMetrics(chain_count=len(metrics_list))
 
-        all_step_durations: List[int] = []
-        total_times: List[int] = []
+        all_step_durations: list[int] = []
+        total_times: list[int] = []
 
         for metrics in metrics_list:
             result.total_time_ms += metrics.total_time_ms
@@ -245,14 +245,14 @@ class LatencyAggregator:
 class TokenAggregator:
     """Aggregates token metrics across multiple chains."""
 
-    def aggregate(self, metrics_list: List[TokenMetrics]) -> AggregatedTokenMetrics:
+    def aggregate(self, metrics_list: list[TokenMetrics]) -> AggregatedTokenMetrics:
         """Aggregate token metrics from multiple chains."""
         if not metrics_list:
             return AggregatedTokenMetrics()
 
         result = AggregatedTokenMetrics(chain_count=len(metrics_list))
 
-        efficiency_ratios: List[float] = []
+        efficiency_ratios: list[float] = []
 
         for metrics in metrics_list:
             result.total_input_tokens += metrics.total_input_tokens
@@ -272,14 +272,14 @@ class TokenAggregator:
 class ErrorAggregator:
     """Aggregates error metrics across multiple chains."""
 
-    def aggregate(self, metrics_list: List[ErrorMetrics]) -> AggregatedErrorMetrics:
+    def aggregate(self, metrics_list: list[ErrorMetrics]) -> AggregatedErrorMetrics:
         """Aggregate error metrics from multiple chains."""
         if not metrics_list:
             return AggregatedErrorMetrics()
 
         result = AggregatedErrorMetrics(chain_count=len(metrics_list))
 
-        error_rates: List[float] = []
+        error_rates: list[float] = []
 
         for metrics in metrics_list:
             result.total_error_count += metrics.error_count
@@ -300,14 +300,14 @@ class ErrorAggregator:
 class FactAggregator:
     """Aggregates fact metrics across multiple chains."""
 
-    def aggregate(self, metrics_list: List[FactMetrics]) -> AggregatedFactMetrics:
+    def aggregate(self, metrics_list: list[FactMetrics]) -> AggregatedFactMetrics:
         """Aggregate fact metrics from multiple chains."""
         if not metrics_list:
             return AggregatedFactMetrics()
 
         result = AggregatedFactMetrics(chain_count=len(metrics_list))
 
-        confidences: List[float] = []
+        confidences: list[float] = []
         min_conf = 1.0
         max_conf = 0.0
 
@@ -334,7 +334,7 @@ class FactAggregator:
 class AgentAggregator:
     """Aggregates agent metrics across multiple chains."""
 
-    def aggregate(self, metrics_list: List[AgentMetrics]) -> AggregatedAgentMetrics:
+    def aggregate(self, metrics_list: list[AgentMetrics]) -> AggregatedAgentMetrics:
         """Aggregate agent metrics from multiple chains."""
         if not metrics_list:
             return AggregatedAgentMetrics()
@@ -342,7 +342,7 @@ class AgentAggregator:
         result = AggregatedAgentMetrics(chain_count=len(metrics_list))
 
         all_agents: set = set()
-        agent_counts: List[int] = []
+        agent_counts: list[int] = []
 
         for metrics in metrics_list:
             all_agents.update(metrics.agents)
@@ -369,7 +369,7 @@ class MetricsAggregator:
         self._fact_aggregator = FactAggregator()
         self._agent_aggregator = AgentAggregator()
 
-    def aggregate(self, metrics_list: List[CollectedMetrics]) -> AggregatedMetrics:
+    def aggregate(self, metrics_list: list[CollectedMetrics]) -> AggregatedMetrics:
         """Aggregate metrics from multiple chains.
 
         Args:
@@ -394,22 +394,22 @@ class MetricsAggregator:
             agents=self._agent_aggregator.aggregate([m.agents for m in metrics_list]),
         )
 
-    def aggregate_latency(self, metrics_list: List[LatencyMetrics]) -> AggregatedLatencyMetrics:
+    def aggregate_latency(self, metrics_list: list[LatencyMetrics]) -> AggregatedLatencyMetrics:
         """Aggregate only latency metrics."""
         return self._latency_aggregator.aggregate(metrics_list)
 
-    def aggregate_tokens(self, metrics_list: List[TokenMetrics]) -> AggregatedTokenMetrics:
+    def aggregate_tokens(self, metrics_list: list[TokenMetrics]) -> AggregatedTokenMetrics:
         """Aggregate only token metrics."""
         return self._token_aggregator.aggregate(metrics_list)
 
-    def aggregate_errors(self, metrics_list: List[ErrorMetrics]) -> AggregatedErrorMetrics:
+    def aggregate_errors(self, metrics_list: list[ErrorMetrics]) -> AggregatedErrorMetrics:
         """Aggregate only error metrics."""
         return self._error_aggregator.aggregate(metrics_list)
 
-    def aggregate_facts(self, metrics_list: List[FactMetrics]) -> AggregatedFactMetrics:
+    def aggregate_facts(self, metrics_list: list[FactMetrics]) -> AggregatedFactMetrics:
         """Aggregate only fact metrics."""
         return self._fact_aggregator.aggregate(metrics_list)
 
-    def aggregate_agents(self, metrics_list: List[AgentMetrics]) -> AggregatedAgentMetrics:
+    def aggregate_agents(self, metrics_list: list[AgentMetrics]) -> AggregatedAgentMetrics:
         """Aggregate only agent metrics."""
         return self._agent_aggregator.aggregate(metrics_list)

@@ -13,15 +13,14 @@ import argparse
 import json
 import platform
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from . import __version__
-from .bench_analysis import AnalysisBenchmarks, run_analysis_benchmarks
-from .bench_events import EventBenchmarks, run_event_benchmarks
-from .bench_replay import ReplayBenchmarks, run_replay_benchmarks
-
+from .bench_analysis import run_analysis_benchmarks
+from .bench_events import run_event_benchmarks
+from .bench_replay import run_replay_benchmarks
 
 BENCHMARK_SUITES = {
     "replay": ("Replay Performance", run_replay_benchmarks),
@@ -30,7 +29,7 @@ BENCHMARK_SUITES = {
 }
 
 
-def get_system_info() -> Dict[str, Any]:
+def get_system_info() -> dict[str, Any]:
     """Gather system information for the report."""
     return {
         "platform": platform.platform(),
@@ -40,7 +39,7 @@ def get_system_info() -> Dict[str, Any]:
     }
 
 
-def load_baseline(path: Path) -> Optional[Dict[str, float]]:
+def load_baseline(path: Path) -> dict[str, float] | None:
     """Load baseline results from a JSON file.
 
     Args:
@@ -68,9 +67,9 @@ def load_baseline(path: Path) -> Optional[Dict[str, float]]:
 
 
 def generate_report(
-    results: Dict[str, List[Dict[str, Any]]],
-    baseline: Optional[Dict[str, float]] = None,
-) -> Dict[str, Any]:
+    results: dict[str, list[dict[str, Any]]],
+    baseline: dict[str, float] | None = None,
+) -> dict[str, Any]:
     """Generate a comprehensive benchmark report.
 
     Args:
@@ -83,7 +82,7 @@ def generate_report(
     report = {
         "lctl_version": __version__,
         "benchmark_version": "1.0.0",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "system": get_system_info(),
         "suites": {},
         "summary": {
@@ -134,9 +133,9 @@ def generate_report(
 
 
 def generate_comparison_summary(
-    results: Dict[str, List[Dict[str, Any]]],
-    baseline: Dict[str, float],
-) -> Dict[str, Any]:
+    results: dict[str, list[dict[str, Any]]],
+    baseline: dict[str, float],
+) -> dict[str, Any]:
     """Generate comparison summary against baseline.
 
     Args:
@@ -186,7 +185,7 @@ def generate_comparison_summary(
     }
 
 
-def print_results(report: Dict[str, Any]) -> None:
+def print_results(report: dict[str, Any]) -> None:
     """Print benchmark results to console.
 
     Args:
@@ -314,7 +313,7 @@ Examples:
 
     suites_to_run = list(BENCHMARK_SUITES.keys()) if args.suite == "all" else [args.suite]
 
-    results: Dict[str, List[Dict[str, Any]]] = {}
+    results: dict[str, list[dict[str, Any]]] = {}
 
     if not args.quiet:
         print(f"LCTL Benchmark Suite v{__version__}")

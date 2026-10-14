@@ -2,7 +2,6 @@ try:
     import semantic_kernel as sk
 
     print(f"Semantic Kernel version: {sk.__version__}")
-    from semantic_kernel.filters import FunctionInvocationContext, FilterReturnType
 
     try:
         from semantic_kernel.filters import FunctionInvocationFilter

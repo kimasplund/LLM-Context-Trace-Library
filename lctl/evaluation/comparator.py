@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from ..core.events import Chain, ReplayEngine
 from .metrics import (
@@ -26,10 +26,10 @@ class ComparisonResult:
     chain_b_id: str
     metrics_a: ChainMetrics
     metrics_b: ChainMetrics
-    metric_comparisons: Dict[str, MetricComparison]
-    statistical_results: Dict[str, Dict[str, StatisticalResult]]
-    divergences: List[Dict[str, Any]]
-    winner: Optional[str]
+    metric_comparisons: dict[str, MetricComparison]
+    statistical_results: dict[str, dict[str, StatisticalResult]]
+    divergences: list[dict[str, Any]]
+    winner: str | None
     timestamp: datetime = field(default_factory=lambda: datetime.now())
 
     def summary(self) -> str:
@@ -124,7 +124,7 @@ class ComparisonResult:
 
         return "\n".join(lines)
 
-    def is_significant(self, metric: Optional[str] = None) -> bool:
+    def is_significant(self, metric: str | None = None) -> bool:
         """Check if the comparison shows statistical significance.
 
         Args:
@@ -143,7 +143,7 @@ class ComparisonResult:
                 return True
         return False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert comparison result to dictionary."""
         return {
             "chain_a_id": self.chain_a_id,
@@ -200,8 +200,8 @@ class ChainComparator:
         self.chain_b = chain_b
         self.alpha = alpha
 
-        self._metrics_a: Optional[ChainMetrics] = None
-        self._metrics_b: Optional[ChainMetrics] = None
+        self._metrics_a: ChainMetrics | None = None
+        self._metrics_b: ChainMetrics | None = None
 
     @property
     def metrics_a(self) -> ChainMetrics:
@@ -220,7 +220,7 @@ class ChainComparator:
     def compare(
         self,
         include_divergences: bool = True,
-        bootstrap_seed: Optional[int] = None,
+        bootstrap_seed: int | None = None,
     ) -> ComparisonResult:
         """Perform full comparison of the two chains.
 
@@ -235,7 +235,7 @@ class ChainComparator:
 
         statistical_results = self._compute_statistical_tests(bootstrap_seed)
 
-        divergences: List[Dict[str, Any]] = []
+        divergences: list[dict[str, Any]] = []
         if include_divergences:
             engine_a = ReplayEngine(self.chain_a)
             engine_b = ReplayEngine(self.chain_b)
@@ -256,13 +256,13 @@ class ChainComparator:
 
     def _compute_statistical_tests(
         self,
-        bootstrap_seed: Optional[int] = None,
-    ) -> Dict[str, Dict[str, StatisticalResult]]:
+        bootstrap_seed: int | None = None,
+    ) -> dict[str, dict[str, StatisticalResult]]:
         """Compute statistical tests for each metric.
 
         For single chain comparisons, we use step-level data as samples.
         """
-        results: Dict[str, Dict[str, StatisticalResult]] = {}
+        results: dict[str, dict[str, StatisticalResult]] = {}
 
         durations_a = self._extract_step_durations(self.chain_a)
         durations_b = self._extract_step_durations(self.chain_b)
@@ -284,7 +284,7 @@ class ChainComparator:
 
         return results
 
-    def _extract_step_durations(self, chain: Chain) -> List[float]:
+    def _extract_step_durations(self, chain: Chain) -> list[float]:
         """Extract step durations from a chain as sample data."""
         engine = ReplayEngine(chain)
         bottlenecks = engine.find_bottlenecks()
@@ -292,9 +292,9 @@ class ChainComparator:
 
     def _determine_winner(
         self,
-        metric_comparisons: Dict[str, MetricComparison],
-        statistical_results: Dict[str, Dict[str, StatisticalResult]],
-    ) -> Optional[str]:
+        metric_comparisons: dict[str, MetricComparison],
+        statistical_results: dict[str, dict[str, StatisticalResult]],
+    ) -> str | None:
         """Determine the winning chain based on metrics and significance.
 
         A chain wins if it has more improvements and at least one is significant.
@@ -322,8 +322,8 @@ class ChainComparator:
 
 
 def compare_chains(
-    chain_a: Union[str, Path, Chain],
-    chain_b: Union[str, Path, Chain],
+    chain_a: str | Path | Chain,
+    chain_b: str | Path | Chain,
     alpha: float = 0.05,
 ) -> ComparisonResult:
     """Compare two chains by path or Chain object.
@@ -358,10 +358,10 @@ def compare_chains(
 
 
 def compare_chain_sets(
-    chains_a: List[Union[str, Path, Chain]],
-    chains_b: List[Union[str, Path, Chain]],
+    chains_a: list[str | Path | Chain],
+    chains_b: list[str | Path | Chain],
     alpha: float = 0.05,
-    bootstrap_seed: Optional[int] = None,
+    bootstrap_seed: int | None = None,
 ) -> ComparisonResult:
     """Compare two sets of chains for aggregate A/B testing.
 
@@ -385,14 +385,14 @@ def compare_chain_sets(
     if not chains_b:
         raise ValueError("chains_b must not be empty")
 
-    loaded_a: List[Chain] = []
+    loaded_a: list[Chain] = []
     for c in chains_a:
         if isinstance(c, (str, Path)):
             loaded_a.append(Chain.load(Path(c)))
         else:
             loaded_a.append(c)
 
-    loaded_b: List[Chain] = []
+    loaded_b: list[Chain] = []
     for c in chains_b:
         if isinstance(c, (str, Path)):
             loaded_b.append(Chain.load(Path(c)))
@@ -454,7 +454,7 @@ def compare_chain_sets(
 
     metric_comparisons = compute_all_metrics(aggregate_a, aggregate_b)
 
-    statistical_results: Dict[str, Dict[str, StatisticalResult]] = {}
+    statistical_results: dict[str, dict[str, StatisticalResult]] = {}
 
     if len(latencies_a) >= 2 and len(latencies_b) >= 2:
         statistical_results["latency"] = run_all_tests(

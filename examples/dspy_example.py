@@ -11,8 +11,6 @@ Usage:
     python dspy_example.py
 """
 
-import os
-
 try:
     import dspy
     from dspy import ChainOfThought, Module, Predict, Signature
@@ -29,8 +27,6 @@ from lctl.integrations.dspy import (
     DSPyModuleContext,
     LCTLDSPyCallback,
     LCTLDSPyTeleprompter,
-    TracedDSPyModule,
-    is_available,
     trace_module,
 )
 

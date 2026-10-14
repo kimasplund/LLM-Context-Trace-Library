@@ -13,6 +13,7 @@ import os
 
 try:
     from semantic_kernel import Kernel
+
     from lctl.integrations.semantic_kernel import trace_kernel
 except ImportError:
     print("Please install semantic-kernel and lctl[semantic-kernel] to run this example")

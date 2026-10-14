@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 from uuid import uuid4
 
 from ..core.session import LCTLSession
@@ -82,7 +82,7 @@ def _check_autogen_available() -> None:
         raise AutogenNotAvailableError()
 
 
-def _extract_message_content(message: Union[str, Dict[str, Any], None]) -> str:
+def _extract_message_content(message: str | dict[str, Any] | None) -> str:
     """Extract string content from a message."""
     if message is None:
         return ""
@@ -229,8 +229,8 @@ class LCTLAutogenCallback(BaseTracer):
 
     def __init__(
         self,
-        chain_id: Optional[str] = None,
-        session: Optional[LCTLSession] = None,
+        chain_id: str | None = None,
+        session: LCTLSession | None = None,
         *,
         auto_cleanup: bool = True,
         cleanup_interval: float = 3600.0,
@@ -251,13 +251,13 @@ class LCTLAutogenCallback(BaseTracer):
             auto_cleanup=auto_cleanup,
             cleanup_interval=cleanup_interval,
         )
-        self._attached_agents: List[Any] = []
-        self._conversation_stack: List[Dict[str, Any]] = []
+        self._attached_agents: list[Any] = []
+        self._conversation_stack: list[dict[str, Any]] = []
         self._nested_depth = 0
-        self._logging_handler: Optional[LCTLAutogenHandler] = None
+        self._logging_handler: LCTLAutogenHandler | None = None
 
         # Track active steps for proper step_start/step_end pairing
-        self._active_steps: Dict[str, Dict[str, Any]] = {}
+        self._active_steps: dict[str, dict[str, Any]] = {}
 
         if AUTOGEN_MODE == "modern":
             self._setup_modern_tracing()
@@ -471,7 +471,7 @@ class LCTLAutogenCallback(BaseTracer):
 
         return hook
 
-    def attach_group_chat(self, group_chat: Any, manager: Optional[Any] = None) -> None:
+    def attach_group_chat(self, group_chat: Any, manager: Any | None = None) -> None:
         """Attach LCTL tracing to a GroupChat."""
         if AUTOGEN_MODE == "modern":
             # Modern tracing is global
@@ -543,7 +543,7 @@ class LCTLAutogenCallback(BaseTracer):
         tool_name: str,
         result: Any,
         duration_ms: int = 0,
-        agent: Optional[str] = None,
+        agent: str | None = None,
     ) -> None:
         """Manually record a tool call result.
 
@@ -569,7 +569,7 @@ class LCTLAutogenCallback(BaseTracer):
     def record_error(
         self,
         error: Exception,
-        agent: Optional[str] = None,
+        agent: str | None = None,
         recoverable: bool = True,
     ) -> None:
         """Record an error during conversation."""
@@ -588,14 +588,14 @@ class LCTLAutogenCallback(BaseTracer):
 # Convenience wrappers
 
 
-def trace_agent(agent: Any, chain_id: Optional[str] = None) -> LCTLAutogenCallback:
+def trace_agent(agent: Any, chain_id: str | None = None) -> LCTLAutogenCallback:
     callback = LCTLAutogenCallback(chain_id=chain_id)
     callback.attach(agent)
     return callback
 
 
 def trace_group_chat(
-    group_chat: Any, manager: Optional[Any] = None, chain_id: Optional[str] = None
+    group_chat: Any, manager: Any | None = None, chain_id: str | None = None
 ) -> LCTLAutogenCallback:
     callback = LCTLAutogenCallback(chain_id=chain_id)
     callback.attach_group_chat(group_chat, manager)
@@ -618,9 +618,9 @@ class LCTLConversableAgent:
     def __init__(
         self,
         name: str,
-        system_message: Optional[str] = None,
-        llm_config: Optional[Dict[str, Any]] = None,
-        chain_id: Optional[str] = None,
+        system_message: str | None = None,
+        llm_config: dict[str, Any] | None = None,
+        chain_id: str | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize an LCTL-traced ConversableAgent."""
@@ -667,7 +667,7 @@ class LCTLConversableAgent:
     def initiate_chat(
         self,
         recipient: Any,
-        message: Optional[Union[str, Dict[str, Any]]] = None,
+        message: str | dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> Any:
         recipient_agent = (
@@ -732,7 +732,7 @@ class LCTLConversableAgent:
     def export_trace(self, path: str) -> None:
         self._callback.export(path)
 
-    def get_trace(self) -> Dict[str, Any]:
+    def get_trace(self) -> dict[str, Any]:
         return self._callback.to_dict()
 
     def __getattr__(self, name: str) -> Any:
@@ -746,7 +746,7 @@ class LCTLGroupChatManager:
         self,
         groupchat: Any,
         name: str = "chat_manager",
-        chain_id: Optional[str] = None,
+        chain_id: str | None = None,
         **kwargs: Any,
     ) -> None:
         _check_autogen_available()
@@ -795,7 +795,7 @@ class LCTLGroupChatManager:
     def export_trace(self, path: str) -> None:
         self._callback.export(path)
 
-    def get_trace(self) -> Dict[str, Any]:
+    def get_trace(self) -> dict[str, Any]:
         return self._callback.to_dict()
 
     def __getattr__(self, name: str) -> Any:
@@ -813,7 +813,7 @@ __all__ = [
     "LCTLAutogenHandler",
     "LCTLConversableAgent",
     "LCTLGroupChatManager",
+    "is_available",
     "trace_agent",
     "trace_group_chat",
-    "is_available",
 ]

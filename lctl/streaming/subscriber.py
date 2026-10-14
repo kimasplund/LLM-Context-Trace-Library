@@ -4,9 +4,10 @@ import asyncio
 import threading
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any
 
 from .emitter import EventEmitter, StreamingEvent, StreamingEventType
 
@@ -65,7 +66,6 @@ class EventSubscriber(ABC):
         Args:
             event: The event to handle.
         """
-        pass
 
     def __enter__(self) -> "EventSubscriber":
         """Context manager entry."""
@@ -99,10 +99,10 @@ class FilteredSubscriber(EventSubscriber):
         self,
         emitter: EventEmitter,
         handler: Callable[[StreamingEvent], None],
-        event_types: Optional[List[str]] = None,
-        chain_ids: Optional[List[str]] = None,
-        lctl_event_types: Optional[List[str]] = None,
-        filter_fn: Optional[Callable[[StreamingEvent], bool]] = None,
+        event_types: list[str] | None = None,
+        chain_ids: list[str] | None = None,
+        lctl_event_types: list[str] | None = None,
+        filter_fn: Callable[[StreamingEvent], bool] | None = None,
     ):
         """Initialize the filtered subscriber.
 
@@ -116,9 +116,9 @@ class FilteredSubscriber(EventSubscriber):
         """
         super().__init__(emitter)
         self._handler = handler
-        self._event_types: Optional[Set[str]] = set(event_types) if event_types else None
-        self._chain_ids: Optional[Set[str]] = set(chain_ids) if chain_ids else None
-        self._lctl_event_types: Optional[Set[str]] = (
+        self._event_types: set[str] | None = set(event_types) if event_types else None
+        self._chain_ids: set[str] | None = set(chain_ids) if chain_ids else None
+        self._lctl_event_types: set[str] | None = (
             set(lctl_event_types) if lctl_event_types else None
         )
         self._filter_fn = filter_fn
@@ -228,10 +228,10 @@ class BufferedSubscriber(EventSubscriber):
     def __init__(
         self,
         emitter: EventEmitter,
-        handler: Callable[[List[StreamingEvent]], None],
+        handler: Callable[[list[StreamingEvent]], None],
         max_size: int = 100,
         flush_interval: float = 5.0,
-        filter_fn: Optional[Callable[[StreamingEvent], bool]] = None,
+        filter_fn: Callable[[StreamingEvent], bool] | None = None,
     ):
         """Initialize the buffered subscriber.
 
@@ -247,10 +247,10 @@ class BufferedSubscriber(EventSubscriber):
         self._max_size = max_size
         self._flush_interval = flush_interval
         self._filter_fn = filter_fn
-        self._buffer: List[StreamingEvent] = []
+        self._buffer: list[StreamingEvent] = []
         self._lock = threading.RLock()
         self._last_flush = time.time()
-        self._flush_timer: Optional[threading.Timer] = None
+        self._flush_timer: threading.Timer | None = None
 
     def _handle_event(self, event: StreamingEvent) -> None:
         """Handle an incoming event by buffering it."""
@@ -274,7 +274,7 @@ class BufferedSubscriber(EventSubscriber):
         self._flush_timer.daemon = True
         self._flush_timer.start()
 
-    def flush(self) -> List[StreamingEvent]:
+    def flush(self) -> list[StreamingEvent]:
         """Flush the buffer and process events.
 
         Returns:
@@ -283,7 +283,7 @@ class BufferedSubscriber(EventSubscriber):
         with self._lock:
             return self._flush_locked()
 
-    def _flush_locked(self) -> List[StreamingEvent]:
+    def _flush_locked(self) -> list[StreamingEvent]:
         """Flush the buffer (must hold lock)."""
         if self._flush_timer is not None:
             self._flush_timer.cancel()
@@ -337,7 +337,7 @@ class AsyncSubscriber(EventSubscriber):
         emitter: EventEmitter,
         handler: Callable[[StreamingEvent], Any],
         queue_size: int = 1000,
-        filter_fn: Optional[Callable[[StreamingEvent], bool]] = None,
+        filter_fn: Callable[[StreamingEvent], bool] | None = None,
     ):
         """Initialize the async subscriber.
 
@@ -351,9 +351,9 @@ class AsyncSubscriber(EventSubscriber):
         self._handler = handler
         self._queue_size = queue_size
         self._filter_fn = filter_fn
-        self._queue: Optional[asyncio.Queue] = None
+        self._queue: asyncio.Queue | None = None
         self._running = False
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
 
     def _handle_event(self, event: StreamingEvent) -> None:
         """Handle an incoming event by queueing it."""
@@ -413,7 +413,7 @@ class AsyncSubscriber(EventSubscriber):
                         await result
                 except Exception:
                     pass
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             except asyncio.CancelledError:
                 break
@@ -445,11 +445,11 @@ class EventAggregation:
     """Aggregated event statistics."""
 
     count: int = 0
-    first_timestamp: Optional[datetime] = None
-    last_timestamp: Optional[datetime] = None
-    events_by_type: Dict[str, int] = field(default_factory=dict)
-    events_by_agent: Dict[str, int] = field(default_factory=dict)
-    chain_ids: Set[str] = field(default_factory=set)
+    first_timestamp: datetime | None = None
+    last_timestamp: datetime | None = None
+    events_by_type: dict[str, int] = field(default_factory=dict)
+    events_by_agent: dict[str, int] = field(default_factory=dict)
+    chain_ids: set[str] = field(default_factory=set)
 
 
 class AggregatingSubscriber(EventSubscriber):
@@ -469,7 +469,7 @@ class AggregatingSubscriber(EventSubscriber):
     """
 
     def __init__(
-        self, emitter: EventEmitter, filter_fn: Optional[Callable[[StreamingEvent], bool]] = None
+        self, emitter: EventEmitter, filter_fn: Callable[[StreamingEvent], bool] | None = None
     ):
         """Initialize the aggregating subscriber.
 

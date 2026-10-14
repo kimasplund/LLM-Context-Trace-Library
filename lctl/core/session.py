@@ -1,9 +1,10 @@
 """LCTL Session - Context manager for manual instrumentation."""
 
+from collections.abc import Callable
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Optional
 from uuid import uuid4
 
 from .events import Chain, Event, EventType
@@ -36,7 +37,7 @@ class LCTLSession:
 
     def __init__(
         self,
-        chain_id: Optional[str] = None,
+        chain_id: str | None = None,
         emitter: Optional["EventEmitter"] = None,
         redaction_enabled: bool = True,
     ):
@@ -49,8 +50,8 @@ class LCTLSession:
         """
         self.chain = Chain(id=chain_id or str(uuid4())[:8])
         self._seq = 0
-        self._current_agent: Optional[str] = None
-        self._emitter: Optional["EventEmitter"] = emitter
+        self._current_agent: str | None = None
+        self._emitter: EventEmitter | None = emitter
         self._event_listeners: list[Callable[[Event], None]] = []
         self._redaction_enabled = redaction_enabled
 
@@ -82,9 +83,9 @@ class LCTLSession:
         return self._seq
 
     def _now(self) -> datetime:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
 
-    def _add_event(self, event_type: EventType, agent: str, data: Dict[str, Any]) -> Event:
+    def _add_event(self, event_type: EventType, agent: str, data: dict[str, Any]) -> Event:
         if self._redaction_enabled:
             redactor = get_redactor()
             data = redactor.redact_event_data(data)
@@ -149,7 +150,7 @@ class LCTLSession:
 
     def step_end(
         self,
-        agent: Optional[str] = None,
+        agent: str | None = None,
         outcome: str = "success",
         output_summary: str = "",
         duration_ms: int = 0,
@@ -172,7 +173,7 @@ class LCTLSession:
         return event.seq
 
     def add_fact(
-        self, fact_id: str, text: str, confidence: float = 1.0, source: Optional[str] = None
+        self, fact_id: str, text: str, confidence: float = 1.0, source: str | None = None
     ) -> int:
         """Add a new fact."""
         agent = source or self._current_agent or "unknown"
@@ -186,13 +187,13 @@ class LCTLSession:
     def modify_fact(
         self,
         fact_id: str,
-        text: Optional[str] = None,
-        confidence: Optional[float] = None,
+        text: str | None = None,
+        confidence: float | None = None,
         reason: str = "",
     ) -> int:
         """Modify an existing fact."""
         agent = self._current_agent or "unknown"
-        data: Dict[str, Any] = {"id": fact_id, "reason": reason}
+        data: dict[str, Any] = {"id": fact_id, "reason": reason}
         if text is not None:
             data["text"] = text
         if confidence is not None:
@@ -207,7 +208,7 @@ class LCTLSession:
         input_data: Any,
         output_data: Any,
         duration_ms: int = 0,
-        agent: Optional[str] = None,
+        agent: str | None = None,
     ) -> int:
         """Record a tool invocation."""
         agent = agent or self._current_agent or "unknown"
@@ -220,10 +221,10 @@ class LCTLSession:
 
     def llm_trace(
         self,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         response: str,
         model: str,
-        usage: Optional[Dict[str, int]] = None,
+        usage: dict[str, int] | None = None,
         duration_ms: int = 0,
     ) -> int:
         """Record an LLM trace."""
@@ -264,7 +265,7 @@ class LCTLSession:
         )
         return event.seq
 
-    def checkpoint(self, facts_snapshot: Optional[Dict] = None) -> int:
+    def checkpoint(self, facts_snapshot: dict | None = None) -> int:
         """Create a checkpoint for fast replay."""
         from .events import ReplayEngine
 
@@ -362,7 +363,7 @@ class LCTLSession:
         except OSError as e:
             raise OSError(f"Failed to export chain to {path}: {e}")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Export chain as dictionary."""
         return self.chain.to_dict()
 

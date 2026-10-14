@@ -3,9 +3,7 @@
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List
 
-import pytest
 import yaml
 
 from lctl.core.events import Chain, Event, EventType, ReplayEngine, State
@@ -447,7 +445,7 @@ class TestState:
 
         assert state.metrics["total_duration_ms"] == 150
 
-    def test_apply_multiple_events(self, sample_events: List[Event]):
+    def test_apply_multiple_events(self, sample_events: list[Event]):
         """Test applying multiple events in sequence."""
         state = State()
         for event in sample_events:

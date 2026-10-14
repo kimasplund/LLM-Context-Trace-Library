@@ -1,6 +1,7 @@
 """Tests for CrewAI integration."""
 
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 from lctl.core.events import EventType

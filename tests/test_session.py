@@ -2,14 +2,11 @@
 
 import json
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any
-from unittest.mock import patch, MagicMock
 
 import pytest
 
-from lctl.core.events import Chain, Event, EventType, ReplayEngine
+from lctl.core.events import Chain, EventType, ReplayEngine
 from lctl.core.session import LCTLSession, traced_step
 
 
@@ -38,9 +35,8 @@ class TestLCTLSessionBasics:
         """Test that context manager records exceptions as errors."""
         session = LCTLSession(chain_id="error-test")
 
-        with pytest.raises(ValueError):
-            with session:
-                raise ValueError("Test error")
+        with pytest.raises(ValueError), session:
+            raise ValueError("Test error")
 
         error_events = [e for e in session.chain.events if e.type == EventType.ERROR]
         assert len(error_events) == 1
@@ -443,9 +439,8 @@ class TestTracedStep:
         """Test traced_step handles exceptions properly."""
         session = LCTLSession()
 
-        with pytest.raises(RuntimeError):
-            with traced_step(session, "failing_agent", "fail"):
-                raise RuntimeError("Intentional failure")
+        with pytest.raises(RuntimeError), traced_step(session, "failing_agent", "fail"):
+            raise RuntimeError("Intentional failure")
 
         assert len(session.chain.events) == 3
         start_event = session.chain.events[0]

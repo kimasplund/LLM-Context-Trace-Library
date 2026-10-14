@@ -7,16 +7,10 @@ Measures:
 - Event creation and addition
 """
 
-import gc
-import json
 import tempfile
-import time
-import tracemalloc
-from dataclasses import dataclass, field
+from datetime import UTC
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
-
-import yaml
+from typing import Any
 
 from lctl.core.events import Chain, Event, EventType
 
@@ -31,15 +25,15 @@ from .fixtures import (
 class EventBenchmarks:
     """Event processing benchmarks."""
 
-    def __init__(self, baseline: Optional[Dict[str, float]] = None):
+    def __init__(self, baseline: dict[str, float] | None = None):
         """Initialize with optional baseline for comparison.
 
         Args:
             baseline: Dictionary mapping benchmark names to baseline ops/sec.
         """
         self.baseline = baseline or {}
-        self.results: List[BenchmarkResult] = []
-        self._temp_files: List[Path] = []
+        self.results: list[BenchmarkResult] = []
+        self._temp_files: list[Path] = []
 
     def cleanup(self) -> None:
         """Clean up temporary files."""
@@ -166,13 +160,13 @@ class EventBenchmarks:
 
     def bench_event_to_dict(self, iterations: int = 100) -> BenchmarkResult:
         """Benchmark event serialization to dict."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         events = [
             Event(
                 seq=i,
                 type=EventType.FACT_ADDED,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 agent="agent1",
                 data={"id": f"F{i}", "text": f"Fact {i}", "confidence": 0.9},
             )
@@ -193,13 +187,13 @@ class EventBenchmarks:
 
     def bench_event_from_dict(self, iterations: int = 100) -> BenchmarkResult:
         """Benchmark event deserialization from dict."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         dicts = [
             {
                 "seq": i,
                 "type": "fact_added",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "agent": "agent1",
                 "data": {"id": f"F{i}", "text": f"Fact {i}", "confidence": 0.9},
             }
@@ -247,7 +241,7 @@ class EventBenchmarks:
 
     def bench_add_events(self, iterations: int = 20) -> BenchmarkResult:
         """Benchmark adding events to chain."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         def add_1000_events():
             chain = Chain(id="bench-add")
@@ -255,7 +249,7 @@ class EventBenchmarks:
                 event = Event(
                     seq=i + 1,
                     type=EventType.FACT_ADDED,
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                     agent="agent1",
                     data={"id": f"F{i}", "text": f"Fact {i}", "confidence": 0.9},
                 )
@@ -271,7 +265,7 @@ class EventBenchmarks:
         self.results.append(result)
         return result
 
-    def bench_json_vs_yaml_comparison(self) -> List[BenchmarkResult]:
+    def bench_json_vs_yaml_comparison(self) -> list[BenchmarkResult]:
         """Run comparison benchmarks between JSON and YAML."""
         results = []
 
@@ -301,7 +295,7 @@ class EventBenchmarks:
         self.results.extend(results)
         return results
 
-    def run_all(self) -> List[BenchmarkResult]:
+    def run_all(self) -> list[BenchmarkResult]:
         """Run all event benchmarks."""
         try:
             self.results = []
@@ -321,7 +315,7 @@ class EventBenchmarks:
         finally:
             self.cleanup()
 
-    def run_quick(self) -> List[BenchmarkResult]:
+    def run_quick(self) -> list[BenchmarkResult]:
         """Run a quick subset of benchmarks."""
         try:
             self.results = []
@@ -332,7 +326,7 @@ class EventBenchmarks:
         finally:
             self.cleanup()
 
-    def get_comparison(self) -> List[Dict[str, Any]]:
+    def get_comparison(self) -> list[dict[str, Any]]:
         """Compare results against baseline."""
         comparisons = []
         for result in self.results:
@@ -351,8 +345,8 @@ class EventBenchmarks:
 
 def run_event_benchmarks(
     quick: bool = False,
-    baseline: Optional[Dict[str, float]] = None,
-) -> List[Dict[str, Any]]:
+    baseline: dict[str, float] | None = None,
+) -> list[dict[str, Any]]:
     """Run event benchmarks and return results.
 
     Args:

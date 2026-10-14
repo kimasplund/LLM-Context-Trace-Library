@@ -1,14 +1,10 @@
 """Tests for LCTL Dashboard."""
 
 import json
-import tempfile
 from datetime import datetime, timedelta
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
-from lctl.core.events import Chain, Event, EventType
 from lctl.core.schema import CURRENT_VERSION
 
 # Skip tests if FastAPI is not installed
@@ -284,7 +280,6 @@ class TestDashboardApp:
             # Send a subscribe message
             websocket.send_json({"type": "subscribe", "filters": {"chain_id": "test-chain"}})
             # Expect confirmation or no error
-            pass
 
     def test_get_metrics(self, client):
         """Test metrics endpoint."""

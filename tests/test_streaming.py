@@ -1,12 +1,7 @@
 """Tests for LCTL streaming module."""
 
-import asyncio
 import json
-import threading
-import time
-from datetime import datetime, timezone
-from typing import List
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
 
 import pytest
 
@@ -16,7 +11,6 @@ from lctl.streaming import (
     AsyncSubscriber,
     BufferedSubscriber,
     EventEmitter,
-    EventSubscriber,
     FilteredSubscriber,
     StreamingEvent,
 )
@@ -32,7 +26,7 @@ class TestStreamingEvent:
         event = StreamingEvent(
             id="test-id",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id="chain-1",
             payload={"test": "data"},
         )
@@ -44,7 +38,7 @@ class TestStreamingEvent:
 
     def test_to_dict(self):
         """Test conversion to dictionary."""
-        ts = datetime.now(timezone.utc)
+        ts = datetime.now(UTC)
         event = StreamingEvent(
             id="test-id",
             type=StreamingEventType.EVENT,
@@ -65,7 +59,7 @@ class TestStreamingEvent:
         event = StreamingEvent(
             id="test-id",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id="chain-1",
             payload={},
         )
@@ -80,7 +74,7 @@ class TestStreamingEvent:
         lctl_event = Event(
             seq=1,
             type=EventType.STEP_START,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             agent="test-agent",
             data={"intent": "test"},
         )
@@ -152,7 +146,7 @@ class TestEventEmitter:
         event = StreamingEvent(
             id="test",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id=None,
             payload={},
         )
@@ -202,7 +196,7 @@ class TestEventEmitter:
         event = StreamingEvent(
             id="test",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id=None,
             payload={},
         )
@@ -276,7 +270,7 @@ class TestEventEmitter:
         lctl_event = Event(
             seq=1,
             type=EventType.STEP_START,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             agent="test-agent",
             data={"intent": "test"},
         )
@@ -294,7 +288,7 @@ class TestEventEmitter:
         lctl_event = Event(
             seq=1,
             type=EventType.STEP_START,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             agent="test-agent",
             data={},
         )
@@ -373,7 +367,7 @@ class TestFilteredSubscriber:
             StreamingEvent(
                 id="1",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id=None,
                 payload={},
             )
@@ -397,7 +391,7 @@ class TestFilteredSubscriber:
             StreamingEvent(
                 id="1",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id="chain-1",
                 payload={},
             )
@@ -406,7 +400,7 @@ class TestFilteredSubscriber:
             StreamingEvent(
                 id="2",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id="chain-2",
                 payload={},
             )
@@ -429,7 +423,7 @@ class TestFilteredSubscriber:
             StreamingEvent(
                 id="1",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id=None,
                 payload={"type": "step_start"},
             )
@@ -438,7 +432,7 @@ class TestFilteredSubscriber:
             StreamingEvent(
                 id="2",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id=None,
                 payload={"type": "step_end"},
             )
@@ -463,7 +457,7 @@ class TestFilteredSubscriber:
             StreamingEvent(
                 id="1",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id=None,
                 payload={"important": True},
             )
@@ -472,7 +466,7 @@ class TestFilteredSubscriber:
             StreamingEvent(
                 id="2",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id=None,
                 payload={"important": False},
             )
@@ -493,7 +487,7 @@ class TestFilteredSubscriber:
             StreamingEvent(
                 id="1",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id="chain-2",
                 payload={},
             )
@@ -505,7 +499,7 @@ class TestFilteredSubscriber:
             StreamingEvent(
                 id="2",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id="chain-2",
                 payload={},
             )
@@ -612,7 +606,7 @@ class TestBufferedSubscriber:
             StreamingEvent(
                 id="1",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id=None,
                 payload={},
             )
@@ -621,7 +615,7 @@ class TestBufferedSubscriber:
             StreamingEvent(
                 id="2",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id=None,
                 payload={},
             )
@@ -894,7 +888,7 @@ class TestAggregatingSubscriber:
             StreamingEvent(
                 id="1",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id="chain-1",
                 payload={"type": "step_start", "agent": "agent-1"},
             )
@@ -903,7 +897,7 @@ class TestAggregatingSubscriber:
             StreamingEvent(
                 id="2",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id="chain-1",
                 payload={"type": "step_end", "agent": "agent-1"},
             )
@@ -912,7 +906,7 @@ class TestAggregatingSubscriber:
             StreamingEvent(
                 id="3",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id="chain-2",
                 payload={"type": "step_start", "agent": "agent-2"},
             )

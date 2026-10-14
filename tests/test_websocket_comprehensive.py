@@ -16,8 +16,7 @@ Covers:
 
 import asyncio
 import json
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,7 +29,6 @@ from lctl.streaming.websocket import (
     create_sse_response,
     start_websocket_server,
 )
-
 
 # =============================================================================
 # Fixtures
@@ -64,7 +62,7 @@ def mock_websocket() -> AsyncMock:
 # =============================================================================
 
 
-def drain_queue(queue: asyncio.Queue) -> List[StreamingEvent]:
+def drain_queue(queue: asyncio.Queue) -> list[StreamingEvent]:
     """Drain all items from a queue and return them."""
     items = []
     while not queue.empty():
@@ -144,7 +142,7 @@ class TestWebSocketServerBasicOperations:
         self, server: WebSocketServer, emitter: EventEmitter
     ):
         """Test that registering a client emits a connected event."""
-        events_received: List[StreamingEvent] = []
+        events_received: list[StreamingEvent] = []
 
         @emitter.on("all")
         def handler(event: StreamingEvent):
@@ -169,7 +167,7 @@ class TestWebSocketServerBasicOperations:
         self, server: WebSocketServer, emitter: EventEmitter
     ):
         """Test that unregistering a client emits a disconnected event."""
-        events_received: List[StreamingEvent] = []
+        events_received: list[StreamingEvent] = []
 
         @emitter.on("all")
         def handler(event: StreamingEvent):
@@ -254,7 +252,7 @@ class TestWebSocketServerEventFiltering:
     @pytest.mark.asyncio
     async def test_should_send_to_client_no_filters(self, server: WebSocketServer):
         """Test _should_send_to_client with no filters."""
-        client = WebSocketClient(id="test", connected_at=datetime.now(timezone.utc), filters={})
+        client = WebSocketClient(id="test", connected_at=datetime.now(UTC), filters={})
 
         event = StreamingEvent.heartbeat()
         assert server._should_send_to_client(event, client) is True
@@ -264,14 +262,14 @@ class TestWebSocketServerEventFiltering:
         """Test _should_send_to_client with matching chain_id filter."""
         client = WebSocketClient(
             id="test",
-            connected_at=datetime.now(timezone.utc),
+            connected_at=datetime.now(UTC),
             filters={"chain_id": "chain-123"},
         )
 
         event = StreamingEvent(
             id="e1",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id="chain-123",
             payload={},
         )
@@ -282,14 +280,14 @@ class TestWebSocketServerEventFiltering:
         """Test _should_send_to_client with non-matching chain_id filter."""
         client = WebSocketClient(
             id="test",
-            connected_at=datetime.now(timezone.utc),
+            connected_at=datetime.now(UTC),
             filters={"chain_id": "chain-123"},
         )
 
         event = StreamingEvent(
             id="e1",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id="chain-456",  # Different chain
             payload={},
         )
@@ -300,7 +298,7 @@ class TestWebSocketServerEventFiltering:
         """Test _should_send_to_client with matching event_types filter."""
         client = WebSocketClient(
             id="test",
-            connected_at=datetime.now(timezone.utc),
+            connected_at=datetime.now(UTC),
             filters={"event_types": ["step_start", "step_end"]},
         )
 
@@ -308,7 +306,7 @@ class TestWebSocketServerEventFiltering:
         event = StreamingEvent(
             id="e1",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id="chain-1",
             payload={"type": "step_start"},
         )
@@ -319,7 +317,7 @@ class TestWebSocketServerEventFiltering:
         """Test _should_send_to_client with non-matching event_types filter."""
         client = WebSocketClient(
             id="test",
-            connected_at=datetime.now(timezone.utc),
+            connected_at=datetime.now(UTC),
             filters={"event_types": ["step_start", "step_end"]},
         )
 
@@ -327,7 +325,7 @@ class TestWebSocketServerEventFiltering:
         event = StreamingEvent(
             id="e1",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id="chain-1",
             payload={"type": "error"},  # Not in filter list
         )
@@ -338,7 +336,7 @@ class TestWebSocketServerEventFiltering:
         """Test _should_send_to_client with streaming event type filter."""
         client = WebSocketClient(
             id="test",
-            connected_at=datetime.now(timezone.utc),
+            connected_at=datetime.now(UTC),
             filters={"event_types": ["heartbeat"]},
         )
 
@@ -355,7 +353,7 @@ class TestWebSocketServerEventFiltering:
         """Test _should_send_to_client with combined chain_id and event_types filters."""
         client = WebSocketClient(
             id="test",
-            connected_at=datetime.now(timezone.utc),
+            connected_at=datetime.now(UTC),
             filters={"chain_id": "chain-123", "event_types": ["step_start"]},
         )
 
@@ -363,7 +361,7 @@ class TestWebSocketServerEventFiltering:
         event1 = StreamingEvent(
             id="e1",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id="chain-123",
             payload={"type": "step_start"},
         )
@@ -373,7 +371,7 @@ class TestWebSocketServerEventFiltering:
         event2 = StreamingEvent(
             id="e2",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id="chain-456",
             payload={"type": "step_start"},
         )
@@ -383,7 +381,7 @@ class TestWebSocketServerEventFiltering:
         event3 = StreamingEvent(
             id="e3",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id="chain-123",
             payload={"type": "step_end"},
         )
@@ -432,7 +430,7 @@ class TestWebSocketServerEventDispatch:
         event = StreamingEvent(
             id="e1",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id="chain-1",
             payload={},
         )
@@ -703,7 +701,7 @@ class TestWebSocketServerHeartbeatLoop:
         async def run_heartbeat():
             try:
                 await asyncio.wait_for(server._heartbeat_loop(), timeout=0.15)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
         await run_heartbeat()
@@ -733,7 +731,7 @@ class TestWebSocketServerHeartbeatLoop:
         async def run_heartbeat():
             try:
                 await asyncio.wait_for(server._heartbeat_loop(), timeout=0.15)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
         await run_heartbeat()
@@ -861,7 +859,7 @@ class TestSSEHandler:
         event = StreamingEvent(
             id="e1",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id="chain-123",
             payload={},
         )
@@ -875,7 +873,7 @@ class TestSSEHandler:
         event = StreamingEvent(
             id="e1",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id="chain-456",
             payload={},
         )
@@ -889,7 +887,7 @@ class TestSSEHandler:
         event = StreamingEvent(
             id="e1",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id=None,
             payload={"type": "step_start"},
         )
@@ -903,7 +901,7 @@ class TestSSEHandler:
         event = StreamingEvent(
             id="e1",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id=None,
             payload={"type": "step_end"},
         )
@@ -971,7 +969,7 @@ class TestSSEHandler:
             StreamingEvent(
                 id="1",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id="chain-1",
                 payload={},
             )
@@ -980,7 +978,7 @@ class TestSSEHandler:
             StreamingEvent(
                 id="2",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id="chain-2",
                 payload={},
             )
@@ -1115,7 +1113,7 @@ class TestWebSocketClient:
 
     def test_create_client(self):
         """Test creating a WebSocketClient."""
-        client = WebSocketClient(id="test-client", connected_at=datetime.now(timezone.utc))
+        client = WebSocketClient(id="test-client", connected_at=datetime.now(UTC))
 
         assert client.id == "test-client"
         assert client.filters == {}  # default
@@ -1126,7 +1124,7 @@ class TestWebSocketClient:
         filters = {"chain_id": "chain-1"}
         client = WebSocketClient(
             id="test-client",
-            connected_at=datetime.now(timezone.utc),
+            connected_at=datetime.now(UTC),
             filters=filters,
         )
 
@@ -1134,7 +1132,7 @@ class TestWebSocketClient:
 
     def test_create_client_with_custom_queue(self):
         """Test WebSocketClient can have events queued."""
-        client = WebSocketClient(id="test-client", connected_at=datetime.now(timezone.utc))
+        client = WebSocketClient(id="test-client", connected_at=datetime.now(UTC))
 
         event = StreamingEvent.heartbeat()
         client.send_queue.put_nowait(event)
@@ -1155,7 +1153,7 @@ class TestWebSocketServerIntegration:
         """Test full connection lifecycle from connect to disconnect."""
         server = WebSocketServer(emitter, heartbeat_interval=0.1, max_clients=10)
 
-        events_captured: List[StreamingEvent] = []
+        events_captured: list[StreamingEvent] = []
 
         @emitter.on("all")
         def capture(event):
@@ -1179,7 +1177,7 @@ class TestWebSocketServerIntegration:
             StreamingEvent(
                 id="e1",
                 type=StreamingEventType.EVENT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id="chain-2",
                 payload={},
             )
@@ -1216,7 +1214,7 @@ class TestWebSocketServerIntegration:
         event1 = StreamingEvent(
             id="e1",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id="chain-1",
             payload={},
         )
@@ -1226,7 +1224,7 @@ class TestWebSocketServerIntegration:
         event2 = StreamingEvent(
             id="e2",
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id="chain-2",
             payload={},
         )

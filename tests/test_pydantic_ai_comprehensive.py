@@ -11,9 +11,8 @@ pydantic_ai to be installed. It covers:
 
 import asyncio
 import threading
-import time
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -714,7 +713,7 @@ class TestTraceAgentFunction:
 
     def test_trace_agent_basic(self, mock_agent):
         """Test trace_agent creates TracedAgent."""
-        from lctl.integrations.pydantic_ai import trace_agent, TracedAgent
+        from lctl.integrations.pydantic_ai import TracedAgent, trace_agent
 
         traced = trace_agent(mock_agent, chain_id="func-test")
         assert isinstance(traced, TracedAgent)
@@ -749,7 +748,6 @@ class TestIsAvailable:
         """Test is_available returns False when module not available."""
         with patch("lctl.integrations.pydantic_ai.PYDANTIC_AI_AVAILABLE", False):
             # Need to reload to pick up the patched value
-            import importlib
             import lctl.integrations.pydantic_ai as pai
 
             # Manually check the patched value

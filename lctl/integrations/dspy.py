@@ -25,9 +25,9 @@ Usage:
 from __future__ import annotations
 
 import functools
-import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from collections.abc import Callable
+from typing import Any, TypeVar
 from uuid import uuid4
 
 from ..core.session import LCTLSession
@@ -46,7 +46,7 @@ except ImportError:
     dspy = None
 
 
-def _extract_signature_info(signature: Any) -> Dict[str, Any]:
+def _extract_signature_info(signature: Any) -> dict[str, Any]:
     """Extract information from a DSPy signature."""
     info = {"input_fields": [], "output_fields": []}
 
@@ -155,8 +155,8 @@ class LCTLDSPyCallback(BaseTracer):
 
     def __init__(
         self,
-        chain_id: Optional[str] = None,
-        session: Optional[LCTLSession] = None,
+        chain_id: str | None = None,
+        session: LCTLSession | None = None,
         verbose: bool = False,
         *,
         auto_cleanup: bool = True,
@@ -180,10 +180,10 @@ class LCTLDSPyCallback(BaseTracer):
             cleanup_interval=cleanup_interval,
         )
         self._verbose = verbose
-        self._active_modules: Dict[int, Dict[str, Any]] = {}
+        self._active_modules: dict[int, dict[str, Any]] = {}
         self._llm_call_count = 0
         self._optimization_iteration = 0
-        self._current_module: Optional[str] = None
+        self._current_module: str | None = None
 
     def cleanup_stale_entries(self, max_age_seconds: float = 3600.0) -> int:
         """Remove module entries older than max_age_seconds.
@@ -215,14 +215,14 @@ class LCTLDSPyCallback(BaseTracer):
             return parent_count + len(stale_ids)
 
     @property
-    def _module_stack(self) -> List[Dict[str, Any]]:
+    def _module_stack(self) -> list[dict[str, Any]]:
         """Backwards compatibility: return active modules as a list."""
         return list(self._active_modules.values())
 
     def on_module_start(
         self,
         module: Any,
-        inputs: Dict[str, Any],
+        inputs: dict[str, Any],
     ) -> None:
         """Called when a DSPy module starts execution.
 
@@ -282,7 +282,7 @@ class LCTLDSPyCallback(BaseTracer):
         self,
         module: Any,
         prediction: Any,
-        error: Optional[BaseException] = None,
+        error: BaseException | None = None,
     ) -> None:
         """Called when a DSPy module completes execution.
 
@@ -429,7 +429,7 @@ class LCTLDSPyCallback(BaseTracer):
     def on_optimization_start(
         self,
         teleprompter_name: str,
-        config: Optional[Dict[str, Any]] = None,
+        config: dict[str, Any] | None = None,
     ) -> None:
         """Called when an optimization run starts.
 
@@ -471,9 +471,9 @@ class LCTLDSPyCallback(BaseTracer):
     def on_optimization_iteration(
         self,
         iteration: int,
-        score: Optional[float] = None,
-        best_score: Optional[float] = None,
-        metrics: Optional[Dict[str, Any]] = None,
+        score: float | None = None,
+        best_score: float | None = None,
+        metrics: dict[str, Any] | None = None,
     ) -> None:
         """Called for each optimization iteration.
 
@@ -518,7 +518,7 @@ class LCTLDSPyCallback(BaseTracer):
     def on_optimization_end(
         self,
         teleprompter_name: str,
-        best_score: Optional[float] = None,
+        best_score: float | None = None,
         total_iterations: int = 0,
     ) -> None:
         """Called when an optimization run completes.
@@ -552,7 +552,7 @@ class LCTLDSPyCallback(BaseTracer):
     def record_error(
         self,
         error: BaseException,
-        module_name: Optional[str] = None,
+        module_name: str | None = None,
         recoverable: bool = True,
     ) -> None:
         """Record an error during DSPy execution.
@@ -584,7 +584,7 @@ class LCTLDSPyCallback(BaseTracer):
             event_count = len(self.chain.events)
             print(f"[LCTL] Exported {event_count} events to {path}")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Export the LCTL chain as a dictionary."""
         return self.session.to_dict()
 
@@ -593,9 +593,9 @@ T = TypeVar("T")
 
 
 def trace_module(
-    module_or_callback: Union[Any, LCTLDSPyCallback],
-    callback: Optional[LCTLDSPyCallback] = None,
-) -> Union[Callable, Any]:
+    module_or_callback: Any | LCTLDSPyCallback,
+    callback: LCTLDSPyCallback | None = None,
+) -> Callable | Any:
     """Decorator/wrapper to trace a DSPy module with LCTL.
 
     Can be used in two ways:
@@ -689,7 +689,7 @@ def _wrap_module_class(module_class: type, callback: LCTLDSPyCallback) -> type:
     return traced_class
 
 
-def _wrap_module_instance(module: Any, callback: LCTLDSPyCallback) -> "TracedDSPyModule":
+def _wrap_module_instance(module: Any, callback: LCTLDSPyCallback) -> TracedDSPyModule:
     """Wrap a DSPy module instance with LCTL tracing.
 
     Args:
@@ -787,7 +787,7 @@ class TracedDSPyModule:
         """Export the LCTL trace to a file."""
         self._callback.export(path)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Export the LCTL trace as a dictionary."""
         return self._callback.to_dict()
 
@@ -857,8 +857,8 @@ class LCTLDSPyTeleprompter:
     def compile(
         self,
         student: Any,
-        trainset: Optional[List[Any]] = None,
-        valset: Optional[List[Any]] = None,
+        trainset: list[Any] | None = None,
+        valset: list[Any] | None = None,
         **kwargs: Any,
     ) -> Any:
         """Compile/optimize a module with tracing.
@@ -922,9 +922,9 @@ class LCTLDSPyTeleprompter:
     def record_iteration(
         self,
         iteration: int,
-        score: Optional[float] = None,
-        best_score: Optional[float] = None,
-        metrics: Optional[Dict[str, Any]] = None,
+        score: float | None = None,
+        best_score: float | None = None,
+        metrics: dict[str, Any] | None = None,
     ) -> None:
         """Manually record an optimization iteration.
 
@@ -942,7 +942,7 @@ class LCTLDSPyTeleprompter:
         """Export the LCTL trace to a file."""
         self._callback.export(path)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Export the LCTL trace as a dictionary."""
         return self._callback.to_dict()
 
@@ -971,7 +971,7 @@ class DSPyModuleContext:
         self,
         callback: LCTLDSPyCallback,
         module_name: str,
-        inputs: Optional[Dict[str, Any]] = None,
+        inputs: dict[str, Any] | None = None,
     ) -> None:
         """Initialize the context manager.
 
@@ -984,10 +984,10 @@ class DSPyModuleContext:
         self._module_name = module_name
         self._inputs = inputs or {}
         self._result: Any = None
-        self._error: Optional[BaseException] = None
+        self._error: BaseException | None = None
         self._mock_module = _MockModule(module_name)
 
-    def __enter__(self) -> "DSPyModuleContext":
+    def __enter__(self) -> DSPyModuleContext:
         """Start tracing the module execution."""
         self._callback.on_module_start(self._mock_module, self._inputs)
         return self
@@ -1021,11 +1021,11 @@ def is_available() -> bool:
 
 __all__ = [
     "DSPY_AVAILABLE",
+    "DSPyModuleContext",
     "DSPyNotAvailableError",
     "LCTLDSPyCallback",
-    "TracedDSPyModule",
     "LCTLDSPyTeleprompter",
-    "DSPyModuleContext",
-    "trace_module",
+    "TracedDSPyModule",
     "is_available",
+    "trace_module",
 ]

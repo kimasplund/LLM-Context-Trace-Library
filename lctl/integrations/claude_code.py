@@ -70,7 +70,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..core.session import LCTLSession
 
@@ -79,8 +79,8 @@ logger = logging.getLogger("lctl.claude_code")
 
 # Thread-safe singleton support
 _tracer_lock = threading.Lock()
-_tracer_instance: Optional["LCTLClaudeCodeTracer"] = None
-_tracer_file: Optional[Path] = None
+_tracer_instance: LCTLClaudeCodeTracer | None = None
+_tracer_file: Path | None = None
 
 
 class LCTLClaudeCodeTracer:
@@ -97,9 +97,9 @@ class LCTLClaudeCodeTracer:
 
     def __init__(
         self,
-        chain_id: Optional[str] = None,
-        session: Optional[LCTLSession] = None,
-        output_dir: Optional[str] = None,
+        chain_id: str | None = None,
+        session: LCTLSession | None = None,
+        output_dir: str | None = None,
     ):
         """Initialize the Claude Code tracer.
 
@@ -112,19 +112,19 @@ class LCTLClaudeCodeTracer:
             chain_id=chain_id or f"claude-code-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         )
         self.output_dir = Path(output_dir) if output_dir else Path(".claude/traces")
-        self.agent_stack: List[Dict[str, Any]] = []
-        self.tool_counts: Dict[str, int] = {}
-        self._start_times: Dict[str, float] = {}
-        self._agent_ids: Dict[str, str] = {}  # agent_type -> last agent_id
-        self._parallel_group: Optional[str] = None  # Current parallel execution group
-        self._file_changes: List[Dict[str, Any]] = []  # Track file modifications
+        self.agent_stack: list[dict[str, Any]] = []
+        self.tool_counts: dict[str, int] = {}
+        self._start_times: dict[str, float] = {}
+        self._agent_ids: dict[str, str] = {}  # agent_type -> last agent_id
+        self._parallel_group: str | None = None  # Current parallel execution group
+        self._file_changes: list[dict[str, Any]] = []  # Track file modifications
 
     @classmethod
     def get_or_create(
         cls,
-        chain_id: Optional[str] = None,
-        state_file: Optional[str] = None,
-    ) -> "LCTLClaudeCodeTracer":
+        chain_id: str | None = None,
+        state_file: str | None = None,
+    ) -> LCTLClaudeCodeTracer:
         """Get existing tracer instance or create new one.
 
         This is useful for hook scripts that need to maintain state
@@ -225,10 +225,10 @@ class LCTLClaudeCodeTracer:
         agent_type: str,
         description: str,
         prompt: str = "",
-        model: Optional[str] = None,
+        model: str | None = None,
         run_in_background: bool = False,
-        resume_agent_id: Optional[str] = None,
-        parallel_group: Optional[str] = None,
+        resume_agent_id: str | None = None,
+        parallel_group: str | None = None,
     ) -> None:
         """Record a Task tool invocation (agent spawn).
 
@@ -305,8 +305,8 @@ class LCTLClaudeCodeTracer:
         description: str = "",
         result: str = "",
         success: bool = True,
-        error_message: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        error_message: str | None = None,
+        agent_id: str | None = None,
         tokens_in: int = 0,
         tokens_out: int = 0,
     ) -> None:
@@ -374,10 +374,10 @@ class LCTLClaudeCodeTracer:
     def on_tool_call(
         self,
         tool_name: str,
-        input_data: Dict[str, Any],
-        output_data: Optional[Dict[str, Any]] = None,
+        input_data: dict[str, Any],
+        output_data: dict[str, Any] | None = None,
         duration_ms: int = 0,
-        agent: Optional[str] = None,
+        agent: str | None = None,
     ) -> None:
         """Record a tool call within an agent.
 
@@ -422,7 +422,7 @@ class LCTLClaudeCodeTracer:
         fact_id: str,
         text: str,
         confidence: float = 0.8,
-        agent: Optional[str] = None,
+        agent: str | None = None,
     ) -> None:
         """Record a fact discovered by an agent.
 
@@ -450,8 +450,8 @@ class LCTLClaudeCodeTracer:
     def on_fact_updated(
         self,
         fact_id: str,
-        confidence: Optional[float] = None,
-        text: Optional[str] = None,
+        confidence: float | None = None,
+        text: str | None = None,
         reason: str = "",
     ) -> None:
         """Update a fact's confidence or text.
@@ -474,8 +474,8 @@ class LCTLClaudeCodeTracer:
         self,
         question: str,
         response: str,
-        options: Optional[List[str]] = None,
-        agent: Optional[str] = None,
+        options: list[str] | None = None,
+        agent: str | None = None,
     ) -> None:
         """Record a human-in-the-loop interaction (AskUserQuestion).
 
@@ -518,7 +518,7 @@ class LCTLClaudeCodeTracer:
         self,
         file_path: str,
         change_type: str,  # "create", "edit", "delete"
-        agent: Optional[str] = None,
+        agent: str | None = None,
         lines_added: int = 0,
         lines_removed: int = 0,
     ) -> None:
@@ -568,7 +568,7 @@ class LCTLClaudeCodeTracer:
         url: str,
         prompt: str,
         result_summary: str,
-        agent: Optional[str] = None,
+        agent: str | None = None,
         duration_ms: int = 0,
     ) -> None:
         """Record a web fetch operation.
@@ -610,7 +610,7 @@ class LCTLClaudeCodeTracer:
         query: str,
         results_count: int,
         top_result: str = "",
-        agent: Optional[str] = None,
+        agent: str | None = None,
     ) -> None:
         """Record a web search operation.
 
@@ -644,7 +644,7 @@ class LCTLClaudeCodeTracer:
 
         self._save_state()
 
-    def start_parallel_group(self, group_id: Optional[str] = None) -> str:
+    def start_parallel_group(self, group_id: str | None = None) -> str:
         """Start a parallel execution group.
 
         Args:
@@ -670,9 +670,9 @@ class LCTLClaudeCodeTracer:
 
     def on_todo_write(
         self,
-        todos: List[Dict[str, Any]],
-        previous_todos: Optional[List[Dict[str, Any]]] = None,
-        agent: Optional[str] = None,
+        todos: list[dict[str, Any]],
+        previous_todos: list[dict[str, Any]] | None = None,
+        agent: str | None = None,
     ) -> None:
         """Record a TodoWrite tool call (task list update).
 
@@ -727,9 +727,9 @@ class LCTLClaudeCodeTracer:
     def on_skill_invoke(
         self,
         skill_name: str,
-        args: Optional[str] = None,
+        args: str | None = None,
         result_summary: str = "",
-        agent: Optional[str] = None,
+        agent: str | None = None,
         duration_ms: int = 0,
     ) -> None:
         """Record a Skill tool invocation.
@@ -770,9 +770,9 @@ class LCTLClaudeCodeTracer:
         self,
         server_name: str,
         tool_name: str,
-        input_data: Dict[str, Any],
-        output_data: Optional[Dict[str, Any]] = None,
-        agent: Optional[str] = None,
+        input_data: dict[str, Any],
+        output_data: dict[str, Any] | None = None,
+        agent: str | None = None,
         duration_ms: int = 0,
     ) -> None:
         """Record an MCP (Model Context Protocol) tool call.
@@ -831,7 +831,7 @@ class LCTLClaudeCodeTracer:
         files_changed: int = 0,
         insertions: int = 0,
         deletions: int = 0,
-        agent: Optional[str] = None,
+        agent: str | None = None,
     ) -> None:
         """Record a git commit linked to the current workflow.
 
@@ -877,7 +877,7 @@ class LCTLClaudeCodeTracer:
 
         self._save_state()
 
-    def link_to_git_history(self, repo_path: str = ".") -> Dict[str, Any]:
+    def link_to_git_history(self, repo_path: str = ".") -> dict[str, Any]:
         """Link workflow file changes to git history.
 
         Args:
@@ -924,7 +924,7 @@ class LCTLClaudeCodeTracer:
 
         return result
 
-    def get_file_changes(self) -> List[Dict[str, Any]]:
+    def get_file_changes(self) -> list[dict[str, Any]]:
         """Get list of file changes made during the workflow.
 
         Returns:
@@ -932,7 +932,7 @@ class LCTLClaudeCodeTracer:
         """
         return self._file_changes.copy()
 
-    def get_agent_ids(self) -> Dict[str, str]:
+    def get_agent_ids(self) -> dict[str, str]:
         """Get mapping of agent types to their last agent IDs.
 
         Returns:
@@ -957,7 +957,7 @@ class LCTLClaudeCodeTracer:
         self.session.checkpoint()
         self._save_state()
 
-    def export(self, path: Optional[str] = None) -> str:
+    def export(self, path: str | None = None) -> str:
         """Export the trace to a file.
 
         Args:
@@ -973,7 +973,7 @@ class LCTLClaudeCodeTracer:
         self.session.export(path)
         return path
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """Get a summary of the traced workflow.
 
         Returns:
@@ -986,7 +986,7 @@ class LCTLClaudeCodeTracer:
         trace = engine.get_trace()
 
         # Agent stats
-        agent_stats: Dict[str, Dict[str, Any]] = {}
+        agent_stats: dict[str, dict[str, Any]] = {}
         for step in trace:
             agent = step["agent"]
             if agent not in agent_stats:
@@ -1071,8 +1071,8 @@ class LCTLClaudeCodeTracer:
 
 
 def generate_hooks(
-    output_dir: str = ".claude/hooks", chain_id: Optional[str] = None
-) -> Dict[str, str]:
+    output_dir: str = ".claude/hooks", chain_id: str | None = None
+) -> dict[str, str]:
     """Generate Claude Code hook scripts for LCTL tracing.
 
     Args:
@@ -1403,7 +1403,7 @@ def is_available() -> bool:
     return True
 
 
-def validate_hooks(hooks_dir: str = ".claude/hooks") -> Dict[str, Any]:
+def validate_hooks(hooks_dir: str = ".claude/hooks") -> dict[str, Any]:
     """Validate Claude Code hook installation.
 
     Args:
@@ -1623,7 +1623,7 @@ def generate_html_report(chain: Any, output_path: str) -> str:
     return output_path
 
 
-def get_session_metadata() -> Dict[str, Any]:
+def get_session_metadata() -> dict[str, Any]:
     """Get metadata about the current session environment.
 
     Returns:
@@ -1718,7 +1718,7 @@ MODEL_PRICING = {
 }
 
 
-def estimate_cost(tokens_in: int, tokens_out: int, model: str = "default") -> Dict[str, float]:
+def estimate_cost(tokens_in: int, tokens_out: int, model: str = "default") -> dict[str, float]:
     """Estimate cost based on token usage.
 
     Args:
@@ -1744,12 +1744,12 @@ def estimate_cost(tokens_in: int, tokens_out: int, model: str = "default") -> Di
 
 
 __all__ = [
+    "MODEL_PRICING",
     "LCTLClaudeCodeTracer",
+    "estimate_cost",
     "generate_hooks",
-    "validate_hooks",
     "generate_html_report",
     "get_session_metadata",
-    "estimate_cost",
-    "MODEL_PRICING",
     "is_available",
+    "validate_hooks",
 ]

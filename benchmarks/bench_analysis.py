@@ -7,13 +7,9 @@ Measures:
 - Execution trace retrieval
 """
 
-import gc
-import time
-import tracemalloc
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
-from lctl.core.events import Chain, ReplayEngine
+from lctl.core.events import ReplayEngine
 
 from .bench_replay import BenchmarkResult, benchmark
 from .fixtures import (
@@ -28,14 +24,14 @@ from .fixtures import (
 class AnalysisBenchmarks:
     """Analysis function benchmarks."""
 
-    def __init__(self, baseline: Optional[Dict[str, float]] = None):
+    def __init__(self, baseline: dict[str, float] | None = None):
         """Initialize with optional baseline for comparison.
 
         Args:
             baseline: Dictionary mapping benchmark names to baseline ops/sec.
         """
         self.baseline = baseline or {}
-        self.results: List[BenchmarkResult] = []
+        self.results: list[BenchmarkResult] = []
 
     def bench_find_bottlenecks_small(self, iterations: int = 50) -> BenchmarkResult:
         """Benchmark bottleneck analysis on 100 step pairs."""
@@ -250,7 +246,7 @@ class AnalysisBenchmarks:
         self.results.append(result)
         return result
 
-    def run_all(self) -> List[BenchmarkResult]:
+    def run_all(self) -> list[BenchmarkResult]:
         """Run all analysis benchmarks."""
         self.results = []
         self.bench_find_bottlenecks_small()
@@ -269,7 +265,7 @@ class AnalysisBenchmarks:
         self.bench_combined_analysis()
         return self.results
 
-    def run_quick(self) -> List[BenchmarkResult]:
+    def run_quick(self) -> list[BenchmarkResult]:
         """Run a quick subset of benchmarks."""
         self.results = []
         self.bench_find_bottlenecks_small(iterations=10)
@@ -278,7 +274,7 @@ class AnalysisBenchmarks:
         self.bench_get_trace_small(iterations=10)
         return self.results
 
-    def get_comparison(self) -> List[Dict[str, Any]]:
+    def get_comparison(self) -> list[dict[str, Any]]:
         """Compare results against baseline."""
         comparisons = []
         for result in self.results:
@@ -297,8 +293,8 @@ class AnalysisBenchmarks:
 
 def run_analysis_benchmarks(
     quick: bool = False,
-    baseline: Optional[Dict[str, float]] = None,
-) -> List[Dict[str, Any]]:
+    baseline: dict[str, float] | None = None,
+) -> list[dict[str, Any]]:
     """Run analysis benchmarks and return results.
 
     Args:

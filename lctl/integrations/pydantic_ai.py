@@ -14,11 +14,11 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import threading
 import time
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from functools import wraps
-from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 from ..core.session import LCTLSession
@@ -54,8 +54,8 @@ class LCTLPydanticAITracer(BaseTracer):
 
     def __init__(
         self,
-        chain_id: Optional[str] = None,
-        session: Optional[LCTLSession] = None,
+        chain_id: str | None = None,
+        session: LCTLSession | None = None,
         verbose: bool = False,
         *,
         auto_cleanup: bool = True,
@@ -109,8 +109,8 @@ class TracedAgent:
     def __init__(
         self,
         agent: Agent,
-        chain_id: Optional[str] = None,
-        session: Optional[LCTLSession] = None,
+        chain_id: str | None = None,
+        session: LCTLSession | None = None,
         verbose: bool = False,
     ):
         """Initialize the traced agent wrapper.
@@ -205,7 +205,7 @@ class TracedAgent:
             self.tracer.session.tool_call(
                 tool=name,
                 input_data=truncate(str(input_data)),
-                output_data=f"Error: {str(e)}",
+                output_data=f"Error: {e!s}",
                 duration_ms=duration_ms,
             )
             raise
@@ -241,7 +241,7 @@ class TracedAgent:
             self.tracer.session.tool_call(
                 tool=name,
                 input_data=truncate(str(input_data)),
-                output_data=f"Error: {str(e)}",
+                output_data=f"Error: {e!s}",
                 duration_ms=duration_ms,
             )
             raise
@@ -254,7 +254,7 @@ class TracedAgent:
         """
         self.tracer.export(path)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Export the LCTL trace as a dictionary.
 
         Returns:
@@ -539,8 +539,8 @@ class TracedStreamedRunResult:
 
 def trace_agent(
     agent: Agent,
-    chain_id: Optional[str] = None,
-    session: Optional[LCTLSession] = None,
+    chain_id: str | None = None,
+    session: LCTLSession | None = None,
     verbose: bool = False,
 ) -> TracedAgent:
     """Wrap a PydanticAI agent with LCTL tracing.
@@ -583,6 +583,6 @@ __all__ = [
     "LCTLPydanticAITracer",
     "TracedAgent",
     "TracedStreamedRunResult",
-    "trace_agent",
     "is_available",
+    "trace_agent",
 ]

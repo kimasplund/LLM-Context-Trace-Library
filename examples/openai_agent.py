@@ -13,6 +13,7 @@ import os
 
 try:
     from agents import Agent, Runner
+
     from lctl.integrations.openai_agents import LCTLOpenAIAgentTracer
 except ImportError:
     print("Please install openai-agents and lctl[openai-agents] to run this example")

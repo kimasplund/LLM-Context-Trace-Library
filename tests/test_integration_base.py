@@ -8,8 +8,6 @@ import json
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -21,7 +19,6 @@ from lctl.integrations.base import (
     check_availability,
     truncate,
 )
-
 
 # =============================================================================
 # Test: truncate function
@@ -206,8 +203,6 @@ class TestIntegrationNotAvailableError:
 
 class ConcreteTracer(BaseTracer):
     """Concrete implementation of BaseTracer for testing."""
-
-    pass
 
 
 class TestBaseTracer:

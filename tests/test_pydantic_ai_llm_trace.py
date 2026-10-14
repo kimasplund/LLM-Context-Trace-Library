@@ -1,5 +1,6 @@
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 
 # Skip entire module if pydantic_ai not installed
 pydantic_ai = pytest.importorskip("pydantic_ai")
@@ -8,7 +9,6 @@ RunContext = pydantic_ai.RunContext
 from pydantic_ai.models.test import TestModel
 
 from lctl.integrations.pydantic_ai import trace_agent
-from lctl.core.events import EventType
 
 
 @pytest.fixture

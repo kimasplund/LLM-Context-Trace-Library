@@ -4,12 +4,10 @@ import importlib
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from unittest.mock import MagicMock, patch
+from typing import Any
+from unittest.mock import MagicMock
 
-import pytest
-
-from lctl.core.events import Chain, Event, EventType, ReplayEngine
+from lctl.core.events import EventType, ReplayEngine
 from lctl.core.session import LCTLSession
 from lctl.integrations.base import truncate
 
@@ -64,7 +62,7 @@ class MockEventPayload:
 class MockCallbackManager:
     """Mock LlamaIndex CallbackManager."""
 
-    def __init__(self, handlers: Optional[List[Any]] = None):
+    def __init__(self, handlers: list[Any] | None = None):
         self.handlers = handlers or []
 
 
@@ -89,7 +87,7 @@ class MockUsage:
 class MockRaw:
     """Mock raw response with usage."""
 
-    def __init__(self, usage: Optional[MockUsage] = None):
+    def __init__(self, usage: MockUsage | None = None):
         self.usage = usage or MockUsage()
 
 
@@ -106,7 +104,7 @@ class MockQueryEngine:
     """Mock LlamaIndex QueryEngine."""
 
     def __init__(self, response_text: str = "Query response"):
-        self.callback_manager: Optional[MockCallbackManager] = None
+        self.callback_manager: MockCallbackManager | None = None
         self._response_text = response_text
 
     def query(self, query_str: str, **kwargs: Any) -> MockResponse:
@@ -120,9 +118,9 @@ class MockChatEngine:
     """Mock LlamaIndex ChatEngine."""
 
     def __init__(self, response_text: str = "Chat response"):
-        self.callback_manager: Optional[MockCallbackManager] = None
+        self.callback_manager: MockCallbackManager | None = None
         self._response_text = response_text
-        self._history: List[str] = []
+        self._history: list[str] = []
 
     def chat(self, message: str, **kwargs: Any) -> MockResponse:
         self._history.append(message)

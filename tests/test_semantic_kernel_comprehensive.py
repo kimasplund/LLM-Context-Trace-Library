@@ -11,12 +11,10 @@ Tests cover:
 Uses mocks to test without requiring semantic-kernel installation.
 """
 
-import asyncio
 import threading
 import time
-import sys
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
-from typing import Any, Callable
+from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -389,8 +387,8 @@ class TestCheckSkAvailable:
     def test_raises_when_not_available(self, mock_sk_not_available):
         """Test raises SemanticKernelNotAvailableError when SK not installed"""
         from lctl.integrations.semantic_kernel import (
-            _check_sk_available,
             SemanticKernelNotAvailableError,
+            _check_sk_available,
         )
 
         with pytest.raises(SemanticKernelNotAvailableError):

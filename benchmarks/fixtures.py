@@ -5,11 +5,10 @@ for performance benchmarking.
 """
 
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import IntEnum
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import List, Tuple
 
 from lctl.core.events import Chain, Event, EventType
 
@@ -46,7 +45,7 @@ def generate_chain(
     """
     random.seed(seed)
     chain = Chain(id=chain_id)
-    base_time = datetime(2025, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+    base_time = datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC)
 
     agents = ["planner", "executor", "analyzer", "validator", "synthesizer"]
     current_step_agent = None
@@ -142,7 +141,7 @@ def generate_chain_with_errors(
     """
     random.seed(seed)
     chain = Chain(id=chain_id)
-    base_time = datetime(2025, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+    base_time = datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC)
 
     agents = ["agent1", "agent2", "agent3"]
 
@@ -200,7 +199,7 @@ def generate_chain_with_confidence_changes(
     """
     random.seed(seed)
     chain = Chain(id=chain_id)
-    base_time = datetime(2025, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+    base_time = datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC)
 
     agents = ["analyst1", "analyst2", "verifier", "reviewer"]
     seq = 0
@@ -251,7 +250,7 @@ def generate_divergent_chains(
     divergence_point: int,
     chain_id_prefix: str = "divergent",
     seed: int = 42,
-) -> Tuple[Chain, Chain]:
+) -> tuple[Chain, Chain]:
     """Generate two chains that diverge at a specified point.
 
     Useful for benchmarking chain diff operations.
@@ -308,7 +307,7 @@ def generate_step_pairs(
     """
     random.seed(seed)
     chain = Chain(id=chain_id)
-    base_time = datetime(2025, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+    base_time = datetime(2025, 1, 15, 10, 0, 0, tzinfo=UTC)
 
     agents = ["planner", "executor", "analyzer", "validator"]
     seq = 0
@@ -374,7 +373,7 @@ def save_chain_to_temp_file(chain: Chain, format: str = "json") -> Path:
     return temp_path
 
 
-def create_benchmark_chains() -> List[Tuple[str, Chain]]:
+def create_benchmark_chains() -> list[tuple[str, Chain]]:
     """Create a standard set of benchmark chains.
 
     Returns:

@@ -1,7 +1,7 @@
 """LCTL Evaluation Metrics - Metrics for comparing chain executions."""
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..core.events import Chain, EventType, ReplayEngine, State
 
@@ -20,16 +20,16 @@ class ChainMetrics:
     fact_count: int
     step_count: int
     agent_count: int
-    agents: List[str]
+    agents: list[str]
     avg_step_duration_ms: float
     avg_fact_confidence: float
     token_efficiency: float
     error_rate: float
-    agent_stats: Dict[str, Any] = field(default_factory=dict)
-    facts: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    agent_stats: dict[str, Any] = field(default_factory=dict)
+    facts: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @classmethod
-    def from_chain(cls, chain: Chain, state: Optional[State] = None) -> "ChainMetrics":
+    def from_chain(cls, chain: Chain, state: State | None = None) -> "ChainMetrics":
         """Compute metrics from a chain.
 
         Args:
@@ -45,7 +45,7 @@ class ChainMetrics:
         [e for e in chain.events if e.type == EventType.STEP_END]
 
         # Calculate per-agent metrics
-        agent_stats: Dict[str, Any] = {}
+        agent_stats: dict[str, Any] = {}
         for event in chain.events:
             agent = event.agent
             if agent not in agent_stats:
@@ -112,7 +112,7 @@ class ChainMetrics:
             facts=state.facts,
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert metrics to dictionary."""
         return {
             "chain_id": self.chain_id,
@@ -143,7 +143,7 @@ class MetricComparison:
     value_b: float
     difference: float
     percent_change: float
-    improvement: Optional[bool]
+    improvement: bool | None
 
     @classmethod
     def create(
@@ -187,7 +187,7 @@ class MetricComparison:
             improvement=improvement,
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "metric_name": self.metric_name,
@@ -255,7 +255,7 @@ def compute_fact_confidence_avg(
 
 def compute_all_metrics(
     metrics_a: ChainMetrics, metrics_b: ChainMetrics
-) -> Dict[str, MetricComparison]:
+) -> dict[str, MetricComparison]:
     """Compute all metric comparisons between two chains.
 
     Returns:

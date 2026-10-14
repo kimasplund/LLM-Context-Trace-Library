@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 from uuid import UUID
 
 from ..core.session import LCTLSession
@@ -39,7 +40,7 @@ except ImportError:
         BaseCallbackHandler = object
 
 
-def _extract_token_counts(response: Any) -> Dict[str, int]:
+def _extract_token_counts(response: Any) -> dict[str, int]:
     """Extract token counts from LLM response."""
     tokens = {"input": 0, "output": 0}
 
@@ -86,8 +87,8 @@ class LCTLCallbackHandler(BaseCallbackHandler):
 
     def __init__(
         self,
-        chain_id: Optional[str] = None,
-        session: Optional[LCTLSession] = None,
+        chain_id: str | None = None,
+        session: LCTLSession | None = None,
         *,
         auto_cleanup: bool = True,
         cleanup_interval: float = 3600.0,
@@ -113,7 +114,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
             cleanup_interval=cleanup_interval,
         )
 
-        self._run_stack: Dict[UUID, Dict[str, Any]] = {}
+        self._run_stack: dict[UUID, dict[str, Any]] = {}
         self._chain_depth = 0
         self._monotonic_offset = time.time() - time.monotonic()
 
@@ -174,11 +175,11 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         """
         self._tracer.export(path)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Export the LCTL chain as a dictionary."""
         return self._tracer.to_dict()
 
-    def _get_agent_name(self, serialized: Dict[str, Any], default: str = "langchain") -> str:
+    def _get_agent_name(self, serialized: dict[str, Any], default: str = "langchain") -> str:
         """Extract agent name from serialized data."""
         if serialized:
             if "name" in serialized:
@@ -191,13 +192,13 @@ class LCTLCallbackHandler(BaseCallbackHandler):
 
     def on_llm_start(
         self,
-        serialized: Dict[str, Any],
+        serialized: dict[str, Any],
         prompts: Iterable[str],
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
-        tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        parent_run_id: UUID | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when LLM starts."""
@@ -228,7 +229,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         response: LLMResult,
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when LLM ends."""
@@ -265,7 +266,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         error: BaseException,
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when LLM errors."""
@@ -292,13 +293,13 @@ class LCTLCallbackHandler(BaseCallbackHandler):
 
     def on_chat_model_start(
         self,
-        serialized: Dict[str, Any],
-        messages: List[List[BaseMessage]],
+        serialized: dict[str, Any],
+        messages: list[list[BaseMessage]],
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
-        tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        parent_run_id: UUID | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when chat model starts."""
@@ -337,13 +338,13 @@ class LCTLCallbackHandler(BaseCallbackHandler):
 
     def on_chain_start(
         self,
-        serialized: Dict[str, Any],
-        inputs: Dict[str, Any],
+        serialized: dict[str, Any],
+        inputs: dict[str, Any],
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
-        tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        parent_run_id: UUID | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when chain starts."""
@@ -380,10 +381,10 @@ class LCTLCallbackHandler(BaseCallbackHandler):
 
     def on_chain_end(
         self,
-        outputs: Dict[str, Any],
+        outputs: dict[str, Any],
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when chain ends."""
@@ -420,7 +421,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         error: BaseException,
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when chain errors."""
@@ -451,13 +452,13 @@ class LCTLCallbackHandler(BaseCallbackHandler):
 
     def on_tool_start(
         self,
-        serialized: Dict[str, Any],
+        serialized: dict[str, Any],
         input_str: str,
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
-        tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        parent_run_id: UUID | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when tool starts."""
@@ -476,7 +477,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         output: str,
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when tool ends."""
@@ -502,7 +503,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         error: BaseException,
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when tool errors."""
@@ -534,7 +535,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         action: AgentAction,
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when agent takes an action."""
@@ -553,7 +554,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         finish: AgentFinish,
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when agent finishes."""
@@ -570,13 +571,13 @@ class LCTLCallbackHandler(BaseCallbackHandler):
 
     def on_retriever_start(
         self,
-        serialized: Dict[str, Any],
+        serialized: dict[str, Any],
         query: str,
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
-        tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        parent_run_id: UUID | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when retriever starts."""
@@ -595,7 +596,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         documents: Sequence[Any],
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when retriever ends."""
@@ -621,7 +622,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         error: BaseException,
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         """Called when retriever errors."""
@@ -663,8 +664,8 @@ class LCTLChain:
     def __init__(
         self,
         chain: Any,
-        chain_id: Optional[str] = None,
-        session: Optional[LCTLSession] = None,
+        chain_id: str | None = None,
+        session: LCTLSession | None = None,
     ) -> None:
         """Initialize the traced chain wrapper.
 
@@ -691,7 +692,7 @@ class LCTLChain:
         """Access the LCTL session."""
         return self.handler.session
 
-    def invoke(self, input: Any, config: Optional[Dict[str, Any]] = None, **kwargs) -> Any:
+    def invoke(self, input: Any, config: dict[str, Any] | None = None, **kwargs) -> Any:
         """Invoke the chain with LCTL tracing.
 
         Args:
@@ -710,7 +711,7 @@ class LCTLChain:
 
         return self._chain.invoke(input, config=config, **kwargs)
 
-    async def ainvoke(self, input: Any, config: Optional[Dict[str, Any]] = None, **kwargs) -> Any:
+    async def ainvoke(self, input: Any, config: dict[str, Any] | None = None, **kwargs) -> Any:
         """Async invoke the chain with LCTL tracing.
 
         Args:
@@ -729,7 +730,7 @@ class LCTLChain:
 
         return await self._chain.ainvoke(input, config=config, **kwargs)
 
-    def stream(self, input: Any, config: Optional[Dict[str, Any]] = None, **kwargs):
+    def stream(self, input: Any, config: dict[str, Any] | None = None, **kwargs):
         """Stream the chain with LCTL tracing.
 
         Args:
@@ -748,7 +749,7 @@ class LCTLChain:
 
         yield from self._chain.stream(input, config=config, **kwargs)
 
-    async def astream(self, input: Any, config: Optional[Dict[str, Any]] = None, **kwargs):
+    async def astream(self, input: Any, config: dict[str, Any] | None = None, **kwargs):
         """Async stream the chain with LCTL tracing.
 
         Args:
@@ -770,10 +771,10 @@ class LCTLChain:
 
     def batch(
         self,
-        inputs: List[Any],
-        config: Optional[Dict[str, Any]] = None,
+        inputs: list[Any],
+        config: dict[str, Any] | None = None,
         **kwargs,
-    ) -> List[Any]:
+    ) -> list[Any]:
         """Batch invoke the chain with LCTL tracing.
 
         Args:
@@ -794,10 +795,10 @@ class LCTLChain:
 
     async def abatch(
         self,
-        inputs: List[Any],
-        config: Optional[Dict[str, Any]] = None,
+        inputs: list[Any],
+        config: dict[str, Any] | None = None,
         **kwargs,
-    ) -> List[Any]:
+    ) -> list[Any]:
         """Async batch invoke the chain with LCTL tracing.
 
         Args:
@@ -820,15 +821,15 @@ class LCTLChain:
         """Export the LCTL trace to a file."""
         self.handler.export(path)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Export the LCTL trace as a dictionary."""
         return self.handler.to_dict()
 
 
 def trace_chain(
     chain: Any,
-    chain_id: Optional[str] = None,
-    session: Optional[LCTLSession] = None,
+    chain_id: str | None = None,
+    session: LCTLSession | None = None,
 ) -> LCTLChain:
     """Convenience function to wrap a chain with LCTL tracing.
 
@@ -863,7 +864,7 @@ __all__ = [
     "LANGCHAIN_AVAILABLE",
     "LCTLCallbackHandler",
     "LCTLChain",
-    "trace_chain",
-    "is_available",
     "_extract_token_counts",
+    "is_available",
+    "trace_chain",
 ]

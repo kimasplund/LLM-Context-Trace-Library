@@ -10,8 +10,6 @@ Usage:
     python openai_agents_example.py
 """
 
-import os
-
 try:
     from agents import Agent, Runner, Tool, function_tool
 
@@ -24,9 +22,7 @@ except ImportError:
 from lctl.integrations.openai_agents import (
     OPENAI_AGENTS_AVAILABLE,
     LCTLOpenAIAgentTracer,
-    TracedAgent,
     trace_agent,
-    is_available,
 )
 
 
@@ -157,7 +153,7 @@ def example_with_tools():
     tracer = LCTLOpenAIAgentTracer(chain_id="tools-example", verbose=True)
 
     print(f"Agent configured with tools: {[t.name for t in agent.tools]}")
-    print(f"Use tracer.run_config with Runner.run() to capture tool calls")
+    print("Use tracer.run_config with Runner.run() to capture tool calls")
     print()
 
     tracer.export("tools_trace.lctl.json")
@@ -240,6 +236,7 @@ def example_analyze_trace():
     replay engine and analysis tools.
     """
     from pathlib import Path
+
     from lctl import Chain, ReplayEngine
 
     trace_path = Path("manual_trace.lctl.json")

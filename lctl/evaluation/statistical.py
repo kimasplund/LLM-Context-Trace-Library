@@ -3,7 +3,7 @@
 import math
 import random
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 
 @dataclass
@@ -15,12 +15,12 @@ class StatisticalResult:
     p_value: float
     significant: bool
     alpha: float
-    effect_size: Optional[float] = None
-    confidence_interval: Optional[Tuple[float, float]] = None
+    effect_size: float | None = None
+    confidence_interval: tuple[float, float] | None = None
     sample_size_a: int = 0
     sample_size_b: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         result = {
             "test_name": self.test_name,
@@ -41,14 +41,14 @@ class StatisticalResult:
         return result
 
 
-def _mean(data: List[float]) -> float:
+def _mean(data: list[float]) -> float:
     """Calculate mean of data."""
     if not data:
         return 0.0
     return sum(data) / len(data)
 
 
-def _variance(data: List[float], ddof: int = 1) -> float:
+def _variance(data: list[float], ddof: int = 1) -> float:
     """Calculate variance of data with degrees of freedom adjustment."""
     if len(data) <= ddof:
         return 0.0
@@ -56,7 +56,7 @@ def _variance(data: List[float], ddof: int = 1) -> float:
     return sum((x - m) ** 2 for x in data) / (len(data) - ddof)
 
 
-def _std(data: List[float], ddof: int = 1) -> float:
+def _std(data: list[float], ddof: int = 1) -> float:
     """Calculate standard deviation of data."""
     return math.sqrt(_variance(data, ddof))
 
@@ -147,8 +147,8 @@ def _normal_cdf(x: float) -> float:
 
 
 def welch_t_test(
-    sample_a: List[float],
-    sample_b: List[float],
+    sample_a: list[float],
+    sample_b: list[float],
     alpha: float = 0.05,
 ) -> StatisticalResult:
     """Perform Welch's t-test for independent samples with unequal variances.
@@ -212,8 +212,8 @@ def welch_t_test(
 
 
 def mann_whitney_u(
-    sample_a: List[float],
-    sample_b: List[float],
+    sample_a: list[float],
+    sample_b: list[float],
     alpha: float = 0.05,
 ) -> StatisticalResult:
     """Perform Mann-Whitney U test (non-parametric alternative to t-test).
@@ -243,7 +243,7 @@ def mann_whitney_u(
     combined.extend((v, "b", i) for i, v in enumerate(sample_b))
     combined.sort(key=lambda x: x[0])
 
-    ranks: Dict[Tuple[str, int], float] = {}
+    ranks: dict[tuple[str, int], float] = {}
     i = 0
     while i < len(combined):
         j = i
@@ -289,11 +289,11 @@ def mann_whitney_u(
 
 
 def bootstrap_confidence_interval(
-    sample_a: List[float],
-    sample_b: List[float],
+    sample_a: list[float],
+    sample_b: list[float],
     n_bootstrap: int = 10000,
     confidence_level: float = 0.95,
-    seed: Optional[int] = None,
+    seed: int | None = None,
 ) -> StatisticalResult:
     """Compute bootstrap confidence interval for difference in means.
 
@@ -321,7 +321,7 @@ def bootstrap_confidence_interval(
 
     observed_diff = _mean(sample_a) - _mean(sample_b)
 
-    bootstrap_diffs: List[float] = []
+    bootstrap_diffs: list[float] = []
     for _ in range(n_bootstrap):
         boot_a = [rng.choice(sample_a) for _ in range(len(sample_a))]
         boot_b = [rng.choice(sample_b) for _ in range(len(sample_b))]
@@ -359,11 +359,11 @@ def bootstrap_confidence_interval(
 
 
 def run_all_tests(
-    sample_a: List[float],
-    sample_b: List[float],
+    sample_a: list[float],
+    sample_b: list[float],
     alpha: float = 0.05,
-    bootstrap_seed: Optional[int] = None,
-) -> Dict[str, StatisticalResult]:
+    bootstrap_seed: int | None = None,
+) -> dict[str, StatisticalResult]:
     """Run all statistical tests on two samples.
 
     Args:
@@ -375,7 +375,7 @@ def run_all_tests(
     Returns:
         Dictionary mapping test names to StatisticalResult instances.
     """
-    results: Dict[str, StatisticalResult] = {}
+    results: dict[str, StatisticalResult] = {}
 
     if len(sample_a) >= 2 and len(sample_b) >= 2:
         results["t_test"] = welch_t_test(sample_a, sample_b, alpha)
@@ -389,7 +389,7 @@ def run_all_tests(
     return results
 
 
-def is_significant(results: Dict[str, StatisticalResult]) -> bool:
+def is_significant(results: dict[str, StatisticalResult]) -> bool:
     """Check if any test shows statistical significance.
 
     Args:
@@ -401,7 +401,7 @@ def is_significant(results: Dict[str, StatisticalResult]) -> bool:
     return any(r.significant for r in results.values())
 
 
-def consensus_significant(results: Dict[str, StatisticalResult], threshold: float = 0.5) -> bool:
+def consensus_significant(results: dict[str, StatisticalResult], threshold: float = 0.5) -> bool:
     """Check if a threshold of tests agree on significance.
 
     Args:

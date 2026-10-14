@@ -1,11 +1,12 @@
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock
 
 # Skip entire module if pydantic_ai not installed
 pytest.importorskip("pydantic_ai")
 
-from lctl.integrations.pydantic_ai import trace_agent
 from lctl.core.session import LCTLSession
+from lctl.integrations.pydantic_ai import trace_agent
 
 
 # Mock classes to simulate PydanticAI streaming

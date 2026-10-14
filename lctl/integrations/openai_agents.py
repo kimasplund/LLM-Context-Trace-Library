@@ -19,7 +19,7 @@ from __future__ import annotations
 import threading
 import time
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 from ..core.session import LCTLSession
 from .base import BaseTracer, truncate
@@ -53,7 +53,7 @@ except ImportError:
 DEFAULT_STALE_TIMEOUT_SECONDS: float = 3600.0
 
 
-def _extract_usage(usage: Any) -> Dict[str, int]:
+def _extract_usage(usage: Any) -> dict[str, int]:
     """Extract token usage from Usage object."""
     tokens = {"input": 0, "output": 0}
 
@@ -106,11 +106,11 @@ class LCTLRunHooks(RunHooks):
         """
         self._session = session
         self._verbose = verbose
-        self._run_stack: Dict[str, Dict[str, Any]] = {}
-        self._tool_stack: Dict[str, Dict[str, Any]] = {}
-        self._current_agent: Optional[str] = None
+        self._run_stack: dict[str, dict[str, Any]] = {}
+        self._tool_stack: dict[str, dict[str, Any]] = {}
+        self._current_agent: str | None = None
         self._lock = threading.Lock()
-        self._tool_context_map: Dict[int, str] = {}
+        self._tool_context_map: dict[int, str] = {}
 
     def __repr__(self) -> str:
         """Return string representation for debugging."""
@@ -514,8 +514,8 @@ class LCTLOpenAIAgentTracer(BaseTracer):
 
     def __init__(
         self,
-        chain_id: Optional[str] = None,
-        session: Optional[LCTLSession] = None,
+        chain_id: str | None = None,
+        session: LCTLSession | None = None,
         verbose: bool = False,
         *,
         auto_cleanup: bool = True,
@@ -539,8 +539,8 @@ class LCTLOpenAIAgentTracer(BaseTracer):
             cleanup_interval=cleanup_interval,
         )
         self._verbose = verbose
-        self._hooks: Optional[LCTLRunHooks] = None
-        self._tracing_processor: Optional[LCTLTracingProcessor] = None
+        self._hooks: LCTLRunHooks | None = None
+        self._tracing_processor: LCTLTracingProcessor | None = None
 
     def __repr__(self) -> str:
         """Return string representation for debugging."""
@@ -569,7 +569,7 @@ class LCTLOpenAIAgentTracer(BaseTracer):
         return self._tracing_processor
 
     @property
-    def run_config(self) -> Dict[str, Any]:
+    def run_config(self) -> dict[str, Any]:
         """Get run configuration with LCTL hooks.
 
         Returns a configuration dictionary that can be passed to Runner.run().
@@ -585,7 +585,7 @@ class LCTLOpenAIAgentTracer(BaseTracer):
         self,
         agent_name: str,
         input_summary: str = "",
-    ) -> "AgentRunContext":
+    ) -> AgentRunContext:
         """Context manager for manually tracing an agent run.
 
         Useful when you need more control over tracing or when
@@ -716,7 +716,7 @@ class AgentRunContext:
             f"input_summary={self._input_summary[:50]!r}...)"
         )
 
-    def __enter__(self) -> "AgentRunContext":
+    def __enter__(self) -> AgentRunContext:
         """Start tracing the agent run."""
         self._start_time = time.time()
         self._session.step_start(
@@ -763,7 +763,7 @@ class AgentRunContext:
 
         return False
 
-    async def __aenter__(self) -> "AgentRunContext":
+    async def __aenter__(self) -> AgentRunContext:
         """Async version of __enter__."""
         return self.__enter__()
 
@@ -813,11 +813,11 @@ class AgentRunContext:
 
 
 def trace_agent(
-    agent: "Agent",
-    chain_id: Optional[str] = None,
-    session: Optional[LCTLSession] = None,
+    agent: Agent,
+    chain_id: str | None = None,
+    session: LCTLSession | None = None,
     verbose: bool = False,
-) -> "TracedAgent":
+) -> TracedAgent:
     """Wrap an OpenAI Agent with LCTL tracing.
 
     This returns a TracedAgent that automatically traces all runs.
@@ -856,9 +856,9 @@ class TracedAgent:
 
     def __init__(
         self,
-        agent: "Agent",
-        chain_id: Optional[str] = None,
-        session: Optional[LCTLSession] = None,
+        agent: Agent,
+        chain_id: str | None = None,
+        session: LCTLSession | None = None,
         verbose: bool = False,
     ) -> None:
         """Initialize the traced agent.
@@ -897,7 +897,7 @@ class TracedAgent:
         return f"TracedAgent(agent_name={agent_name!r}, chain_id={self._tracer.chain.id!r})"
 
     @property
-    def agent(self) -> "Agent":
+    def agent(self) -> Agent:
         """Access the underlying OpenAI Agent."""
         return self._agent
 
@@ -907,7 +907,7 @@ class TracedAgent:
         return self._tracer
 
     @property
-    def run_config(self) -> Dict[str, Any]:
+    def run_config(self) -> dict[str, Any]:
         """Get run configuration with LCTL hooks.
 
         Returns:
@@ -923,7 +923,7 @@ class TracedAgent:
         """
         self._tracer.export(path)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Export the LCTL trace as a dictionary.
 
         Returns:
@@ -956,12 +956,12 @@ def is_available() -> bool:
 
 __all__ = [
     "OPENAI_AGENTS_AVAILABLE",
-    "OpenAIAgentsNotAvailableError",
+    "AgentRunContext",
+    "LCTLOpenAIAgentTracer",
     "LCTLRunHooks",
     "LCTLTracingProcessor",
-    "LCTLOpenAIAgentTracer",
-    "AgentRunContext",
+    "OpenAIAgentsNotAvailableError",
     "TracedAgent",
-    "trace_agent",
     "is_available",
+    "trace_agent",
 ]

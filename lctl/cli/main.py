@@ -5,7 +5,6 @@ import statistics
 import sys
 import time
 from pathlib import Path
-from typing import Optional
 
 import click
 
@@ -14,7 +13,7 @@ from ..core.events import Chain, Event, ReplayEngine
 from ..evaluation import ChainMetrics, compute_all_metrics
 
 
-def _load_chain_safely(chain_file: str) -> Optional[Chain]:
+def _load_chain_safely(chain_file: str) -> Chain | None:
     """Load a chain file with proper error handling.
 
     Returns:
@@ -43,14 +42,13 @@ def cli():
 
     The killer feature: replay agent execution to any point in time.
     """
-    pass
 
 
 @cli.command()
 @click.argument("chain_file", type=click.Path())
 @click.option("--to-seq", "-s", type=int, help="Replay to specific sequence number")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed event output")
-def replay(chain_file: str, to_seq: Optional[int], verbose: bool):
+def replay(chain_file: str, to_seq: int | None, verbose: bool):
     """Replay agent execution (time-travel debugging).
 
     Examples:
@@ -744,7 +742,7 @@ def metrics(chain_file: str, output_format: str, as_json: bool):
     type=click.Path(exists=True),
     help="Directory containing .lctl.json files",
 )
-def dashboard(port: int, host: str, working_dir: Optional[str]):
+def dashboard(port: int, host: str, working_dir: str | None):
     """Launch the web dashboard for visualizing LCTL chains.
 
     The dashboard provides:
@@ -855,7 +853,6 @@ def claude():
 
     Setup and manage LCTL tracing for Claude Code multi-agent workflows.
     """
-    pass
 
 
 @claude.command("init")
@@ -1074,7 +1071,7 @@ def claude_status():
 @click.argument("chain_file", type=click.Path(exists=True))
 @click.option("--output", "-o", help="Output HTML file (default: chain-report.html)")
 @click.option("--open", "open_browser", is_flag=True, help="Open in browser")
-def claude_report(chain_file: str, output: Optional[str], open_browser: bool):
+def claude_report(chain_file: str, output: str | None, open_browser: bool):
     """Generate HTML report for a Claude Code trace.
 
     Creates a visual timeline and analysis of the multi-agent workflow.

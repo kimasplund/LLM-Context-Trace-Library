@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TypeVar
+from typing import Any, TypeVar
 
 import yaml
 
@@ -36,7 +36,7 @@ class LRUCache:
         self.max_size = max_size
         self._cache: OrderedDict[int, Any] = OrderedDict()
 
-    def get(self, key: int) -> Optional[Any]:
+    def get(self, key: int) -> Any | None:
         """Get item by key, moving it to most recently used position.
 
         Args:
@@ -76,7 +76,7 @@ class LRUCache:
         """Check if key is in cache (does not affect LRU order)."""
         return key in self._cache
 
-    def keys(self) -> List[int]:
+    def keys(self) -> list[int]:
         """Return list of keys in LRU order (oldest first)."""
         return list(self._cache.keys())
 
@@ -107,9 +107,9 @@ class Event:
     type: EventType
     timestamp: datetime
     agent: str
-    data: Dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "seq": self.seq,
             "type": self.type.value if isinstance(self.type, EventType) else self.type,
@@ -119,7 +119,7 @@ class Event:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "Event":
+    def from_dict(cls, d: dict[str, Any]) -> "Event":
         """Create Event from dictionary.
 
         Raises:
@@ -165,14 +165,14 @@ class Chain:
     """An LCTL chain - a collection of events."""
 
     id: str
-    events: List[Event] = field(default_factory=list)
+    events: list[Event] = field(default_factory=list)
     version: str = CURRENT_VERSION
 
     def add_event(self, event: Event) -> None:
         """Add event to the chain."""
         self.events.append(event)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "lctl": self.version,
             "chain": {"id": self.id},
@@ -180,7 +180,7 @@ class Chain:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "Chain":
+    def from_dict(cls, d: dict[str, Any]) -> "Chain":
         if not isinstance(d, dict):
             raise ValueError(f"Expected dict, got {type(d).__name__}")
 
@@ -255,11 +255,11 @@ class Chain:
 class State:
     """Materialized state derived from events."""
 
-    facts: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    current_agent: Optional[str] = None
-    current_step: Optional[int] = None
-    errors: List[Dict[str, Any]] = field(default_factory=list)
-    metrics: Dict[str, Any] = field(
+    facts: dict[str, dict[str, Any]] = field(default_factory=dict)
+    current_agent: str | None = None
+    current_step: int | None = None
+    errors: list[dict[str, Any]] = field(default_factory=list)
+    metrics: dict[str, Any] = field(
         default_factory=lambda: {
             "total_duration_ms": 0,
             "total_tokens_in": 0,
@@ -406,7 +406,7 @@ class ReplayEngine:
             return State()
         return self.replay_to(self.chain.events[-1].seq)
 
-    def get_trace(self) -> List[Dict[str, Any]]:
+    def get_trace(self) -> list[dict[str, Any]]:
         """Get step-level trace for visualization."""
         trace = []
         for event in self.chain.events:
@@ -422,7 +422,7 @@ class ReplayEngine:
                 )
         return trace
 
-    def diff(self, other: "ReplayEngine") -> List[Dict[str, Any]]:
+    def diff(self, other: "ReplayEngine") -> list[dict[str, Any]]:
         """Compare two chains and find divergence points."""
         diffs = []
         max_len = max(len(self.chain.events), len(other.chain.events))
@@ -447,7 +447,7 @@ class ReplayEngine:
 
         return diffs
 
-    def find_bottlenecks(self, threshold_ms: float = 0) -> List[Dict[str, Any]]:
+    def find_bottlenecks(self, threshold_ms: float = 0) -> list[dict[str, Any]]:
         """Find steps that took longer than threshold.
 
         Uses a stack-based approach to correctly handle nested steps (LIFO matching).
@@ -501,7 +501,7 @@ class ReplayEngine:
 
         return sorted_steps
 
-    def get_confidence_timeline(self) -> Dict[str, List[Dict[str, Any]]]:
+    def get_confidence_timeline(self) -> dict[str, list[dict[str, Any]]]:
         """Track confidence changes for each fact."""
         timelines = {}
 

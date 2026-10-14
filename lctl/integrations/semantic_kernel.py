@@ -10,16 +10,16 @@ Requires:
 from __future__ import annotations
 
 import logging
-import threading
 import time
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 
 from ..core.session import LCTLSession
 from .base import BaseTracer, truncate
 
 try:
     # Check availability - import used for availability check
-    import semantic_kernel as _sk  # noqa: F401
+    import semantic_kernel as _sk
 
     del _sk  # Remove from namespace after check
     # Use direct imports from filters package for better compatibility
@@ -54,8 +54,8 @@ class LCTLSemanticKernelTracer(BaseTracer):
 
     def __init__(
         self,
-        chain_id: Optional[str] = None,
-        session: Optional[LCTLSession] = None,
+        chain_id: str | None = None,
+        session: LCTLSession | None = None,
         verbose: bool = False,
         *,
         auto_cleanup: bool = True,
@@ -301,15 +301,15 @@ class LCTLSemanticKernelTracer(BaseTracer):
 __all__ = [
     "SK_AVAILABLE",
     "LCTLSemanticKernelTracer",
-    "trace_kernel",
     "is_available",
+    "trace_kernel",
 ]
 
 
 def trace_kernel(
     kernel: Kernel,
-    chain_id: Optional[str] = None,
-    session: Optional[LCTLSession] = None,
+    chain_id: str | None = None,
+    session: LCTLSession | None = None,
     verbose: bool = False,
 ) -> LCTLSemanticKernelTracer:
     """Convenience function to trace a Semantic Kernel.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 import time
 from abc import ABC
-from typing import Any, Dict, Optional, Type
+from typing import Any
 
 from ..core.session import LCTLSession
 
@@ -68,8 +68,8 @@ class BaseTracer(ABC):
 
     def __init__(
         self,
-        chain_id: Optional[str] = None,
-        session: Optional[LCTLSession] = None,
+        chain_id: str | None = None,
+        session: LCTLSession | None = None,
         *,
         auto_cleanup: bool = True,
         cleanup_interval: float = 3600.0,
@@ -89,7 +89,7 @@ class BaseTracer(ABC):
         self._last_cleanup = time.time()
 
         # Subclasses should add their tracking dicts here
-        self._tracked_items: Dict[str, float] = {}  # id -> timestamp
+        self._tracked_items: dict[str, float] = {}  # id -> timestamp
 
     @property
     def session(self) -> LCTLSession:
@@ -109,7 +109,7 @@ class BaseTracer(ABC):
         """
         self._session.export(path)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert the trace to a dictionary.
 
         Returns:
@@ -179,8 +179,8 @@ class TracerDelegate:
 
     def __init__(
         self,
-        chain_id: Optional[str] = None,
-        session: Optional[LCTLSession] = None,
+        chain_id: str | None = None,
+        session: LCTLSession | None = None,
         *,
         auto_cleanup: bool = True,
         cleanup_interval: float = 3600.0,
@@ -198,7 +198,7 @@ class TracerDelegate:
         self._auto_cleanup = auto_cleanup
         self._cleanup_interval = cleanup_interval
         self._last_cleanup = time.time()
-        self._tracked_items: Dict[str, float] = {}
+        self._tracked_items: dict[str, float] = {}
 
     @property
     def session(self) -> LCTLSession:
@@ -219,7 +219,7 @@ class TracerDelegate:
         """Export the trace to a file."""
         self._session.export(path)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert the trace to a dictionary."""
         return self._session.to_dict()
 
@@ -262,7 +262,7 @@ class TracerDelegate:
         with self._lock:
             self._tracked_items.pop(item_id, None)
 
-    def get_tracked_item(self, item_id: str) -> Optional[float]:
+    def get_tracked_item(self, item_id: str) -> float | None:
         """Get the timestamp for a tracked item.
 
         Args:
@@ -276,9 +276,9 @@ class TracerDelegate:
 
 
 __all__ = [
-    "truncate",
-    "check_availability",
-    "IntegrationNotAvailableError",
     "BaseTracer",
+    "IntegrationNotAvailableError",
     "TracerDelegate",
+    "check_availability",
+    "truncate",
 ]

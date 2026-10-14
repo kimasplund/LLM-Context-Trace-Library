@@ -8,15 +8,15 @@ Measures:
 """
 
 import gc
-import sys
 import time
 import tracemalloc
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
-from lctl.core.events import Chain, ReplayEngine, State
+from lctl.core.events import ReplayEngine, State
 
-from .fixtures import ChainSize, generate_chain, generate_step_pairs
+from .fixtures import ChainSize, generate_chain
 
 
 @dataclass
@@ -30,9 +30,9 @@ class BenchmarkResult:
     ops_per_second: float
     memory_peak_mb: float
     memory_current_mb: float
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for reporting."""
         return {
             "name": self.name,
@@ -96,14 +96,14 @@ def benchmark(
 class ReplayBenchmarks:
     """Replay performance benchmarks."""
 
-    def __init__(self, baseline: Optional[Dict[str, float]] = None):
+    def __init__(self, baseline: dict[str, float] | None = None):
         """Initialize with optional baseline for comparison.
 
         Args:
             baseline: Dictionary mapping benchmark names to baseline ops/sec.
         """
         self.baseline = baseline or {}
-        self.results: List[BenchmarkResult] = []
+        self.results: list[BenchmarkResult] = []
 
     def bench_replay_small(self, iterations: int = 50) -> BenchmarkResult:
         """Benchmark replaying 100 events."""
@@ -234,7 +234,7 @@ class ReplayBenchmarks:
         self.results.append(result)
         return result
 
-    def run_all(self) -> List[BenchmarkResult]:
+    def run_all(self) -> list[BenchmarkResult]:
         """Run all replay benchmarks."""
         self.results = []
         self.bench_replay_small()
@@ -246,14 +246,14 @@ class ReplayBenchmarks:
         self.bench_state_apply_events()
         return self.results
 
-    def run_quick(self) -> List[BenchmarkResult]:
+    def run_quick(self) -> list[BenchmarkResult]:
         """Run a quick subset of benchmarks."""
         self.results = []
         self.bench_replay_small(iterations=10)
         self.bench_replay_medium(iterations=5)
         return self.results
 
-    def get_comparison(self) -> List[Dict[str, Any]]:
+    def get_comparison(self) -> list[dict[str, Any]]:
         """Compare results against baseline."""
         comparisons = []
         for result in self.results:
@@ -272,8 +272,8 @@ class ReplayBenchmarks:
 
 def run_replay_benchmarks(
     quick: bool = False,
-    baseline: Optional[Dict[str, float]] = None,
-) -> List[Dict[str, Any]]:
+    baseline: dict[str, float] | None = None,
+) -> list[dict[str, Any]]:
     """Run replay benchmarks and return results.
 
     Args:

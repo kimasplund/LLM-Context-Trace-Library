@@ -3,7 +3,7 @@
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -20,24 +20,24 @@ class MockAgent:
 
     def __init__(self, name: str = "mock_agent"):
         self.name = name
-        self._hooks: Dict[str, List[Any]] = {}
+        self._hooks: dict[str, list[Any]] = {}
 
     def register_hook(self, hook_name: str, hook_func: Any) -> None:
         if hook_name not in self._hooks:
             self._hooks[hook_name] = []
         self._hooks[hook_name].append(hook_func)
 
-    def get_hooks(self, hook_name: str) -> List[Any]:
+    def get_hooks(self, hook_name: str) -> list[Any]:
         return self._hooks.get(hook_name, [])
 
 
 class MockGroupChat:
     """Mock AutoGen GroupChat for testing."""
 
-    def __init__(self, agents: List[MockAgent], max_round: int = 10):
+    def __init__(self, agents: list[MockAgent], max_round: int = 10):
         self.agents = agents
         self.max_round = max_round
-        self.messages: List[Dict[str, Any]] = []
+        self.messages: list[dict[str, Any]] = []
 
 
 class MockGroupChatManager(MockAgent):

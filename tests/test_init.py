@@ -1,11 +1,11 @@
 """Tests for LCTL package __init__.py public API."""
 
-import pytest
 from pathlib import Path
-from datetime import datetime, timedelta
+
+import pytest
 
 import lctl
-from lctl import LCTLSession, Chain, Event, EventType, ReplayEngine
+from lctl import Chain, Event, EventType, LCTLSession, ReplayEngine
 
 
 class TestAutoInstrument:
@@ -137,7 +137,6 @@ class TestTracedDecorator:
         @lctl.traced("agent", "intent")
         def documented_function():
             """This is the docstring."""
-            pass
 
         assert documented_function.__name__ == "documented_function"
         assert documented_function.__doc__ == "This is the docstring."

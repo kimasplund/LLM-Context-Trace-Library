@@ -2,14 +2,12 @@
 
 import json
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from lctl.core.events import Chain, Event, EventType, ReplayEngine
+from lctl.core.events import Chain, EventType, ReplayEngine
 from lctl.core.session import LCTLSession
 
 # Check if pytest-asyncio is available
@@ -352,9 +350,8 @@ class TestAgentRunContext:
 
     def test_context_manager_records_error(self, tracer):
         """Test that context manager records error on exception."""
-        with pytest.raises(RuntimeError):
-            with tracer.trace_agent_run("failing_agent", "input"):
-                raise RuntimeError("Test failure")
+        with pytest.raises(RuntimeError), tracer.trace_agent_run("failing_agent", "input"):
+            raise RuntimeError("Test failure")
 
         events = tracer.chain.events
         assert len(events) == 3

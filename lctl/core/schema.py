@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from packaging import version
 
@@ -35,20 +36,20 @@ class SchemaVersionError(Exception):
 class SchemaMigrator:
     """Handles migration between schema versions."""
 
-    _migrations: Dict[str, Callable[[Dict], Dict]] = {}
+    _migrations: dict[str, Callable[[dict], dict]] = {}
 
     @classmethod
     def register(cls, from_version: str, to_version: str):
         """Decorator to register a migration function."""
 
-        def decorator(func: Callable[[Dict], Dict]):
+        def decorator(func: Callable[[dict], dict]):
             cls._migrations[f"{from_version}->{to_version}"] = func
             return func
 
         return decorator
 
     @classmethod
-    def migrate(cls, data: Dict[str, Any], target_version: str = CURRENT_VERSION) -> Dict[str, Any]:
+    def migrate(cls, data: dict[str, Any], target_version: str = CURRENT_VERSION) -> dict[str, Any]:
         """Migrate data from its current version to target version."""
         current = data.get("lctl", "3.0")
 
@@ -68,7 +69,7 @@ class SchemaMigrator:
         return result
 
     @classmethod
-    def _get_migration_path(cls, from_version: str, to_version: str) -> List[tuple]:
+    def _get_migration_path(cls, from_version: str, to_version: str) -> list[tuple]:
         """Get ordered list of migrations needed."""
         versions = sorted(VERSION_HISTORY.keys(), key=lambda v: version.parse(v))
         path = []
@@ -87,12 +88,12 @@ class SchemaMigrator:
         return path
 
     @classmethod
-    def get_registered_migrations(cls) -> List[str]:
+    def get_registered_migrations(cls) -> list[str]:
         """Get list of registered migration keys."""
         return list(cls._migrations.keys())
 
 
-def validate_version(data: Dict[str, Any]) -> None:
+def validate_version(data: dict[str, Any]) -> None:
     """Validate that schema version is supported.
 
     Args:
@@ -111,7 +112,7 @@ def validate_version(data: Dict[str, Any]) -> None:
         )
 
 
-def get_version_info() -> Dict[str, Any]:
+def get_version_info() -> dict[str, Any]:
     """Get information about schema versions."""
     return {
         "current": CURRENT_VERSION,
@@ -122,7 +123,7 @@ def get_version_info() -> Dict[str, Any]:
 
 # Register migrations
 @SchemaMigrator.register("3.0", "4.0")
-def _migrate_3_to_4(data: Dict) -> Dict:
+def _migrate_3_to_4(data: dict) -> dict:
     """Migrate from 3.0 to 4.0 - add confidence tracking."""
     result = data.copy()
     # 3.0 -> 4.0: No structural changes needed, just version bump
@@ -131,7 +132,7 @@ def _migrate_3_to_4(data: Dict) -> Dict:
 
 
 @SchemaMigrator.register("4.0", "4.1")
-def _migrate_4_to_4_1(data: Dict) -> Dict:
+def _migrate_4_to_4_1(data: dict) -> dict:
     """Migrate from 4.0 to 4.1 - schema versioning support."""
     result = data.copy()
     # 4.0 -> 4.1: No structural changes, just version bump

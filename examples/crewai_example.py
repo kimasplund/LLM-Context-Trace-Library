@@ -10,8 +10,6 @@ Usage:
     python crewai_example.py
 """
 
-import os
-
 # Check if CrewAI is available
 try:
     from crewai import Task
@@ -27,7 +25,6 @@ from lctl.integrations.crewai import (
     LCTLAgent,
     LCTLCrew,
     LCTLTask,
-    trace_crew,
 )
 
 
@@ -109,7 +106,7 @@ def main() -> None:
     # For demo purposes, we'll just show the setup
     print("Crew configured with:")
     print(f"  - Chain ID: {crew.session.chain.id}")
-    print(f"  - Process: sequential")
+    print("  - Process: sequential")
     print(f"  - Agents: {len(crew.crew.agents)}")
     print(f"  - Tasks: {len(crew.crew.tasks)}")
     print()

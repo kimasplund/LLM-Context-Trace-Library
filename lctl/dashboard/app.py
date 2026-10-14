@@ -5,9 +5,10 @@ import hmac
 import json
 import os
 import secrets
-from datetime import datetime, timezone
+from collections.abc import AsyncIterator, Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable, Dict, Optional
+from typing import Any
 from uuid import uuid4
 
 from fastapi import (
@@ -25,14 +26,13 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from .. import __version__
 from ..core.events import Chain, ReplayEngine
 from ..evaluation.metrics import ChainMetrics
 from ..streaming.emitter import EventEmitter, StreamingEvent, StreamingEventType
-
 
 # =============================================================================
 # Request/Response Models
@@ -91,7 +91,7 @@ class RpaEventSubmission(BaseModel):
 # =============================================================================
 
 
-def _should_send_to_client(event: StreamingEvent, filters: Dict[str, Any]) -> bool:
+def _should_send_to_client(event: StreamingEvent, filters: dict[str, Any]) -> bool:
     """Check if an event should be sent to a client based on filters."""
     if not filters:
         return True
@@ -164,7 +164,7 @@ def _create_verify_api_key(app: FastAPI) -> Callable:
     """Create an API key verification dependency for the given app."""
 
     async def verify_api_key(
-        request: Request, x_api_key: Optional[str] = Header(None, alias="X-API-Key")
+        request: Request, x_api_key: str | None = Header(None, alias="X-API-Key")
     ) -> bool:
         """Verify API key for protected endpoints.
 
@@ -236,7 +236,7 @@ def _setup_rate_limiter(app: FastAPI) -> Limiter:
     return limiter
 
 
-def _setup_app_state(app: FastAPI, working_dir: Optional[Path]) -> None:
+def _setup_app_state(app: FastAPI, working_dir: Path | None) -> None:
     """Initialize application state."""
     # Store working directory in app state
     app.state.working_dir = working_dir or Path.cwd()
@@ -405,7 +405,7 @@ def _register_core_endpoints(app: FastAPI, limiter: Limiter) -> None:
 
     @app.post("/api/compare", response_class=JSONResponse)
     @limiter.limit("10/minute")
-    async def compare_chains(request: Request, compare_req: CompareRequest):  # noqa: ARG001
+    async def compare_chains(request: Request, compare_req: CompareRequest):
         """Compare two chains and return differences."""
         path1 = _get_secure_path(app, compare_req.filename1)
         path2 = _get_secure_path(app, compare_req.filename2)
@@ -420,7 +420,7 @@ def _register_core_endpoints(app: FastAPI, limiter: Limiter) -> None:
 
         diffs = engine1.diff(engine2)
 
-        def get_chain_summary(chain: Chain, state, engine: ReplayEngine) -> Dict[str, Any]:
+        def get_chain_summary(chain: Chain, state, engine: ReplayEngine) -> dict[str, Any]:
             bottlenecks = engine.find_bottlenecks()
             return {
                 "id": chain.id,
@@ -624,7 +624,7 @@ def _register_analysis_endpoints(app: FastAPI) -> None:
                 }
             )
 
-        overall_score = int((perf_score * 0.3 + reliability_score * 0.4 + quality_score * 0.3))
+        overall_score = int(perf_score * 0.3 + reliability_score * 0.4 + quality_score * 0.3)
 
         return {
             "chain": {"id": chain.id, "filename": filename, "version": chain.version},
@@ -668,13 +668,13 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
         await websocket.accept()
 
         client_id = str(uuid4())[:8]
-        filters: Dict[str, Any] = {}
+        filters: dict[str, Any] = {}
         queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
 
         welcome_msg = {
             "type": "connected",
             "client_id": client_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         await websocket.send_text(json.dumps(welcome_msg))
 
@@ -701,11 +701,11 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
                             nonlocal filters
                             filters = message.get("filters", {})
                         elif msg_type == "unsubscribe":
-                            filters = {}  # noqa: F841 - used via nonlocal
+                            filters = {}
                         elif msg_type == "ping":
                             pong = {
                                 "type": "pong",
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "timestamp": datetime.now(UTC).isoformat(),
                             }
                             await websocket.send_text(json.dumps(pong))
                     except json.JSONDecodeError:
@@ -719,10 +719,10 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
                     try:
                         event = await asyncio.wait_for(queue.get(), timeout=30.0)
                         await websocket.send_text(event.to_json())
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         heartbeat = {
                             "type": "heartbeat",
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "timestamp": datetime.now(UTC).isoformat(),
                         }
                         await websocket.send_text(json.dumps(heartbeat))
             except Exception:
@@ -747,15 +747,15 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
 
     @app.get("/api/events/stream")
     async def sse_endpoint(
-        chain_id: Optional[str] = Query(None, description="Filter by chain ID"),
-        event_types: Optional[str] = Query(None, description="Comma-separated event types"),
+        chain_id: str | None = Query(None, description="Filter by chain ID"),
+        event_types: str | None = Query(None, description="Comma-separated event types"),
         include_history: bool = Query(False, description="Include historical events"),
     ):
         """Server-Sent Events endpoint for real-time event streaming.
 
         Alternative to WebSocket for HTTP-based streaming.
         """
-        filters: Dict[str, Any] = {}
+        filters: dict[str, Any] = {}
         if chain_id:
             filters["chain_id"] = chain_id
         if event_types:
@@ -789,7 +789,7 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
                     try:
                         event = await asyncio.wait_for(queue.get(), timeout=30.0)
                         yield f"event: event\ndata: {event.to_json()}\n\n"
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         yield ": heartbeat\n\n"
 
             finally:
@@ -839,7 +839,7 @@ def _register_event_endpoints(app: FastAPI) -> None:
         streaming_event = StreamingEvent(
             id=str(uuid4()),
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id=chain_id,
             payload={"type": event_type, **payload},
         )
@@ -921,14 +921,14 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
             "total_tokens": state.metrics.get("total_tokens_in", 0)
             + state.metrics.get("total_tokens_out", 0),
             "status": "error" if has_errors else "success",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
     @app.get("/api/rpa/events/{filename}", response_class=JSONResponse)
     async def rpa_events(
         filename: str,
-        event_type: Optional[str] = Query(None, description="Filter by event type"),
-        agent: Optional[str] = Query(None, description="Filter by agent"),
+        event_type: str | None = Query(None, description="Filter by event type"),
+        agent: str | None = Query(None, description="Filter by agent"),
         limit: int = Query(1000, description="Max events to return"),
         offset: int = Query(0, description="Skip first N events"),
         _auth: bool = Depends(verify_api_key),
@@ -992,7 +992,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
     async def rpa_export(
         filename: str,
         format: str = Query("csv", description="Export format: csv, json"),
-        event_type: Optional[str] = Query(None, description="Filter by event type"),
+        event_type: str | None = Query(None, description="Filter by event type"),
         _auth: bool = Depends(verify_api_key),
     ):
         """Export chain data in RPA-friendly formats (CSV or JSON).
@@ -1044,7 +1044,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
     @app.post("/api/rpa/batch/metrics", response_class=JSONResponse)
     @limiter.limit("20/minute")
     async def rpa_batch_metrics(
-        request: Request,  # noqa: ARG001 - required by rate limiter
+        request: Request,
         batch_req: BatchMetricsRequest,
         _auth: bool = Depends(verify_api_key),
     ):
@@ -1088,7 +1088,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
     @app.post("/api/rpa/search", response_class=JSONResponse)
     @limiter.limit("30/minute")
     async def rpa_search(
-        request: Request,  # noqa: ARG001 - required by rate limiter
+        request: Request,
         search_req: SearchRequest,
         _auth: bool = Depends(verify_api_key),
     ):
@@ -1202,7 +1202,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
         streaming_event = StreamingEvent(
             id=str(uuid4()),
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id=event.chain_id,
             payload={
                 "type": event.event_type,
@@ -1295,7 +1295,7 @@ def _register_rpa_endpoints(app: FastAPI, limiter: Limiter) -> None:
 # =============================================================================
 
 
-def create_app(working_dir: Optional[Path] = None) -> FastAPI:
+def create_app(working_dir: Path | None = None) -> FastAPI:
     """Create and configure the FastAPI application.
 
     Args:
@@ -1341,7 +1341,7 @@ def create_app(working_dir: Optional[Path] = None) -> FastAPI:
 def run_dashboard(
     host: str = "127.0.0.1",
     port: int = 8080,
-    working_dir: Optional[Path] = None,
+    working_dir: Path | None = None,
     reload: bool = False,
 ) -> None:
     """Run the dashboard server.

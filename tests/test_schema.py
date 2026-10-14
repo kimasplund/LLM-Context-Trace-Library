@@ -11,8 +11,8 @@ from lctl.core.schema import (
     CURRENT_VERSION,
     MIN_SUPPORTED_VERSION,
     VERSION_HISTORY,
-    SchemaVersionError,
     SchemaMigrator,
+    SchemaVersionError,
     get_version_info,
     validate_version,
 )

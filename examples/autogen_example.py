@@ -12,8 +12,6 @@ Usage:
     python autogen_example.py
 """
 
-import os
-
 try:
     from autogen import ConversableAgent, GroupChat, GroupChatManager
 
@@ -34,8 +32,6 @@ from lctl.integrations.autogen import (
     LCTLAutogenCallback,
     LCTLConversableAgent,
     LCTLGroupChatManager,
-    trace_agent,
-    trace_group_chat,
 )
 
 

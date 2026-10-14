@@ -1,7 +1,8 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-import asyncio
-from unittest.mock import MagicMock, AsyncMock, patch
-from lctl.integrations.crewai import LCTLCrew, LCTLSession, CREWAI_AVAILABLE
+
+from lctl.integrations.crewai import CREWAI_AVAILABLE, LCTLCrew, LCTLSession
 
 
 @pytest.mark.skipif(not CREWAI_AVAILABLE, reason="crewai not installed")

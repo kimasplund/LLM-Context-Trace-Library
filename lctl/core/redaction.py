@@ -1,9 +1,10 @@
 """Sensitive data redaction for LCTL traces."""
 
 import re
-from typing import Any, Dict, List, Optional, Pattern, Set
+from re import Pattern
+from typing import Any
 
-DEFAULT_PATTERNS: Dict[str, Pattern] = {
+DEFAULT_PATTERNS: dict[str, Pattern] = {
     "api_key": re.compile(r'(?i)(api[_-]?key|apikey)["\s:=]+["\']?([a-zA-Z0-9_-]{20,})["\']?'),
     "bearer_token": re.compile(r"(?i)bearer\s+([a-zA-Z0-9_.-]+)"),
     "password": re.compile(r'(?i)(password|passwd|pwd)["\s:=]+["\']?([^\s"\',}{]+)["\']?'),
@@ -26,8 +27,8 @@ class Redactor:
 
     def __init__(
         self,
-        patterns: Optional[Dict[str, Pattern]] = None,
-        additional_patterns: Optional[Dict[str, Pattern]] = None,
+        patterns: dict[str, Pattern] | None = None,
+        additional_patterns: dict[str, Pattern] | None = None,
         redact_emails: bool = False,
         enabled: bool = True,
     ):
@@ -63,8 +64,8 @@ class Redactor:
         return result
 
     def redact_dict(
-        self, data: Dict[str, Any], depth: int = 0, max_depth: int = 10
-    ) -> Dict[str, Any]:
+        self, data: dict[str, Any], depth: int = 0, max_depth: int = 10
+    ) -> dict[str, Any]:
         """Recursively redact sensitive data from a dictionary.
 
         Args:
@@ -123,7 +124,7 @@ class Redactor:
 
         return result
 
-    def redact_event_data(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
+    def redact_event_data(self, event_data: dict[str, Any]) -> dict[str, Any]:
         """Redact sensitive data from an LCTL event's data field.
 
         Args:
@@ -135,7 +136,7 @@ class Redactor:
         return self.redact_dict(event_data)
 
 
-_default_redactor: Optional[Redactor] = None
+_default_redactor: Redactor | None = None
 
 
 def get_redactor() -> Redactor:
@@ -152,7 +153,7 @@ def get_redactor() -> Redactor:
 
 def configure_redaction(
     enabled: bool = True,
-    additional_patterns: Optional[Dict[str, Pattern]] = None,
+    additional_patterns: dict[str, Pattern] | None = None,
     redact_emails: bool = False,
 ) -> Redactor:
     """Configure the global redactor.

@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import uuid4
 
 from ..core.session import LCTLSession
@@ -60,7 +60,7 @@ def _check_llamaindex_available() -> None:
         raise LlamaIndexNotAvailableError()
 
 
-def _extract_token_counts(payload: Dict[str, Any]) -> Dict[str, int]:
+def _extract_token_counts(payload: dict[str, Any]) -> dict[str, int]:
     """Extract token counts from LlamaIndex payload."""
     tokens = {"input": 0, "output": 0}
 
@@ -113,8 +113,8 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
 
     def __init__(
         self,
-        chain_id: Optional[str] = None,
-        session: Optional[LCTLSession] = None,
+        chain_id: str | None = None,
+        session: LCTLSession | None = None,
         *,
         auto_cleanup: bool = True,
         cleanup_interval: float = 3600.0,
@@ -135,7 +135,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             auto_cleanup=auto_cleanup,
             cleanup_interval=cleanup_interval,
         )
-        self._event_stack: Dict[str, Dict[str, Any]] = {}
+        self._event_stack: dict[str, dict[str, Any]] = {}
         self._query_depth = 0
 
     @property
@@ -153,7 +153,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
         """Access the threading lock."""
         return self._tracer.lock
 
-    def get_callback_manager(self) -> "CallbackManager":
+    def get_callback_manager(self) -> CallbackManager:
         """Get a CallbackManager configured with this handler.
 
         Returns:
@@ -170,7 +170,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
         """
         self._tracer.export(path)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Export the LCTL chain as a dictionary."""
         return self._tracer.to_dict()
 
@@ -210,8 +210,8 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
 
     def on_event_start(
         self,
-        event_type: "CBEventType",
-        payload: Optional[Dict[str, Any]] = None,
+        event_type: CBEventType,
+        payload: dict[str, Any] | None = None,
         event_id: str = "",
         parent_id: str = "",
         **kwargs: Any,
@@ -261,8 +261,8 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
 
     def on_event_end(
         self,
-        event_type: "CBEventType",
-        payload: Optional[Dict[str, Any]] = None,
+        event_type: CBEventType,
+        payload: dict[str, Any] | None = None,
         event_id: str = "",
         **kwargs: Any,
     ) -> None:
@@ -309,7 +309,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
 
     def on_event_error(
         self,
-        event_type: "CBEventType",
+        event_type: CBEventType,
         error: BaseException,
         event_id: str = "",
         **kwargs: Any,
@@ -344,9 +344,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             if event_type == CBEventType.QUERY and self._query_depth > 0:
                 self._query_depth -= 1
 
-    def _get_agent_for_event_type(
-        self, event_type: "CBEventType", event_info: Dict[str, Any]
-    ) -> str:
+    def _get_agent_for_event_type(self, event_type: CBEventType, event_info: dict[str, Any]) -> str:
         """Get the agent name for an event type."""
         if CBEventType is None:
             return "llamaindex"
@@ -363,7 +361,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
         }
         return agent_map.get(event_type, f"llamaindex_{_get_event_name(event_type)}")
 
-    def _on_llm_start(self, event_id: str, payload: Dict[str, Any]) -> None:
+    def _on_llm_start(self, event_id: str, payload: dict[str, Any]) -> None:
         """Handle LLM start event."""
         messages = payload.get(EventPayload.MESSAGES, []) if EventPayload else []
         prompt = payload.get(EventPayload.PROMPT, "") if EventPayload else ""
@@ -395,9 +393,9 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
     def _on_llm_end(
         self,
         event_id: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         duration_ms: int,
-        event_info: Dict[str, Any],
+        event_info: dict[str, Any],
     ) -> None:
         """Handle LLM end event."""
         tokens = _extract_token_counts(payload)
@@ -427,7 +425,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             tokens_out=tokens["output"],
         )
 
-    def _on_query_start(self, event_id: str, payload: Dict[str, Any]) -> None:
+    def _on_query_start(self, event_id: str, payload: dict[str, Any]) -> None:
         """Handle query start event."""
         with self._lock:
             self._query_depth += 1
@@ -452,9 +450,9 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
     def _on_query_end(
         self,
         event_id: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         duration_ms: int,
-        event_info: Dict[str, Any],
+        event_info: dict[str, Any],
     ) -> None:
         """Handle query end event."""
         response_text = ""
@@ -478,7 +476,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             if self._query_depth > 0:
                 self._query_depth -= 1
 
-    def _on_retrieval_start(self, event_id: str, payload: Dict[str, Any]) -> None:
+    def _on_retrieval_start(self, event_id: str, payload: dict[str, Any]) -> None:
         """Handle retrieval start event."""
         query_str = ""
         if EventPayload is not None:
@@ -498,9 +496,9 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
     def _on_retrieval_end(
         self,
         event_id: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         duration_ms: int,
-        event_info: Dict[str, Any],
+        event_info: dict[str, Any],
     ) -> None:
         """Handle retrieval end event."""
         num_nodes = 0
@@ -546,7 +544,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
                         source="retriever",
                     )
 
-    def _on_embedding_start(self, event_id: str, payload: Dict[str, Any]) -> None:
+    def _on_embedding_start(self, event_id: str, payload: dict[str, Any]) -> None:
         """Handle embedding start event."""
         self._safe_session_call(
             "step_start",
@@ -558,9 +556,9 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
     def _on_embedding_end(
         self,
         event_id: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         duration_ms: int,
-        event_info: Dict[str, Any],
+        event_info: dict[str, Any],
     ) -> None:
         """Handle embedding end event."""
         num_chunks = 0
@@ -576,7 +574,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             duration_ms=duration_ms,
         )
 
-    def _on_synthesize_start(self, event_id: str, payload: Dict[str, Any]) -> None:
+    def _on_synthesize_start(self, event_id: str, payload: dict[str, Any]) -> None:
         """Handle synthesize start event."""
         query_str = ""
         if EventPayload is not None:
@@ -592,9 +590,9 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
     def _on_synthesize_end(
         self,
         event_id: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         duration_ms: int,
-        event_info: Dict[str, Any],
+        event_info: dict[str, Any],
     ) -> None:
         """Handle synthesize end event."""
         response_text = ""
@@ -614,7 +612,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             duration_ms=duration_ms,
         )
 
-    def _on_templating_start(self, event_id: str, payload: Dict[str, Any]) -> None:
+    def _on_templating_start(self, event_id: str, payload: dict[str, Any]) -> None:
         """Handle templating start event."""
         template = ""
         if EventPayload is not None:
@@ -630,9 +628,9 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
     def _on_templating_end(
         self,
         event_id: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         duration_ms: int,
-        event_info: Dict[str, Any],
+        event_info: dict[str, Any],
     ) -> None:
         """Handle templating end event."""
         self._safe_session_call(
@@ -643,7 +641,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             duration_ms=duration_ms,
         )
 
-    def _on_chunking_start(self, event_id: str, payload: Dict[str, Any]) -> None:
+    def _on_chunking_start(self, event_id: str, payload: dict[str, Any]) -> None:
         """Handle chunking start event."""
         self._safe_session_call(
             "step_start",
@@ -655,9 +653,9 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
     def _on_chunking_end(
         self,
         event_id: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         duration_ms: int,
-        event_info: Dict[str, Any],
+        event_info: dict[str, Any],
     ) -> None:
         """Handle chunking end event."""
         num_chunks = 0
@@ -673,7 +671,7 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             duration_ms=duration_ms,
         )
 
-    def _on_reranking_start(self, event_id: str, payload: Dict[str, Any]) -> None:
+    def _on_reranking_start(self, event_id: str, payload: dict[str, Any]) -> None:
         """Handle reranking start event."""
         query_str = ""
         if EventPayload is not None:
@@ -689,9 +687,9 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
     def _on_reranking_end(
         self,
         event_id: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         duration_ms: int,
-        event_info: Dict[str, Any],
+        event_info: dict[str, Any],
     ) -> None:
         """Handle reranking end event."""
         num_nodes = 0
@@ -707,17 +705,15 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             duration_ms=duration_ms,
         )
 
-    def start_trace(self, trace_id: Optional[str] = None) -> None:
+    def start_trace(self, trace_id: str | None = None) -> None:
         """Start a trace (required by BaseCallbackHandler interface)."""
-        pass
 
     def end_trace(
         self,
-        trace_id: Optional[str] = None,
-        trace_map: Optional[Dict[str, List[str]]] = None,
+        trace_id: str | None = None,
+        trace_map: dict[str, list[str]] | None = None,
     ) -> None:
         """End a trace (required by BaseCallbackHandler interface)."""
-        pass
 
 
 def _is_already_traced(engine: Any) -> bool:
@@ -734,7 +730,7 @@ def _is_already_traced(engine: Any) -> bool:
 def _merge_callback_manager(
     existing_manager: Any,
     new_handler: LCTLLlamaIndexCallback,
-) -> "CallbackManager":
+) -> CallbackManager:
     """Merge a new handler into an existing callback manager, preserving state."""
     _check_llamaindex_available()
 
@@ -767,8 +763,8 @@ class LCTLQueryEngine:
     def __init__(
         self,
         query_engine: Any,
-        chain_id: Optional[str] = None,
-        session: Optional[LCTLSession] = None,
+        chain_id: str | None = None,
+        session: LCTLSession | None = None,
     ) -> None:
         """Initialize an LCTL-traced QueryEngine.
 
@@ -843,7 +839,7 @@ class LCTLQueryEngine:
         """Export the LCTL trace to a file."""
         self._callback.export(path)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Get the LCTL trace as a dictionary."""
         return self._callback.to_dict()
 
@@ -864,8 +860,8 @@ class LCTLChatEngine:
     def __init__(
         self,
         chat_engine: Any,
-        chain_id: Optional[str] = None,
-        session: Optional[LCTLSession] = None,
+        chain_id: str | None = None,
+        session: LCTLSession | None = None,
     ) -> None:
         """Initialize an LCTL-traced ChatEngine.
 
@@ -969,7 +965,7 @@ class LCTLChatEngine:
         """Export the LCTL trace to a file."""
         self._callback.export(path)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Get the LCTL trace as a dictionary."""
         return self._callback.to_dict()
 
@@ -980,8 +976,8 @@ class LCTLChatEngine:
 
 def trace_query_engine(
     query_engine: Any,
-    chain_id: Optional[str] = None,
-    session: Optional[LCTLSession] = None,
+    chain_id: str | None = None,
+    session: LCTLSession | None = None,
 ) -> LCTLQueryEngine:
     """Wrap a LlamaIndex query engine with LCTL tracing.
 
@@ -1012,8 +1008,8 @@ def trace_query_engine(
 
 def trace_chat_engine(
     chat_engine: Any,
-    chain_id: Optional[str] = None,
-    session: Optional[LCTLSession] = None,
+    chain_id: str | None = None,
+    session: LCTLSession | None = None,
 ) -> LCTLChatEngine:
     """Wrap a LlamaIndex chat engine with LCTL tracing.
 
@@ -1053,11 +1049,11 @@ def is_available() -> bool:
 
 __all__ = [
     "LLAMAINDEX_AVAILABLE",
-    "LlamaIndexNotAvailableError",
+    "LCTLChatEngine",
     "LCTLLlamaIndexCallback",
     "LCTLQueryEngine",
-    "LCTLChatEngine",
-    "trace_query_engine",
-    "trace_chat_engine",
+    "LlamaIndexNotAvailableError",
     "is_available",
+    "trace_chat_engine",
+    "trace_query_engine",
 ]

@@ -11,10 +11,10 @@ It covers:
 
 import asyncio
 import os
-from typing import cast
 
 try:
     from pydantic_ai import Agent, RunContext
+
     from lctl.integrations.pydantic_ai import trace_agent
 except ImportError:
     print("Please install pydantic-ai and lctl[pydantic-ai] to run this example")
@@ -36,7 +36,7 @@ async def main():
         """Get the current weather for a city."""
         print(f"  [Tool] Getting weather for {city}...")
         # Simulate an API call
-        return f"Sunny, 25C"
+        return "Sunny, 25C"
 
     # 2. Wrap the agent with LCTL tracing
     print("Initializing tracked agent...")

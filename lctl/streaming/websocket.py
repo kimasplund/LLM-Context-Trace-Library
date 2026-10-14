@@ -3,9 +3,10 @@
 import asyncio
 import json
 import threading
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, Iterator, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from .emitter import EventEmitter, StreamingEvent, StreamingEventType
@@ -17,7 +18,7 @@ class WebSocketClient:
 
     id: str
     connected_at: datetime
-    filters: Dict[str, Any] = field(default_factory=dict)
+    filters: dict[str, Any] = field(default_factory=dict)
     send_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
 
 
@@ -50,10 +51,10 @@ class WebSocketServer:
         self._emitter = emitter
         self._heartbeat_interval = heartbeat_interval
         self._max_clients = max_clients
-        self._clients: Dict[str, WebSocketClient] = {}
+        self._clients: dict[str, WebSocketClient] = {}
         self._lock = asyncio.Lock()
         self._running = False
-        self._heartbeat_task: Optional[asyncio.Task] = None
+        self._heartbeat_task: asyncio.Task | None = None
 
         self._emitter.on("all", self._on_event)
 
@@ -96,7 +97,7 @@ class WebSocketServer:
         return True
 
     async def register_client(
-        self, client_id: Optional[str] = None, filters: Optional[Dict[str, Any]] = None
+        self, client_id: str | None = None, filters: dict[str, Any] | None = None
     ) -> WebSocketClient:
         """Register a new client.
 
@@ -118,7 +119,7 @@ class WebSocketServer:
                 client_id = str(uuid4())[:8]
 
             client = WebSocketClient(
-                id=client_id, connected_at=datetime.now(timezone.utc), filters=filters or {}
+                id=client_id, connected_at=datetime.now(UTC), filters=filters or {}
             )
             self._clients[client_id] = client
 
@@ -137,13 +138,13 @@ class WebSocketServer:
                 disconnected_event = StreamingEvent(
                     id=str(uuid4()),
                     type=StreamingEventType.DISCONNECTED,
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                     chain_id=None,
                     payload={"client_id": client_id},
                 )
                 self._emitter.emit(disconnected_event)
 
-    async def update_client_filters(self, client_id: str, filters: Dict[str, Any]) -> None:
+    async def update_client_filters(self, client_id: str, filters: dict[str, Any]) -> None:
         """Update filters for a client.
 
         Args:
@@ -171,7 +172,7 @@ class WebSocketServer:
             welcome_msg = {
                 "type": "connected",
                 "client_id": client_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
             await websocket.send_text(json.dumps(welcome_msg))
 
@@ -213,7 +214,7 @@ class WebSocketServer:
                     client.send_queue.get(), timeout=self._heartbeat_interval
                 )
                 await websocket.send_text(event.to_json())
-        except asyncio.TimeoutError:
+        except TimeoutError:
             heartbeat = StreamingEvent.heartbeat()
             await websocket.send_text(heartbeat.to_json())
             await self._send_loop(websocket, client)
@@ -221,7 +222,7 @@ class WebSocketServer:
             pass
 
     async def _handle_client_message(
-        self, client: WebSocketClient, message: Dict[str, Any]
+        self, client: WebSocketClient, message: dict[str, Any]
     ) -> None:
         """Handle a message from a client."""
         msg_type = message.get("type")
@@ -237,7 +238,7 @@ class WebSocketServer:
             pong_event = StreamingEvent(
                 id=str(uuid4()),
                 type=StreamingEventType.HEARTBEAT,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 chain_id=None,
                 payload={"pong": True},
             )
@@ -326,7 +327,7 @@ class SSEHandler:
         self._heartbeat_interval = heartbeat_interval
 
     async def event_stream(
-        self, filters: Optional[Dict[str, Any]] = None, include_history: bool = False
+        self, filters: dict[str, Any] | None = None, include_history: bool = False
     ) -> Iterator[str]:
         """Generate an SSE event stream.
 
@@ -362,13 +363,13 @@ class SSEHandler:
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=self._heartbeat_interval)
                     yield self._format_sse("event", event.to_dict())
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield ": heartbeat\n\n"
 
         finally:
             self._emitter.off("all", handler)
 
-    def _should_send(self, event: StreamingEvent, filters: Optional[Dict[str, Any]]) -> bool:
+    def _should_send(self, event: StreamingEvent, filters: dict[str, Any] | None) -> bool:
         """Check if an event should be sent based on filters."""
         if not filters:
             return True
@@ -400,7 +401,7 @@ class SSEHandler:
 
 
 def create_sse_response(
-    emitter: EventEmitter, filters: Optional[Dict[str, Any]] = None, include_history: bool = False
+    emitter: EventEmitter, filters: dict[str, Any] | None = None, include_history: bool = False
 ) -> Iterator[str]:
     """Create an SSE response generator.
 
@@ -420,7 +421,7 @@ def create_sse_response(
 
 def start_websocket_server(
     emitter: EventEmitter, host: str = "0.0.0.0", port: int = 8081, run_in_thread: bool = False
-) -> Optional[WebSocketServer]:
+) -> WebSocketServer | None:
     """Start a WebSocket server for event streaming.
 
     Args:

@@ -3,10 +3,11 @@
 import asyncio
 import json
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any
 from uuid import uuid4
 
 from ..core.events import Event
@@ -31,10 +32,10 @@ class StreamingEvent:
     id: str
     type: StreamingEventType
     timestamp: datetime
-    chain_id: Optional[str]
-    payload: Dict[str, Any] = field(default_factory=dict)
+    chain_id: str | None
+    payload: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "type": self.type.value,
@@ -52,7 +53,7 @@ class StreamingEvent:
         return cls(
             id=str(uuid4()),
             type=StreamingEventType.EVENT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id=chain_id,
             payload=event.to_dict(),
         )
@@ -63,7 +64,7 @@ class StreamingEvent:
         return cls(
             id=str(uuid4()),
             type=StreamingEventType.CHAIN_START,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id=chain_id,
             payload={"chain_id": chain_id},
         )
@@ -74,7 +75,7 @@ class StreamingEvent:
         return cls(
             id=str(uuid4()),
             type=StreamingEventType.CHAIN_END,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id=chain_id,
             payload={"chain_id": chain_id, "event_count": event_count},
         )
@@ -85,7 +86,7 @@ class StreamingEvent:
         return cls(
             id=str(uuid4()),
             type=StreamingEventType.CONNECTED,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id=None,
             payload={"client_id": client_id},
         )
@@ -96,18 +97,18 @@ class StreamingEvent:
         return cls(
             id=str(uuid4()),
             type=StreamingEventType.HEARTBEAT,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id=None,
             payload={},
         )
 
     @classmethod
-    def error_event(cls, message: str, chain_id: Optional[str] = None) -> "StreamingEvent":
+    def error_event(cls, message: str, chain_id: str | None = None) -> "StreamingEvent":
         """Create an error event."""
         return cls(
             id=str(uuid4()),
             type=StreamingEventType.ERROR,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             chain_id=chain_id,
             payload={"message": message},
         )
@@ -145,22 +146,22 @@ class EventEmitter:
         Args:
             max_history: Maximum number of events to keep in history.
         """
-        self._handlers: Dict[str, List[EventHandler]] = {}
-        self._async_handlers: Dict[str, List[AsyncEventHandler]] = {}
-        self._once_handlers: Dict[str, List[EventHandler]] = {}
+        self._handlers: dict[str, list[EventHandler]] = {}
+        self._async_handlers: dict[str, list[AsyncEventHandler]] = {}
+        self._once_handlers: dict[str, list[EventHandler]] = {}
         self._lock = threading.RLock()
-        self._history: List[StreamingEvent] = []
+        self._history: list[StreamingEvent] = []
         self._max_history = max_history
-        self._chain_id: Optional[str] = None
+        self._chain_id: str | None = None
         self._event_count = 0
 
     @property
-    def chain_id(self) -> Optional[str]:
+    def chain_id(self) -> str | None:
         """Get the current chain ID."""
         return self._chain_id
 
     @chain_id.setter
-    def chain_id(self, value: Optional[str]) -> None:
+    def chain_id(self, value: str | None) -> None:
         """Set the current chain ID."""
         self._chain_id = value
 
@@ -170,13 +171,13 @@ class EventEmitter:
         return self._event_count
 
     @property
-    def history(self) -> List[StreamingEvent]:
+    def history(self) -> list[StreamingEvent]:
         """Get the event history."""
         with self._lock:
             return list(self._history)
 
     def on(
-        self, event_type: Union[str, StreamingEventType], handler: Optional[EventHandler] = None
+        self, event_type: str | StreamingEventType, handler: EventHandler | None = None
     ) -> Callable:
         """Register an event handler.
 
@@ -210,8 +211,8 @@ class EventEmitter:
 
     def on_async(
         self,
-        event_type: Union[str, StreamingEventType],
-        handler: Optional[AsyncEventHandler] = None,
+        event_type: str | StreamingEventType,
+        handler: AsyncEventHandler | None = None,
     ) -> Callable:
         """Register an async event handler.
 
@@ -236,7 +237,7 @@ class EventEmitter:
         return decorator
 
     def once(
-        self, event_type: Union[str, StreamingEventType], handler: Optional[EventHandler] = None
+        self, event_type: str | StreamingEventType, handler: EventHandler | None = None
     ) -> Callable:
         """Register a one-time event handler.
 
@@ -262,7 +263,7 @@ class EventEmitter:
             return decorator(handler)
         return decorator
 
-    def off(self, event_type: Union[str, StreamingEventType], handler: EventHandler) -> bool:
+    def off(self, event_type: str | StreamingEventType, handler: EventHandler) -> bool:
         """Remove an event handler.
 
         Args:
@@ -287,7 +288,7 @@ class EventEmitter:
                 removed = True
             return removed
 
-    def off_all(self, event_type: Optional[Union[str, StreamingEventType]] = None) -> None:
+    def off_all(self, event_type: str | StreamingEventType | None = None) -> None:
         """Remove all handlers for an event type, or all handlers if no type specified.
 
         Args:
@@ -318,7 +319,7 @@ class EventEmitter:
 
             event_key = event.type.value
 
-            handlers_to_call: List[EventHandler] = []
+            handlers_to_call: list[EventHandler] = []
             handlers_to_call.extend(self._handlers.get(event_key, []))
             handlers_to_call.extend(self._handlers.get("all", []))
 
@@ -347,7 +348,7 @@ class EventEmitter:
         with self._lock:
             event_key = event.type.value
 
-            async_handlers: List[AsyncEventHandler] = []
+            async_handlers: list[AsyncEventHandler] = []
             async_handlers.extend(self._async_handlers.get(event_key, []))
             async_handlers.extend(self._async_handlers.get("all", []))
 
@@ -408,7 +409,7 @@ class EventEmitter:
             except Exception:
                 pass
 
-    def handler_count(self, event_type: Optional[Union[str, StreamingEventType]] = None) -> int:
+    def handler_count(self, event_type: str | StreamingEventType | None = None) -> int:
         """Get the number of registered handlers.
 
         Args:

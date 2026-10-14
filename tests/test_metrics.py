@@ -3,7 +3,6 @@
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List
 
 import pytest
 
@@ -11,7 +10,6 @@ from lctl.core.events import Chain, Event, EventType
 from lctl.metrics import (
     AgentCollector,
     AgentMetrics,
-    AggregatedMetrics,
     CollectedMetrics,
     ErrorCollector,
     ErrorMetrics,
@@ -382,7 +380,7 @@ class TestMetricsAggregator:
     @pytest.fixture
     def multiple_metrics(
         self, sample_chain: Chain, sample_chain_with_errors: Chain
-    ) -> List[CollectedMetrics]:
+    ) -> list[CollectedMetrics]:
         """Create metrics from multiple chains."""
         collector = MetricsCollector()
         return [
@@ -408,7 +406,7 @@ class TestMetricsAggregator:
         assert aggregated.chain_count == 1
         assert aggregated.latency.total_time_ms == 1000
 
-    def test_aggregator_multiple_chains(self, multiple_metrics: List[CollectedMetrics]):
+    def test_aggregator_multiple_chains(self, multiple_metrics: list[CollectedMetrics]):
         """Test aggregator with multiple chains."""
         aggregator = MetricsAggregator()
         aggregated = aggregator.aggregate(multiple_metrics)
@@ -417,7 +415,7 @@ class TestMetricsAggregator:
         assert "test-chain" in aggregated.chain_ids
         assert "error-chain" in aggregated.chain_ids
 
-    def test_aggregated_latency(self, multiple_metrics: List[CollectedMetrics]):
+    def test_aggregated_latency(self, multiple_metrics: list[CollectedMetrics]):
         """Test aggregated latency metrics."""
         aggregator = MetricsAggregator()
         aggregated = aggregator.aggregate(multiple_metrics)
@@ -426,7 +424,7 @@ class TestMetricsAggregator:
         assert aggregated.latency.avg_total_time_ms == 600.0
         assert aggregated.latency.p50_step_duration_ms > 0
 
-    def test_aggregated_tokens(self, multiple_metrics: List[CollectedMetrics]):
+    def test_aggregated_tokens(self, multiple_metrics: list[CollectedMetrics]):
         """Test aggregated token metrics."""
         aggregator = MetricsAggregator()
         aggregated = aggregator.aggregate(multiple_metrics)
@@ -434,7 +432,7 @@ class TestMetricsAggregator:
         assert aggregated.tokens.total_tokens == 510
         assert aggregated.tokens.avg_tokens_per_chain == 255.0
 
-    def test_aggregated_errors(self, multiple_metrics: List[CollectedMetrics]):
+    def test_aggregated_errors(self, multiple_metrics: list[CollectedMetrics]):
         """Test aggregated error metrics."""
         aggregator = MetricsAggregator()
         aggregated = aggregator.aggregate(multiple_metrics)
@@ -443,7 +441,7 @@ class TestMetricsAggregator:
         assert aggregated.errors.chains_with_errors == 1
         assert aggregated.errors.error_free_rate == 0.5
 
-    def test_aggregated_facts(self, multiple_metrics: List[CollectedMetrics]):
+    def test_aggregated_facts(self, multiple_metrics: list[CollectedMetrics]):
         """Test aggregated fact metrics."""
         aggregator = MetricsAggregator()
         aggregated = aggregator.aggregate(multiple_metrics)
@@ -451,7 +449,7 @@ class TestMetricsAggregator:
         assert aggregated.facts.total_fact_count == 1
         assert aggregated.facts.avg_facts_per_chain == 0.5
 
-    def test_aggregated_agents(self, multiple_metrics: List[CollectedMetrics]):
+    def test_aggregated_agents(self, multiple_metrics: list[CollectedMetrics]):
         """Test aggregated agent metrics."""
         aggregator = MetricsAggregator()
         aggregated = aggregator.aggregate(multiple_metrics)
@@ -459,7 +457,7 @@ class TestMetricsAggregator:
         assert len(aggregated.agents.unique_agents) == 3
         assert aggregated.agents.total_handoffs == 1
 
-    def test_aggregated_summary(self, multiple_metrics: List[CollectedMetrics]):
+    def test_aggregated_summary(self, multiple_metrics: list[CollectedMetrics]):
         """Test aggregated metrics summary."""
         aggregator = MetricsAggregator()
         aggregated = aggregator.aggregate(multiple_metrics)
@@ -468,7 +466,7 @@ class TestMetricsAggregator:
         assert "2 chains" in summary
         assert "1200ms" in summary
 
-    def test_aggregated_to_dict(self, multiple_metrics: List[CollectedMetrics]):
+    def test_aggregated_to_dict(self, multiple_metrics: list[CollectedMetrics]):
         """Test aggregated metrics serialization."""
         aggregator = MetricsAggregator()
         aggregated = aggregator.aggregate(multiple_metrics)
@@ -778,7 +776,7 @@ class TestEdgeCases:
 
     def test_percentile_calculation(self, base_timestamp: datetime):
         """Test percentile calculation in aggregation."""
-        chains: List[Chain] = []
+        chains: list[Chain] = []
 
         for i in range(10):
             chain = Chain(id=f"chain-{i}")

@@ -1,7 +1,9 @@
-import pytest
-from unittest.mock import MagicMock
-from lctl.integrations.autogen import LCTLAutogenHandler, LCTLSession
 import logging
+from unittest.mock import MagicMock
+
+import pytest
+
+from lctl.integrations.autogen import LCTLAutogenHandler, LCTLSession
 
 try:
     from autogen_core import logging as ag_logging
@@ -91,11 +93,10 @@ def test_handle_message_event():
     # autogen_core uses Pydantic/dataclasses usually so it might validate type.
     # Let's try using valid enums if imports allow.
 
-    from autogen_core.logging import MessageKind, DeliveryStage
-
     # Mocks for AgentId might be tricky if it expects specific class.
     # Let's assume we can mock it or use the real one.
     from autogen_core._agent_id import AgentId
+    from autogen_core.logging import DeliveryStage, MessageKind
 
     sender = AgentId("user_proxy", "group")
     receiver = AgentId("assistant", "group")

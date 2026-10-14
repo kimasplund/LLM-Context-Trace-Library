@@ -1,8 +1,9 @@
-import pytest
-from unittest.mock import MagicMock, patch
 import uuid
+from unittest.mock import MagicMock
 
-from lctl.integrations.crewai import _llm_event_handler, _agent_id_session_map, CREWAI_AVAILABLE
+import pytest
+
+from lctl.integrations.crewai import CREWAI_AVAILABLE, _agent_id_session_map, _llm_event_handler
 
 # Skip if CrewAI not available (should be available in dev env)
 pytestmark = pytest.mark.skipif(not CREWAI_AVAILABLE, reason="CrewAI not installed")

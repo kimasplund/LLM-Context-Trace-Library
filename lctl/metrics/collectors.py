@@ -1,8 +1,8 @@
 """LCTL Metric Collectors - Collect metrics from LCTL chains."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set, Tuple
+from datetime import UTC, datetime
+from typing import Any
 
 from ..core.events import Chain, EventType
 
@@ -11,15 +11,15 @@ from ..core.events import Chain, EventType
 class LatencyMetrics:
     """Latency-related metrics from chain execution."""
 
-    step_durations: Dict[str, List[int]] = field(default_factory=dict)
-    tool_call_durations: Dict[str, List[int]] = field(default_factory=dict)
+    step_durations: dict[str, list[int]] = field(default_factory=dict)
+    tool_call_durations: dict[str, list[int]] = field(default_factory=dict)
     total_time_ms: int = 0
     avg_step_duration_ms: float = 0.0
     avg_tool_call_duration_ms: float = 0.0
     min_step_duration_ms: int = 0
     max_step_duration_ms: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "step_durations": self.step_durations,
@@ -36,13 +36,13 @@ class LatencyMetrics:
 class TokenMetrics:
     """Token usage metrics per agent."""
 
-    tokens_by_agent: Dict[str, Dict[str, int]] = field(default_factory=dict)
+    tokens_by_agent: dict[str, dict[str, int]] = field(default_factory=dict)
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     total_tokens: int = 0
     efficiency_ratio: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "tokens_by_agent": self.tokens_by_agent,
@@ -59,12 +59,12 @@ class ErrorMetrics:
 
     error_count: int = 0
     error_rate: float = 0.0
-    error_types: Dict[str, int] = field(default_factory=dict)
-    errors_by_agent: Dict[str, int] = field(default_factory=dict)
+    error_types: dict[str, int] = field(default_factory=dict)
+    errors_by_agent: dict[str, int] = field(default_factory=dict)
     recoverable_count: int = 0
     non_recoverable_count: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "error_count": self.error_count,
@@ -82,12 +82,12 @@ class FactMetrics:
 
     fact_count: int = 0
     avg_confidence: float = 0.0
-    confidence_changes: Dict[str, List[float]] = field(default_factory=dict)
-    facts_by_agent: Dict[str, int] = field(default_factory=dict)
+    confidence_changes: dict[str, list[float]] = field(default_factory=dict)
+    facts_by_agent: dict[str, int] = field(default_factory=dict)
     min_confidence: float = 1.0
     max_confidence: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "fact_count": self.fact_count,
@@ -103,14 +103,14 @@ class FactMetrics:
 class AgentMetrics:
     """Agent-related metrics from chain execution."""
 
-    steps_per_agent: Dict[str, int] = field(default_factory=dict)
+    steps_per_agent: dict[str, int] = field(default_factory=dict)
     handoff_count: int = 0
-    handoff_pairs: Dict[Tuple[str, str], int] = field(default_factory=dict)
-    collaboration_graph: Dict[str, Set[str]] = field(default_factory=dict)
+    handoff_pairs: dict[tuple[str, str], int] = field(default_factory=dict)
+    collaboration_graph: dict[str, set[str]] = field(default_factory=dict)
     agent_count: int = 0
-    agents: List[str] = field(default_factory=list)
+    agents: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         handoff_pairs_str = {f"{k[0]}->{k[1]}": v for k, v in self.handoff_pairs.items()}
         collaboration_graph_list = {k: list(v) for k, v in self.collaboration_graph.items()}
@@ -135,7 +135,7 @@ class CollectedMetrics:
     facts: FactMetrics
     agents: AgentMetrics
     total_events: int = 0
-    collection_timestamp: Optional[datetime] = None
+    collection_timestamp: datetime | None = None
 
     def summary(self) -> str:
         """Generate a human-readable summary of the metrics."""
@@ -168,7 +168,7 @@ class CollectedMetrics:
         ]
         return "\n".join(lines)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert all metrics to dictionary."""
         return {
             "chain_id": self.chain_id,
@@ -190,8 +190,8 @@ class LatencyCollector:
     def collect(self, chain: Chain) -> LatencyMetrics:
         """Collect latency metrics from chain events."""
         metrics = LatencyMetrics()
-        all_step_durations: List[int] = []
-        all_tool_durations: List[int] = []
+        all_step_durations: list[int] = []
+        all_tool_durations: list[int] = []
 
         for event in chain.events:
             if event.type == EventType.STEP_END:
@@ -287,8 +287,8 @@ class FactCollector:
     def collect(self, chain: Chain) -> FactMetrics:
         """Collect fact metrics from chain events."""
         metrics = FactMetrics()
-        confidences: List[float] = []
-        seen_facts: Set[str] = set()
+        confidences: list[float] = []
+        seen_facts: set[str] = set()
 
         for event in chain.events:
             if event.type == EventType.FACT_ADDED:
@@ -331,8 +331,8 @@ class AgentCollector:
     def collect(self, chain: Chain) -> AgentMetrics:
         """Collect agent metrics from chain events."""
         metrics = AgentMetrics()
-        agents_seen: Set[str] = set()
-        previous_agent: Optional[str] = None
+        agents_seen: set[str] = set()
+        previous_agent: str | None = None
 
         for event in chain.events:
             if event.agent == "system":
@@ -388,7 +388,7 @@ class MetricsCollector:
             facts=self._fact_collector.collect(chain),
             agents=self._agent_collector.collect(chain),
             total_events=len(chain.events),
-            collection_timestamp=datetime.now(timezone.utc),
+            collection_timestamp=datetime.now(UTC),
         )
 
     def collect_latency(self, chain: Chain) -> LatencyMetrics:

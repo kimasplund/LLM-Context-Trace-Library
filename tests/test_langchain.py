@@ -2,18 +2,17 @@
 
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
-import time
+
 import pytest
 
 from lctl.core.events import EventType
+from lctl.integrations.base import truncate
 from lctl.integrations.langchain import (
     LCTLCallbackHandler,
     LCTLChain,
-    trace_chain,
-    is_available,
     _extract_token_counts,
+    trace_chain,
 )
-from lctl.integrations.base import truncate
 
 
 # Mock classes for Type checking/Import
