@@ -96,9 +96,10 @@ A probe (`uv lock` on the current `pyproject.toml`) resolved **all nine extras t
       "mypy>=2.4",
       "types-PyYAML",
       "pre-commit>=4.7",
+      "lctl[dashboard]",
   ]
   ```
-  Black is dropped. pip ≥25.1 users can install it with `pip install -e . --group dev`.
+  Black is dropped. The group includes the project's own `dashboard` extra (verified 2026-10-14 with both uv and pip 25.2), so plain `uv sync` gives a complete dev env, and mypy always sees `fastapi` and `slowapi`. pip ≥25.1 users can install it with `pip install -e . --group dev`.
 
 New files:
 - `uv.lock`, committed.
@@ -107,7 +108,7 @@ New files:
 
 Dev loop:
 ```bash
-uv sync --extra dashboard
+uv sync
 uv run pytest
 uv run pre-commit run --all-files      # ruff, format, mypy, lockfile, zizmor, file hygiene
 ```
@@ -145,15 +146,15 @@ warn_unused_configs = true
 
 [[tool.mypy.overrides]]
 module = [
-    "langchain.*", "langchain_core.*", "langchain_community.*", "crewai.*",
-    "autogen.*", "agents.*", "pydantic_ai.*", "semantic_kernel.*",
-    "dspy.*", "llama_index.*", "slowapi.*", "uvicorn.*",
+    "langchain.*", "langchain_core.*", "crewai.*", "autogen.*", "autogen_core.*", "ag2.*",
+    "agents.*", "pydantic_ai.*", "semantic_kernel.*", "dspy.*", "llama_index.*",
+    "slowapi.*", "uvicorn.*", "websockets.*",
 ]
 ignore_missing_imports = true
 ```
 - Unannotated function bodies are not checked (mypy's default). Enabling `check_untyped_defs` is a follow-up ratchet.
 - Fixes prefer real annotations, then `Any` for untyped framework objects. Every `# type: ignore[...]` must name its error code, and bare ignores aren't allowed.
-- The override list is completed during implementation, covering any optional import mypy reports as missing.
+- The override list above was measured on 2026-10-14 with mypy 2.4.0. `langchain_community` is left out because nothing imports it, and `warn_unused_configs` would flag it. `websockets` is used lazily by `lctl/streaming/websocket.py` and isn't declared in any extra.
 
 ### 4.3 Tests & coverage
 
@@ -192,7 +193,7 @@ fail_under = <measured>
 - `pre-commit/pre-commit-hooks` (latest tag at implementation): `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`, `check-toml`, `check-json` (excluding `tsconfig*.json`, which is JSONC), `check-merge-conflict`, `mixed-line-ending`, and `check-added-large-files` with `uv.lock` and `**/package-lock.json` excluded.
 - `astral-sh/ruff-pre-commit` `v0.17.0`: `ruff-check` (`--fix`) and `ruff-format`.
 - `astral-sh/uv-pre-commit` (version matching the pinned uv): `uv-lock`.
-- Local hook: `mypy` via `uv run --frozen mypy` (`language: system`, `pass_filenames: false`, scoped to `^lctl/`). `uv run` syncs inexactly, so it keeps the `dashboard` extra that `uv sync --extra dashboard` installed.
+- Local hook: `mypy` via `uv run --frozen mypy` (`language: system`, `pass_filenames: false`, scoped to `^lctl/`). The dashboard dependencies come from the dev group, so they are always present.
 - `zizmorcore/zizmor-pre-commit`: `zizmor`, scoped to `.github/`.
 
 **`.github/workflows/ci.yml`:**
@@ -205,8 +206,8 @@ fail_under = <measured>
 
 | Job | Runs | Steps |
 |---|---|---|
-| `lint` | ubuntu, Python from `.python-version` | `uv sync --locked --extra dashboard` (mypy must see `fastapi`/`slowapi` types for `lctl/dashboard/`), `uv run pre-commit run --all-files --show-diff-on-failure` |
-| `test` | ubuntu × Python 3.11–3.15 | `uv sync --locked --extra dashboard --python <v>`, `uv run pytest` |
+| `lint` | ubuntu, Python from `.python-version` | `uv sync --locked`, `uv run pre-commit run --all-files --show-diff-on-failure` |
+| `test` | ubuntu × Python 3.11–3.15 | `uv sync --locked --python <v>`, `uv run pytest` |
 | `integration` | ubuntu, 3.13 (**only if §4.3 run is green**) | `uv sync --locked --all-extras`, `uv run pytest` |
 | `package` | ubuntu | `uv build`; install the wheel into a fresh venv; `lctl --version` reports 4.1.0; assert the wheel contains `lctl/py.typed`, `lctl/dashboard/static/*` and `lctl/dashboard/templates/*` |
 | `extension` | ubuntu, Node 24 | `npm ci` in `vscode-lctl/` and `vscode-lctl/webview-ui/`; `npm run lint`; `npm run compile`; `npm run build:webview` |
@@ -246,7 +247,7 @@ There are no path filters. Required checks that are skipped by a path filter sta
 
 All of these are verified with command output before the work is called done:
 
-1. `uv sync --locked --extra dashboard` works from a fresh clone, and `uv lock --check` passes.
+1. `uv sync --locked` works from a fresh clone, and `uv lock --check` passes.
 2. `uv run ruff check .` reports 0 findings, `uv run ruff format --check .` reports 0 files to change, and `uv run mypy` reports success.
 3. `uv run pytest` passes with at least 1041 tests passing, under `filterwarnings = error`, and coverage at or above `fail_under`.
 4. `uv run pre-commit run --all-files` passes.
