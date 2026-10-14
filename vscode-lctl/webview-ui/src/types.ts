@@ -90,7 +90,7 @@ export type WebviewMessage =
   | { type: 'requestCompare' };
 
 export type ExtensionMessage =
-  | { type: 'chainData'; data: LctlChainFile; path: string; isRecording: boolean }
+  | { type: 'chainData'; data: LctlChainFile; path: string; isRecording: boolean; pricing?: { input: number; output: number } }
   | { type: 'compareChainData'; data: LctlChainFile; path: string }
   | { type: 'error'; message: string }
   | { type: 'recordingUpdate'; isRecording: boolean };

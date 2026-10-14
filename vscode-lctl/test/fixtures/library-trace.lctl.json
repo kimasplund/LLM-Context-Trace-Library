@@ -1,0 +1,95 @@
+{
+  "lctl": "4.2",
+  "chain": {
+    "id": "tokens-fixture",
+    "trace_id": "01a13ae2-99c3-7b66-9ca0-2cf2771404d5"
+  },
+  "events": [
+    {
+      "seq": 1,
+      "type": "step_start",
+      "timestamp": "2026-10-14T14:48:11.459216+00:00",
+      "agent": "analyzer",
+      "data": {
+        "intent": "analyze",
+        "input_summary": "input"
+      },
+      "id": "01a13ae2-99c3-74e6-b8fc-319e024d022c",
+      "span_id": "01a13ae2-99c3-754e-bd2a-d5da169b81d8"
+    },
+    {
+      "seq": 2,
+      "type": "step_end",
+      "timestamp": "2026-10-14T14:48:11.459308+00:00",
+      "agent": "analyzer",
+      "data": {
+        "outcome": "success",
+        "output_summary": "done",
+        "duration_ms": 1200,
+        "tokens": {
+          "input": 1500,
+          "output": 400
+        }
+      },
+      "id": "01a13ae2-99c3-7ec1-86dc-101df453db50",
+      "span_id": "01a13ae2-99c3-754e-bd2a-d5da169b81d8"
+    },
+    {
+      "seq": 3,
+      "type": "step_start",
+      "timestamp": "2026-10-14T14:48:11.459374+00:00",
+      "agent": "writer",
+      "data": {
+        "intent": "write",
+        "input_summary": "x"
+      },
+      "id": "01a13ae2-99c3-73f7-8759-fd15b470b705",
+      "span_id": "01a13ae2-99c3-77c5-b08b-709122d7fde5"
+    },
+    {
+      "seq": 4,
+      "type": "stream_start",
+      "timestamp": "2026-10-14T14:48:11.459412+00:00",
+      "agent": "writer",
+      "data": {
+        "stream_id": "s1",
+        "description": ""
+      },
+      "id": "01a13ae2-99c3-758f-b85c-58ea34d7cf56",
+      "span_id": "01a13ae2-99c3-77c5-b08b-709122d7fde5"
+    },
+    {
+      "seq": 5,
+      "type": "stream_end",
+      "timestamp": "2026-10-14T14:48:11.459468+00:00",
+      "agent": "writer",
+      "data": {
+        "stream_id": "s1",
+        "total_content": "text",
+        "tokens": {
+          "input": 100,
+          "output": 50
+        }
+      },
+      "id": "01a13ae2-99c3-7e90-9b0e-fd2bb9236863",
+      "span_id": "01a13ae2-99c3-77c5-b08b-709122d7fde5"
+    },
+    {
+      "seq": 6,
+      "type": "step_end",
+      "timestamp": "2026-10-14T14:48:11.459513+00:00",
+      "agent": "writer",
+      "data": {
+        "outcome": "success",
+        "output_summary": "",
+        "duration_ms": 800,
+        "tokens": {
+          "input": 2000,
+          "output": 600
+        }
+      },
+      "id": "01a13ae2-99c3-7724-abb8-8d06ae6367f0",
+      "span_id": "01a13ae2-99c3-77c5-b08b-709122d7fde5"
+    }
+  ]
+}

@@ -112,6 +112,8 @@ jobs:
         working-directory: vscode-lctl
       - run: npm run build:webview
         working-directory: vscode-lctl
+      - run: npm test
+        working-directory: vscode-lctl
 
   integrations:
     name: Integration (${{ matrix.extra }})

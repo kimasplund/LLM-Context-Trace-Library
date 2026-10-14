@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { ChainTreeProvider, ChainTreeItem, LctlChainFile, LctlEvent } from './chainProvider';
+import { chainTokens, eventTokens } from './chainStats';
 
 type DashboardOpener = (uri?: vscode.Uri) => void;
 
@@ -46,6 +47,39 @@ function runLctlCommand(command: string, args: string[]): void {
     proc.on('close', (code: number | null) => {
         channel.appendLine(`\n[Process exited with code ${code}]`);
     });
+}
+
+/**
+ * Resolve the chain a command should act on: the tree item / URI it was invoked with,
+ * otherwise ask the user to pick one. Returns undefined (after an info message) when
+ * there is nothing to pick or the user dismisses the picker.
+ */
+async function resolveChainUri(
+    arg: vscode.Uri | ChainTreeItem | undefined,
+    placeHolder: string
+): Promise<vscode.Uri | undefined> {
+    if (arg instanceof vscode.Uri) {
+        return arg;
+    }
+    if (arg instanceof ChainTreeItem && arg.resourceUri) {
+        return arg.resourceUri;
+    }
+
+    const files = await vscode.workspace.findFiles('**/*.lctl.json', '**/node_modules/**');
+    if (files.length === 0) {
+        void vscode.window.showInformationMessage('No LCTL chain files found in this workspace.');
+        return undefined;
+    }
+
+    const selected = await vscode.window.showQuickPick(
+        files.map((file) => ({ label: vscode.workspace.asRelativePath(file), uri: file })),
+        { placeHolder }
+    );
+    if (!selected) {
+        void vscode.window.showInformationMessage('No chain selected.');
+        return undefined;
+    }
+    return selected.uri;
 }
 
 export function registerCommands(
@@ -105,8 +139,11 @@ export function registerCommands(
                 uri = chainProvider.findChainUri(arg);
             } else if (arg instanceof vscode.Uri) {
                 uri = arg;
-            } else if (arg instanceof ChainTreeItem && arg.resourceUri) {
-                uri = arg.resourceUri;
+            } else {
+                uri = await resolveChainUri(arg, 'Select a chain to replay');
+                if (!uri) {
+                    return;
+                }
             }
 
             if (!uri) {
@@ -121,16 +158,8 @@ export function registerCommands(
     // Export HTML Report
     context.subscriptions.push(
         vscode.commands.registerCommand('lctl.exportHtml', async (arg?: vscode.Uri | ChainTreeItem) => {
-            let uri: vscode.Uri | undefined;
-
-            if (arg instanceof vscode.Uri) {
-                uri = arg;
-            } else if (arg instanceof ChainTreeItem && arg.resourceUri) {
-                uri = arg.resourceUri;
-            }
-
+            const uri = await resolveChainUri(arg, 'Select a chain to export');
             if (!uri) {
-                void vscode.window.showErrorMessage('No chain selected for export.');
                 return;
             }
 
@@ -172,16 +201,8 @@ export function registerCommands(
     // Export Markdown Report
     context.subscriptions.push(
         vscode.commands.registerCommand('lctl.exportMarkdown', async (arg?: vscode.Uri | ChainTreeItem) => {
-            let uri: vscode.Uri | undefined;
-
-            if (arg instanceof vscode.Uri) {
-                uri = arg;
-            } else if (arg instanceof ChainTreeItem && arg.resourceUri) {
-                uri = arg.resourceUri;
-            }
-
+            const uri = await resolveChainUri(arg, 'Select a chain to export');
             if (!uri) {
-                void vscode.window.showErrorMessage('No chain selected for export.');
                 return;
             }
 
@@ -223,16 +244,8 @@ export function registerCommands(
     // Show Statistics
     context.subscriptions.push(
         vscode.commands.registerCommand('lctl.showStats', async (arg?: vscode.Uri | ChainTreeItem) => {
-            let uri: vscode.Uri | undefined;
-
-            if (arg instanceof vscode.Uri) {
-                uri = arg;
-            } else if (arg instanceof ChainTreeItem && arg.resourceUri) {
-                uri = arg.resourceUri;
-            }
-
+            const uri = await resolveChainUri(arg, 'Select a chain');
             if (!uri) {
-                void vscode.window.showErrorMessage('No chain selected.');
                 return;
             }
 
@@ -318,8 +331,6 @@ function generateHtmlReport(chainData: LctlChainFile, filePath: string): string 
 
     // Compute stats
     let totalDurationMs = 0;
-    let tokensIn = 0;
-    let tokensOut = 0;
     let errorCount = 0;
     const agents = new Set<string>();
 
@@ -328,10 +339,10 @@ function generateHtmlReport(chainData: LctlChainFile, filePath: string): string 
         if (event.type === 'error') {errorCount++;}
         if (event.type === 'step_end' && event.data) {
             totalDurationMs += Number(event.data.duration_ms) || 0;
-            tokensIn += Number(event.data.tokens_in) || 0;
-            tokensOut += Number(event.data.tokens_out) || 0;
         }
     }
+
+    const { input: tokensIn, output: tokensOut } = chainTokens(events);
 
     // Valid event types for CSS class sanitization
     const validEventTypes = ['step_start', 'step_end', 'fact_added', 'fact_modified', 'tool_call', 'error', 'checkpoint'];
@@ -489,8 +500,9 @@ function formatEventDetails(event: LctlEvent): string {
     } else if (event.type === 'step_end') {
         if (data.outcome) {lines.push(`Outcome: ${data.outcome}`);}
         if (data.duration_ms) {lines.push(`Duration: ${data.duration_ms}ms`);}
-        if (data.tokens_in || data.tokens_out) {
-            lines.push(`Tokens: ${data.tokens_in || 0} in / ${data.tokens_out || 0} out`);
+        const tokens = eventTokens(data);
+        if (tokens.input || tokens.output) {
+            lines.push(`Tokens: ${tokens.input} in / ${tokens.output} out`);
         }
     } else if (event.type === 'tool_call') {
         if (data.tool) {lines.push(`Tool: ${data.tool}`);}
@@ -521,8 +533,6 @@ function generateMarkdownReport(chainData: LctlChainFile, filePath: string): str
 
     // Compute stats
     let totalDurationMs = 0;
-    let tokensIn = 0;
-    let tokensOut = 0;
     let errorCount = 0;
     const agents = new Set<string>();
     const tools = new Set<string>();
@@ -535,10 +545,10 @@ function generateMarkdownReport(chainData: LctlChainFile, filePath: string): str
         }
         if (event.type === 'step_end' && event.data) {
             totalDurationMs += Number(event.data.duration_ms) || 0;
-            tokensIn += Number(event.data.tokens_in) || 0;
-            tokensOut += Number(event.data.tokens_out) || 0;
         }
     }
+
+    const { input: tokensIn, output: tokensOut } = chainTokens(events);
 
     const lines: string[] = [
         `# LCTL Report: ${chainId}`,
@@ -628,8 +638,9 @@ function formatMarkdownEventDetails(event: LctlEvent): string {
     } else if (event.type === 'step_end') {
         if (data.outcome) {lines.push(`- **Outcome**: ${data.outcome}`);}
         if (data.duration_ms) {lines.push(`- **Duration**: ${data.duration_ms}ms`);}
-        if (data.tokens_in || data.tokens_out) {
-            lines.push(`- **Tokens**: ${data.tokens_in || 0} in / ${data.tokens_out || 0} out`);
+        const tokens = eventTokens(data);
+        if (tokens.input || tokens.output) {
+            lines.push(`- **Tokens**: ${tokens.input} in / ${tokens.output} out`);
         }
         if (data.output_summary) {lines.push(`- **Output**: ${truncate(data.output_summary as string, 150)}`);}
     } else if (event.type === 'tool_call') {

@@ -169,9 +169,8 @@
     "build:webview": "cd webview-ui && npm run build",
     "watch": "tsc -watch -p ./",
     "watch:webview": "cd webview-ui && npm run watch",
-    "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test",
+    "test": "npm run compile && node --test \"test/*.test.mjs\"",
     "package": "npm run build:webview && npx @vscode/vsce package"
   },
   "devDependencies": {

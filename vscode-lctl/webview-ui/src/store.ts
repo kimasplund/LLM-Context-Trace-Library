@@ -39,7 +39,7 @@ interface AppState {
   detailsPanelHeight: number;
 
   // Actions
-  setChain: (chain: LctlChainFile, path: string, isRecording: boolean) => void;
+  setChain: (chain: LctlChainFile, path: string, isRecording: boolean, pricing?: Pricing) => void;
   setReplayState: (state: Partial<ReplayState>) => void;
   setFilter: (filter: Partial<FilterState>) => void;
   selectEvent: (event: LctlEvent | null) => void;
@@ -59,18 +59,25 @@ interface AppState {
   setDetailsPanelHeight: (height: number) => void;
 }
 
-// Model pricing per 1M tokens
-const MODEL_PRICING: Record<string, { input: number; output: number }> = {
-  'claude-opus-4.5': { input: 5.0, output: 25.0 },
-  'claude-sonnet-4': { input: 3.0, output: 15.0 },
-  'claude-haiku-3': { input: 0.25, output: 1.25 },
-  'gpt-4': { input: 30.0, output: 60.0 },
-  'gpt-4-turbo': { input: 10.0, output: 30.0 },
-  'gpt-3.5-turbo': { input: 0.5, output: 1.5 },
-  'default': { input: 3.0, output: 15.0 },
-};
+type Pricing = { input: number; output: number };
 
-function computeStats(chain: LctlChainFile): ChainStats {
+// Used until the extension sends the pricing selected in `lctl.defaultPricing`.
+const FALLBACK_PRICING: Pricing = { input: 3.0, output: 15.0 };
+
+// Mirrors eventTokens() in src/chainStats.ts (the webview cannot import extension
+// sources): the library writes data.tokens.{input,output}; older traces used
+// flat tokens_in / tokens_out.
+function stepTokens(data: Record<string, unknown>): { input: number; output: number } {
+  const num = (v: unknown): number => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const nested = data.tokens;
+  if (nested && typeof nested === 'object') {
+    const t = nested as Record<string, unknown>;
+    return { input: num(t.input ?? t.in), output: num(t.output ?? t.out) };
+  }
+  return { input: num(data.tokens_in), output: num(data.tokens_out) };
+}
+
+function computeStats(chain: LctlChainFile, pricing: Pricing): ChainStats {
   const events = chain.events || [];
   const agents = new Set<string>();
   const tools = new Set<string>();
@@ -93,8 +100,9 @@ function computeStats(chain: LctlChainFile): ChainStats {
 
     if (event.type === 'step_end' && event.data) {
       totalDurationMs += (event.data.duration_ms as number) || 0;
-      tokensIn += (event.data.tokens_in as number) || 0;
-      tokensOut += (event.data.tokens_out as number) || 0;
+      const tokens = stepTokens(event.data);
+      tokensIn += tokens.input;
+      tokensOut += tokens.output;
     }
 
     if (event.type === 'fact_added' || event.type === 'fact_modified') {
@@ -111,7 +119,6 @@ function computeStats(chain: LctlChainFile): ChainStats {
     }
   }
 
-  const pricing = MODEL_PRICING['default'];
   const estimatedCost =
     (tokensIn / 1_000_000) * pricing.input +
     (tokensOut / 1_000_000) * pricing.output;
@@ -157,8 +164,8 @@ export const useStore = create<AppState>((set, get) => ({
   detailsPanelHeight: 250,
 
   // Actions
-  setChain: (chain, path, isRecording) => {
-    const stats = computeStats(chain);
+  setChain: (chain, path, isRecording, pricing = FALLBACK_PRICING) => {
+    const stats = computeStats(chain, pricing);
     const maxSeq = chain.events?.length || 0;
     set({
       chain,

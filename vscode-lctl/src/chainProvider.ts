@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { chainCost, chainTokens, limitEvents, pricingFor } from './chainStats';
 
 // LCTL v4.0 Schema Types
 export interface LctlChainFile {
@@ -32,16 +33,10 @@ export interface ChainStats {
     lastModified: Date;
 }
 
-// Model pricing (per 1M tokens)
-const MODEL_PRICING: Record<string, { input: number; output: number }> = {
-    'claude-opus-4.5': { input: 5.0, output: 25.0 },
-    'claude-sonnet-4': { input: 3.0, output: 15.0 },
-    'claude-haiku-3': { input: 0.25, output: 1.25 },
-    'gpt-4': { input: 30.0, output: 60.0 },
-    'gpt-4-turbo': { input: 10.0, output: 30.0 },
-    'gpt-3.5-turbo': { input: 0.5, output: 1.5 },
-    'default': { input: 3.0, output: 15.0 },
-};
+/** Model chosen in `lctl.defaultPricing`, used for cost estimates. */
+export function configuredModel(): string | undefined {
+    return vscode.workspace.getConfiguration('lctl').get<string>('defaultPricing');
+}
 
 export class ChainTreeItem extends vscode.TreeItem {
     constructor(
@@ -211,9 +206,34 @@ export class ChainTreeProvider implements vscode.TreeDataProvider<ChainTreeItem>
     constructor(private context: vscode.ExtensionContext) {
         this.setupFileWatchers();
         this.checkForActiveRecording();
+
+        context.subscriptions.push(
+            vscode.workspace.onDidChangeConfiguration(e => {
+                if (e.affectsConfiguration('lctl.autoRefresh')) {
+                    this.disposeFileWatchers();
+                    this.setupFileWatchers();
+                    this.refresh();
+                } else if (e.affectsConfiguration('lctl.maxEventsInTree') ||
+                           e.affectsConfiguration('lctl.defaultPricing')) {
+                    // Pricing feeds cached stats, so drop the cache.
+                    this.refresh();
+                }
+            })
+        );
+    }
+
+    private disposeFileWatchers(): void {
+        this.fileWatcher?.dispose();
+        this.stateFileWatcher?.dispose();
+        this.fileWatcher = undefined;
+        this.stateFileWatcher = undefined;
     }
 
     private setupFileWatchers(): void {
+        if (!vscode.workspace.getConfiguration('lctl').get<boolean>('autoRefresh', true)) {
+            return;
+        }
+
         // Watch for .lctl.json file changes
         this.fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.lctl.json');
 
@@ -230,8 +250,6 @@ export class ChainTreeProvider implements vscode.TreeDataProvider<ChainTreeItem>
             this.chainFiles.delete(uri.fsPath);
             this._onDidChangeTreeData.fire();
         });
-
-        this.context.subscriptions.push(this.fileWatcher);
 
         // Watch for state file changes (indicates active recording)
         this.stateFileWatcher = vscode.workspace.createFileSystemWatcher('**/.lctl-state.json');
@@ -251,7 +269,6 @@ export class ChainTreeProvider implements vscode.TreeDataProvider<ChainTreeItem>
             this._onDidChangeTreeData.fire();
         });
 
-        this.context.subscriptions.push(this.stateFileWatcher);
     }
 
     private async checkForActiveRecording(): Promise<void> {
@@ -293,7 +310,10 @@ export class ChainTreeProvider implements vscode.TreeDataProvider<ChainTreeItem>
 
         // Show events under chain
         if (element.chainData?.events) {
-            return element.chainData.events.slice(0, 50).map(event =>
+            return limitEvents(
+                element.chainData.events,
+                vscode.workspace.getConfiguration('lctl').get<number>('maxEventsInTree', 50)
+            ).map(event =>
                 new ChainTreeItem(
                     `[${event.seq}] ${event.type}`,
                     vscode.TreeItemCollapsibleState.None,
@@ -406,16 +426,13 @@ export class ChainTreeProvider implements vscode.TreeDataProvider<ChainTreeItem>
             // Accumulate metrics from step_end events
             if (event.type === 'step_end' && event.data) {
                 stats.totalDurationMs += Number(event.data.duration_ms) || 0;
-                stats.tokensIn += Number(event.data.tokens_in) || 0;
-                stats.tokensOut += Number(event.data.tokens_out) || 0;
             }
         }
 
-        // Estimate cost using default pricing
-        const pricing = MODEL_PRICING['default'];
-        stats.estimatedCost =
-            (stats.tokensIn / 1_000_000) * pricing.input +
-            (stats.tokensOut / 1_000_000) * pricing.output;
+        const tokens = chainTokens(data.events);
+        stats.tokensIn = tokens.input;
+        stats.tokensOut = tokens.output;
+        stats.estimatedCost = chainCost(tokens, pricingFor(configuredModel()));
 
         return stats;
     }
@@ -443,7 +460,6 @@ export class ChainTreeProvider implements vscode.TreeDataProvider<ChainTreeItem>
     }
 
     dispose(): void {
-        this.fileWatcher?.dispose();
-        this.stateFileWatcher?.dispose();
+        this.disposeFileWatchers();
     }
 }

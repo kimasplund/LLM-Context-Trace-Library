@@ -100,8 +100,12 @@ function OverviewTab({ event }: { event: LctlEvent }) {
       });
     }
     if (data.duration_ms) fields.push({ label: 'Duration', value: formatDuration(Number(data.duration_ms)) });
-    if (data.tokens_in) fields.push({ label: 'Tokens In', value: Number(data.tokens_in).toLocaleString() });
-    if (data.tokens_out) fields.push({ label: 'Tokens Out', value: Number(data.tokens_out).toLocaleString() });
+    // Library traces nest tokens as data.tokens.{input,output}; older ones are flat.
+    const tokens = (data.tokens && typeof data.tokens === 'object' ? data.tokens : {}) as Record<string, unknown>;
+    const tokensIn = Number(tokens.input ?? data.tokens_in) || 0;
+    const tokensOut = Number(tokens.output ?? data.tokens_out) || 0;
+    if (tokensIn) fields.push({ label: 'Tokens In', value: tokensIn.toLocaleString() });
+    if (tokensOut) fields.push({ label: 'Tokens Out', value: tokensOut.toLocaleString() });
     if (data.output_summary) fields.push({ label: 'Output Summary', value: String(data.output_summary), fullWidth: true });
   }
 

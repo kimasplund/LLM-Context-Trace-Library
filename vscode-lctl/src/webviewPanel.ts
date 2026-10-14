@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { LctlChainFile } from './chainProvider';
+import { LctlChainFile, configuredModel } from './chainProvider';
+import { pricingFor } from './chainStats';
 
 export class LctlDashboardPanel {
     public static currentPanel: LctlDashboardPanel | undefined;
@@ -79,6 +80,17 @@ export class LctlDashboardPanel {
             this._disposables
         );
 
+        vscode.workspace.onDidChangeConfiguration(
+            e => {
+                if (this._chainUri && e.affectsConfiguration('lctl')) {
+                    // autoRefresh toggles the watcher; defaultPricing changes the cost estimate.
+                    void this.loadChain(this._chainUri);
+                }
+            },
+            null,
+            this._disposables
+        );
+
         if (chainUri) {
             this.loadChain(chainUri);
         }
@@ -92,6 +104,11 @@ export class LctlDashboardPanel {
 
     private _setupFileWatcher(uri: vscode.Uri): void {
         this._fileWatcher?.dispose();
+        this._fileWatcher = undefined;
+
+        if (!vscode.workspace.getConfiguration('lctl').get<boolean>('autoRefresh', true)) {
+            return;
+        }
 
         const pattern = new vscode.RelativePattern(
             vscode.Uri.joinPath(uri, '..'),
@@ -144,7 +161,8 @@ export class LctlDashboardPanel {
                 type: 'chainData',
                 data: this._chainData,
                 path: this._chainUri.fsPath,
-                isRecording: this._isRecording
+                isRecording: this._isRecording,
+                pricing: pricingFor(configuredModel())
             });
         } catch (err) {
             this._panel.webview.postMessage({

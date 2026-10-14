@@ -78,7 +78,7 @@ function App() {
 
       switch (message.type) {
         case 'chainData':
-          setChain(message.data, message.path, message.isRecording);
+          setChain(message.data, message.path, message.isRecording, message.pricing);
           break;
         case 'compareChainData':
           setCompareChain(message.data, message.path);
