@@ -1,0 +1,95 @@
+{
+  "lctl": "4.1",
+  "chain": {
+    "id": "spans-v41-orphans"
+  },
+  "events": [
+    {
+      "seq": 1,
+      "type": "step_start",
+      "timestamp": "2026-01-19T14:00:00",
+      "agent": "planner",
+      "data": {
+        "intent": "plan the work",
+        "input_summary": ""
+      }
+    },
+    {
+      "seq": 2,
+      "type": "step_start",
+      "timestamp": "2026-01-19T14:00:01",
+      "agent": "coder",
+      "data": {
+        "intent": "write code",
+        "input_summary": ""
+      }
+    },
+    {
+      "seq": 3,
+      "type": "tool_call",
+      "timestamp": "2026-01-19T14:00:02",
+      "agent": "coder",
+      "data": {
+        "tool": "editor",
+        "input": {},
+        "output": {},
+        "duration_ms": 0
+      }
+    },
+    {
+      "seq": 4,
+      "type": "step_end",
+      "timestamp": "2026-01-19T14:00:03",
+      "agent": "coder",
+      "data": {
+        "outcome": "success",
+        "output_summary": "",
+        "duration_ms": 2000,
+        "tokens": {
+          "input": 0,
+          "output": 0
+        }
+      }
+    },
+    {
+      "seq": 5,
+      "type": "step_end",
+      "timestamp": "2026-01-19T14:00:04",
+      "agent": "reviewer",
+      "data": {
+        "outcome": "success",
+        "output_summary": "",
+        "duration_ms": 0,
+        "tokens": {
+          "input": 0,
+          "output": 0
+        }
+      }
+    },
+    {
+      "seq": 6,
+      "type": "step_start",
+      "timestamp": "2026-01-19T14:00:05",
+      "agent": "tester",
+      "data": {
+        "intent": "run tests",
+        "input_summary": ""
+      }
+    },
+    {
+      "seq": 7,
+      "type": "step_end",
+      "timestamp": "2026-01-19T14:00:06",
+      "agent": "planner",
+      "data": {
+        "outcome": "success",
+        "output_summary": "",
+        "duration_ms": 0,
+        "tokens": {
+          "input": 0,
+          "output": 0
+        }
+      }
+    }
+  ]
+}

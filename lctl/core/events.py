@@ -432,21 +432,133 @@ class ReplayEngine:
         trace = []
         for event in self.chain.events:
             if event.type in (EventType.STEP_START, EventType.STEP_END):
-                trace.append(
-                    {
-                        "seq": event.seq,
-                        "type": event.type.value,
-                        "agent": event.agent,
-                        "timestamp": event.timestamp.isoformat(),
-                        **event.data,
-                    }
-                )
+                entry = {
+                    "seq": event.seq,
+                    "type": event.type.value,
+                    "agent": event.agent,
+                    "timestamp": event.timestamp.isoformat(),
+                    **event.data,
+                }
+                if event.span_id is not None:
+                    entry["span_id"] = event.span_id
+                if event.parent_span_id is not None:
+                    entry["parent_span_id"] = event.parent_span_id
+                trace.append(entry)
         return trace
+
+    def get_span_tree(self) -> list[dict[str, Any]]:
+        """Build the call tree of spans (steps), outermost first.
+
+        Uses recorded span ids (format 4.2) where present. Older events are paired
+        by inference: a STEP_END closes the most recent open inferred span of the
+        same agent, and a span's parent is the innermost span open when it starts.
+        Inferred ids are deterministic ("inferred-<start_seq>"); a STEP_END with no
+        matching start becomes an "orphan-<end_seq>" root instead of being dropped.
+        """
+        nodes: dict[str, dict[str, Any]] = {}
+        roots: list[dict[str, Any]] = []
+        open_ids: list[str] = []
+
+        for event in self.chain.events:
+            if event.type == EventType.STEP_START:
+                span_id = event.span_id or f"inferred-{event.seq}"
+                if event.span_id is not None:
+                    parent_id = event.parent_span_id
+                else:
+                    parent_id = open_ids[-1] if open_ids else None
+                node: dict[str, Any] = {
+                    "span_id": span_id,
+                    "parent_span_id": parent_id,
+                    "agent": event.agent,
+                    "intent": event.data.get("intent"),
+                    "start_seq": event.seq,
+                    "end_seq": None,
+                    "start_time": event.timestamp.isoformat(),
+                    "end_time": None,
+                    "duration_ms": None,
+                    "outcome": None,
+                    "event_count": 0,
+                    "children": [],
+                    "inferred": event.span_id is None,
+                }
+                if parent_id in nodes:
+                    nodes[parent_id]["children"].append(node)
+                else:
+                    roots.append(node)
+                nodes[span_id] = node
+                open_ids.append(span_id)
+            elif event.type == EventType.STEP_END:
+                closing = self._closing_span(event, nodes, open_ids)
+                if closing is None:
+                    node = {
+                        "span_id": f"orphan-{event.seq}",
+                        "parent_span_id": None,
+                        "agent": event.agent,
+                        "intent": None,
+                        "start_seq": None,
+                        "end_seq": None,
+                        "start_time": None,
+                        "end_time": None,
+                        "duration_ms": None,
+                        "outcome": None,
+                        "event_count": 0,
+                        "children": [],
+                        "inferred": True,
+                    }
+                    roots.append(node)
+                else:
+                    node = nodes[closing]
+                    open_ids.remove(closing)
+                node["end_seq"] = event.seq
+                node["end_time"] = event.timestamp.isoformat()
+                node["outcome"] = event.data.get("outcome")
+                node["duration_ms"] = self._span_duration_ms(node, event)
+            else:
+                owner = (
+                    event.span_id
+                    if event.span_id in nodes
+                    else (open_ids[-1] if open_ids else None)
+                )
+                if owner is not None:
+                    nodes[owner]["event_count"] += 1
+
+        return roots
+
+    @staticmethod
+    def _closing_span(
+        event: Event, nodes: dict[str, dict[str, Any]], open_ids: list[str]
+    ) -> str | None:
+        """Which open span a STEP_END closes: its recorded span, else by inference."""
+        if event.span_id is not None and event.span_id in nodes:
+            return event.span_id if event.span_id in open_ids else None
+        for span_id in reversed(open_ids):
+            node = nodes[span_id]
+            if node["inferred"] and node["agent"] == event.agent:
+                return span_id
+        return None
+
+    @staticmethod
+    def _span_duration_ms(node: dict[str, Any], end_event: Event) -> int | None:
+        recorded = end_event.data.get("duration_ms") or 0
+        if recorded > 0:
+            return int(recorded)
+        if node["start_time"] is None:
+            return None
+        start = datetime.fromisoformat(node["start_time"])
+        return int((end_event.timestamp - start).total_seconds() * 1000)
 
     def diff(self, other: "ReplayEngine") -> list[dict[str, Any]]:
         """Compare two chains and find divergence points."""
         diffs = []
         max_len = max(len(self.chain.events), len(other.chain.events))
+
+        def comparable(event: Event) -> dict[str, Any]:
+            # Identity fields differ between any two runs; compare content only.
+            return {
+                k: v
+                for k, v in event.to_dict().items()
+                if k not in ("id", "span_id", "parent_span_id")
+            }
 
         for i in range(max_len):
             e1 = self.chain.events[i] if i < len(self.chain.events) else None
@@ -456,7 +568,7 @@ class ReplayEngine:
                 diffs.append({"seq": i + 1, "type": "missing_in_first", "event": e2.to_dict()})
             elif e2 is None and e1 is not None:
                 diffs.append({"seq": i + 1, "type": "missing_in_second", "event": e1.to_dict()})
-            elif e1 is not None and e2 is not None and e1.to_dict() != e2.to_dict():
+            elif e1 is not None and e2 is not None and comparable(e1) != comparable(e2):
                 diffs.append(
                     {
                         "seq": e1.seq,
