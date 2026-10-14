@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/kimasplund/LLM-Context-Trace-Library/actions/workflows/ci.yml"><img src="https://github.com/kimasplund/LLM-Context-Trace-Library/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+</p>
+
+<p align="center">
   <a href="#installation">Installation</a> &bull;
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#framework-integrations">Integrations</a> &bull;
@@ -99,7 +103,7 @@ pip install "lctl[all] @ git+https://github.com/kimasplund/LLM-Context-Trace-Lib
 ```bash
 git clone https://github.com/kimasplund/LLM-Context-Trace-Library.git
 cd LLM-Context-Trace-Library
-pip install -e '.[dev]'
+uv sync                          # or, without uv (pip >= 25.1): pip install -e . --group dev
 ```
 
 ## Quick Start
@@ -945,32 +949,31 @@ We welcome contributions! Here's how to get started:
 git clone https://github.com/kimasplund/LLM-Context-Trace-Library.git
 cd LLM-Context-Trace-Library
 
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # or `.venv\Scripts\activate` on Windows
+# Create the dev environment from uv.lock (https://docs.astral.sh/uv/)
+uv sync
+# Without uv (pip >= 25.1): pip install -e . --group dev
 
-# Install development dependencies
-pip install -e '.[dev]'
+# Run the same checks as CI on every commit
+uv run pre-commit install
 
-# Run tests
-pytest
+# Run tests (with branch coverage)
+uv run pytest
 
-# Run tests with coverage
-pytest --cov=lctl --cov-report=term-missing
-
-# Format code
-black lctl tests
-ruff check lctl tests --fix
+# Format, lint, type-check
+uv run ruff format .
+uv run ruff check --fix .
+uv run mypy
 ```
 
 ### Pull Request Guidelines
 
 1. Fork the repository and create a feature branch
 2. Write tests for new functionality
-3. Ensure all tests pass: `pytest`
-4. Format code: `black lctl tests`
-5. Check linting: `ruff check lctl tests`
-6. Submit a pull request with a clear description
+3. Ensure all tests pass: `uv run pytest`
+4. Run all checks: `uv run pre-commit run --all-files` (ruff, mypy, lockfile, workflow lint)
+5. Submit a pull request with a clear description
+
+Repository owners: enable Dependabot alerts and security updates under Settings → Code security.
 
 ### Reporting Issues
 

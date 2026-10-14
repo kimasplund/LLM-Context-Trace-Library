@@ -1982,7 +1982,8 @@ Health check endpoint.
 ```json
 {
   "status": "ok",
-  "version": "4.0.0"
+  "version": "4.1.0",
+  "streaming": true
 }
 ```
 
@@ -2129,4 +2130,4 @@ Integration-specific exceptions:
 
 ---
 
-*This documentation was generated for LCTL v4.0.0*
+*This documentation was generated for LCTL v4.1.0*

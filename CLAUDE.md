@@ -28,11 +28,25 @@ lctl/
 ├── __init__.py          # Public API, auto_instrument(), traced decorator
 ├── core/
 │   ├── events.py        # Chain, Event, EventType, State, ReplayEngine
-│   └── session.py       # LCTLSession, traced_step context manager
+│   ├── session.py       # LCTLSession, traced_step context manager
+│   ├── redaction.py     # Sensitive data redaction for traces
+│   └── schema.py        # Schema versioning and migration
 ├── cli/
 │   └── main.py          # Click CLI: replay, stats, bottleneck, diff, trace, debug, claude
 ├── dashboard/
 │   └── app.py           # FastAPI web dashboard
+├── streaming/
+│   ├── emitter.py       # EventEmitter: publish/subscribe for real-time events
+│   ├── subscriber.py    # Event subscriber patterns (buffered, async, filtered)
+│   └── websocket.py     # WebSocket and SSE servers for event streaming
+├── metrics/
+│   ├── collectors.py    # Collect metrics from chains
+│   ├── aggregators.py   # Aggregate metrics across chains
+│   └── exporters.py     # Export metrics to various formats
+├── evaluation/
+│   ├── comparator.py    # Chain comparator: A/B testing of executions
+│   ├── metrics.py       # Metrics for comparing chain executions
+│   └── statistical.py   # Statistical significance tests for A/B comparisons
 └── integrations/
     ├── __init__.py      # Integration exports
     ├── base.py          # BaseTracer, TracerDelegate, truncate, check_availability
@@ -188,20 +202,8 @@ session.modify_fact("F1", confidence=0.9, reason="verified by tests")
 /home/kim/projects/llm-context-transfer/
 ├── lctl/                       # Main package
 │   ├── __init__.py             # Public API exports
-│   ├── core/                   # Core functionality
-│   │   ├── events.py           # Chain, Event, State, ReplayEngine
-│   │   └── session.py          # LCTLSession, traced_step
-│   ├── cli/                    # Command-line interface
-│   │   └── main.py             # Click commands
-│   ├── dashboard/              # Web UI
-│   │   ├── app.py              # FastAPI application
-│   │   ├── static/             # CSS, JS
-│   │   └── templates/          # HTML templates
-│   └── integrations/           # Framework integrations
-│       ├── langchain.py        # LangChain support
-│       ├── crewai.py           # CrewAI support
-│       ├── autogen.py          # AutoGen/AG2 support
-│       └── openai_agents.py    # OpenAI Agents SDK support
+│   ├── core/ cli/ streaming/ metrics/ evaluation/ integrations/  # see Architecture
+│   └── dashboard/              # Web UI: app.py, static/ (CSS, JS), templates/
 ├── tests/                      # Test suite
 │   ├── conftest.py             # Shared fixtures
 │   ├── test_events.py          # Core events tests
@@ -213,7 +215,12 @@ session.modify_fact("F1", confidence=0.9, reason="verified by tests")
 │   ├── langchain_example.py    # LangChain integration demo
 │   ├── crewai_example.py       # CrewAI integration demo
 │   └── autogen_example.py      # AutoGen integration demo
-├── pyproject.toml              # Project configuration
+├── scripts/check_wheel.py      # Wheel content/metadata check (CI package job)
+├── vscode-lctl/                # VS Code extension (TypeScript + React webview)
+├── .github/                    # CI workflow, Dependabot
+├── .pre-commit-config.yaml     # Same checks as CI's lint job
+├── pyproject.toml              # Project, uv dependency groups, ruff/mypy/pytest config
+├── uv.lock                     # Locked dependencies (commit changes with pyproject.toml)
 ├── README.md                   # User documentation
 └── LLM-CONTEXT-TRANSFER.md     # Full specification
 ```
@@ -223,66 +230,44 @@ session.modify_fact("F1", confidence=0.9, reason="verified by tests")
 ### Setup
 
 ```bash
-# Clone and create virtual environment
-cd /home/kim/projects/llm-context-transfer
-python -m venv .venv
-source .venv/bin/activate
+# Dev environment: project + dev group (pytest, ruff, mypy, pre-commit, dashboard deps)
+uv sync
+uv run pre-commit install
 
-# Install with dev dependencies
-pip install -e ".[dev]"
+# Add framework integrations
+uv sync --all-extras            # or: uv sync --extra langchain
 
-# Install with all integrations
-pip install -e ".[all]"
-
-# Install specific integration
-pip install -e ".[langchain]"
-pip install -e ".[crewai]"
-pip install -e ".[dashboard]"
+# Without uv (pip >= 25.1)
+pip install -e . --group dev
 ```
 
 ### Running Tests
 
 ```bash
-# Run all tests with coverage
-pytest
-
-# Run specific test file
-pytest tests/test_events.py
-
-# Run specific test class
-pytest tests/test_cli.py::TestReplayCommand
-
-# Run with verbose output
-pytest -v
-
-# Run and show print statements
-pytest -s
-
-# Quick test (no coverage)
-pytest --no-cov
+uv run pytest                                  # All tests, branch coverage (fail_under in pyproject)
+uv run pytest tests/test_events.py             # One file
+uv run pytest tests/test_cli.py::TestReplayCommand
+uv run pytest --no-cov -x                      # Quick, stop on first failure
 ```
+
+Warnings are errors (`filterwarnings = ["error"]`); fix the cause rather than ignoring it.
 
 ### Linting and Formatting
 
 ```bash
-# Format code
-black lctl/ tests/
-
-# Lint code
-ruff check lctl/ tests/
-
-# Fix auto-fixable lint issues
-ruff check --fix lctl/ tests/
+uv run ruff format .                  # Format
+uv run ruff check --fix .             # Lint and fix
+uv run mypy                           # Type check (lctl/)
+uv run pre-commit run --all-files     # Everything CI's lint job runs
 ```
+
+Intentional rule violations get a line-level `# noqa: RULE  # reason`; never file-wide ignores under `lctl/`.
 
 ### Building
 
 ```bash
-# Build package
-python -m build
-
-# Install locally built package
-pip install dist/lctl-4.0.0-py3-none-any.whl
+uv build                                       # sdist + wheel into dist/
+python3 scripts/check_wheel.py dist/*.whl      # Verify wheel contents and metadata
 ```
 
 ## Code Patterns
@@ -302,54 +287,7 @@ event = Event(seq=1, type=EventType.STEP_START, ...)
 
 ### 2. Integration Pattern
 
-All integrations use one of two base class patterns from `lctl.integrations.base`:
-
-**Pattern A: BaseTracer inheritance** (for standalone tracers)
-```python
-from lctl.integrations.base import BaseTracer, IntegrationNotAvailableError
-
-
-class LCTLMyTracer(BaseTracer):
-    """Tracer that can directly inherit from BaseTracer."""
-
-    def __init__(self, chain_id=None, session=None, *, auto_cleanup=True, cleanup_interval=3600.0):
-        if not FRAMEWORK_AVAILABLE:
-            raise IntegrationNotAvailableError("MyFramework", "pip install myframework")
-        super().__init__(
-            chain_id=chain_id,
-            session=session,
-            auto_cleanup=auto_cleanup,
-            cleanup_interval=cleanup_interval,
-        )
-
-    # Implement framework-specific hooks...
-    # Inherited: session, chain, export(), to_dict(), _track_item(), cleanup_stale_entries()
-```
-
-**Pattern B: TracerDelegate composition** (for callback-based integrations)
-```python
-from lctl.integrations.base import TracerDelegate
-
-
-class LCTLCallbackHandler(FrameworkBaseCallback):
-    """Callback handler that must extend framework class, uses composition."""
-
-    def __init__(self, chain_id=None, session=None, *, auto_cleanup=True, cleanup_interval=3600.0):
-        super().__init__()  # Framework's __init__
-        self._tracer = TracerDelegate(
-            chain_id=chain_id,
-            session=session,
-            auto_cleanup=auto_cleanup,
-            cleanup_interval=cleanup_interval,
-        )
-
-    @property
-    def session(self):
-        return self._tracer.session
-
-    def export(self, path: str):
-        self._tracer.export(path)
-```
+All integrations use `BaseTracer` (inheritance) or `TracerDelegate` (composition) from `lctl.integrations.base`; see [Integration Guide](#integration-guide) for both templates.
 
 **Current integration patterns:**
 - BaseTracer: pydantic_ai, semantic_kernel, dspy, openai_agents, autogen
@@ -569,10 +507,11 @@ newframework = ["newframework>=1.0"]
 
 ```bash
 # Development
-pytest                              # Run tests
-pytest --no-cov -x                  # Quick test, stop on first failure
-black lctl/ tests/                  # Format code
-ruff check --fix lctl/              # Lint and fix
+uv run pytest                       # Run tests
+uv run pytest --no-cov -x           # Quick test, stop on first failure
+uv run ruff format .                # Format code
+uv run ruff check --fix .           # Lint and fix
+uv run mypy                         # Type check
 
 # CLI usage
 lctl replay chain.lctl.json         # Replay to end
@@ -689,8 +628,8 @@ pip install fastapi uvicorn
 ### Tests Failing
 
 ```bash
-# Ensure dev dependencies
-pip install -e ".[dev]"
+# Ensure the dev environment is in sync with uv.lock
+uv sync
 
 # Check for import issues
 python -c "from lctl import Chain, ReplayEngine"
@@ -698,6 +637,6 @@ python -c "from lctl import Chain, ReplayEngine"
 
 ## Version
 
-- **LCTL Version**: 4.0.0
-- **Python**: 3.9+
+- **LCTL Version**: see `__version__` in `lctl/__init__.py` (single source; packaging reads it)
+- **Python**: 3.11+
 - **Key Dependencies**: click>=8.0, pyyaml>=6.0

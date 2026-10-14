@@ -6,26 +6,14 @@ as LCTL events for debugging and analysis.
 
 Usage with Claude Code hooks:
 
-    1. Create hook scripts in your project's .claude/hooks/ directory
-    2. Use the LCTLClaudeCodeTracer to record events
+    lctl claude init        # writes .claude/hooks/{PreToolUse,PostToolUse,Stop}.sh
+    lctl claude validate    # checks they are installed and executable
 
-Example hook script (.claude/hooks/PostToolUse.sh):
-
-    #!/bin/bash
-    # Trace Task tool completions
-    if [ "$CLAUDE_TOOL_NAME" = "Task" ]; then
-        python -c "
-    from lctl.integrations.claude_code import LCTLClaudeCodeTracer
-    import os, json
-
-    tracer = LCTLClaudeCodeTracer.get_or_create()
-    tracer.on_task_complete(
-        agent_type=os.environ.get('CLAUDE_TOOL_INPUT_subagent_type', 'unknown'),
-        description=os.environ.get('CLAUDE_TOOL_INPUT_description', ''),
-        result=os.environ.get('CLAUDE_TOOL_RESULT', '')[:1000]
-    )
-    "
-    fi
+Claude Code passes each hook its payload as JSON on stdin (``tool_name``,
+``tool_input``, ...). The generated scripts (see ``generate_hooks``) capture
+stdin, base64-encode it into ``HOOK_INPUT_B64``, and run an embedded Python
+snippet that decodes the payload and calls the matching
+``LCTLClaudeCodeTracer`` method.
 
 Programmatic usage:
 

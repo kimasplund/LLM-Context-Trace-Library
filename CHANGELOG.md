@@ -5,7 +5,19 @@ All notable changes to the LCTL (LLM Context Trace Library) project will be docu
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.1.0] - 2025-01-19
+## [Unreleased]
+
+### Changed
+
+- Project management with uv and a committed `uv.lock`; dev tools moved to a PEP 735 dependency group
+- `ruff format` replaces black; modern ruff rule set (pyupgrade, bugbear, bandit, simplify, async, pytest-style)
+- mypy type checking; package ships `py.typed`
+- pytest runs with warnings as errors and branch coverage (`fail_under` enforced)
+- GitHub Actions CI (Python 3.11-3.15, wheel check, VS Code extension build) and Dependabot
+- pre-commit hooks mirroring CI's lint job
+- License metadata follows PEP 639 (`AGPL-3.0-only`, no conflicting classifier)
+
+## [4.1.0] - 2026-01-19
 
 ### Added
 
