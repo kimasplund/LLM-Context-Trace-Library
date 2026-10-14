@@ -17,7 +17,7 @@ async def test_kickoff_async_tracing():
     mock_task.description = "test task"
 
     # Mock the internal Crew
-    with patch("lctl.integrations.crewai.Crew") as MockCrew:
+    with patch("lctl.integrations.crewai.Crew") as MockCrew:  # noqa: N806  # class-like mock name
         mock_crew_instance = MockCrew.return_value
         # Mock kickoff_async to return a result
         mock_crew_instance.kickoff_async = AsyncMock(return_value="Async Result")

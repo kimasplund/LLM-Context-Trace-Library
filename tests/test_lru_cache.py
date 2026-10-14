@@ -271,7 +271,7 @@ class TestReplayEngineWithLRUCache:
         engine = ReplayEngine(large_chain, cache_size=10)
 
         # First replay populates cache
-        state1 = engine.replay_to(50)
+        engine.replay_to(50)
 
         # Inject a marker into cached state to verify it's used
         engine._state_cache.get(50).facts["MARKER"] = {"text": "marker"}

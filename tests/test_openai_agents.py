@@ -12,7 +12,7 @@ from lctl.core.session import LCTLSession
 
 # Check if pytest-asyncio is available
 try:
-    import pytest_asyncio
+    import pytest_asyncio  # noqa: F401  # availability probe
 
     PYTEST_ASYNCIO_AVAILABLE = True
 except ImportError:
@@ -82,7 +82,7 @@ class MockAgent:
         self,
         name: str = "test_agent",
         instructions: str = "Test instructions",
-        tools: list = None,
+        tools: list | None = None,
     ):
         self.name = name
         self.instructions = instructions
@@ -361,9 +361,11 @@ class TestAgentRunContext:
 
     def test_context_manager_propagates_exception(self, tracer):
         """Test that context manager re-raises exceptions."""
-        with pytest.raises(ValueError, match="test error"):
-            with tracer.trace_agent_run("agent", "input"):
-                raise ValueError("test error")
+        with (
+            pytest.raises(ValueError, match="test error"),
+            tracer.trace_agent_run("agent", "input"),
+        ):
+            raise ValueError("test error")
 
     def test_set_output(self, tracer):
         """Test setting output summary."""

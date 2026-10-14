@@ -286,7 +286,7 @@ class TestTracedAgent:
         """Test async tool instrumentation."""
         from lctl.integrations.pydantic_ai import TracedAgent
 
-        traced = TracedAgent(mock_agent_with_async_tool, chain_id="test")
+        TracedAgent(mock_agent_with_async_tool, chain_id="test")
 
         async_tool = mock_agent_with_async_tool._function_toolset.tools["async_tool"]
         assert hasattr(async_tool.function, "_lctl_instrumented")
@@ -296,7 +296,7 @@ class TestTracedAgent:
         """Test sync tool instrumentation."""
         from lctl.integrations.pydantic_ai import TracedAgent
 
-        traced = TracedAgent(mock_agent_with_sync_tool, chain_id="test")
+        TracedAgent(mock_agent_with_sync_tool, chain_id="test")
 
         sync_tool = mock_agent_with_sync_tool._function_toolset.tools["sync_tool"]
         assert hasattr(sync_tool.function, "_lctl_instrumented")
@@ -307,11 +307,11 @@ class TestTracedAgent:
         from lctl.integrations.pydantic_ai import TracedAgent
 
         # First wrap
-        traced1 = TracedAgent(mock_agent_with_async_tool, chain_id="test1")
+        TracedAgent(mock_agent_with_async_tool, chain_id="test1")
         original_wrapper = mock_agent_with_async_tool._function_toolset.tools["async_tool"].function
 
         # Second wrap - should not re-instrument
-        traced2 = TracedAgent(mock_agent_with_async_tool, chain_id="test2")
+        TracedAgent(mock_agent_with_async_tool, chain_id="test2")
         new_wrapper = mock_agent_with_async_tool._function_toolset.tools["async_tool"].function
 
         assert new_wrapper is original_wrapper
@@ -443,7 +443,7 @@ class TestTracedAgent:
         assert step_start.agent == "test_agent"
         assert step_start.data["intent"] == "run"
 
-        step_end = [e for e in events if e.type == EventType.STEP_END][0]
+        step_end = next(e for e in events if e.type == EventType.STEP_END)
         assert step_end.data["outcome"] == "success"
         assert step_end.data["tokens"]["input"] == 100
         assert step_end.data["tokens"]["output"] == 50
@@ -457,11 +457,11 @@ class TestTracedAgent:
 
         traced = TracedAgent(mock_agent, chain_id="output-attr-test")
 
-        result = await traced.run("test input")
+        await traced.run("test input")
 
-        step_end = [e for e in traced.tracer.session.chain.events if e.type == EventType.STEP_END][
-            0
-        ]
+        step_end = next(
+            e for e in traced.tracer.session.chain.events if e.type == EventType.STEP_END
+        )
         assert "output via output attribute" in step_end.data["output_summary"]
 
     @pytest.mark.asyncio
@@ -475,11 +475,11 @@ class TestTracedAgent:
         session = LCTLSession(chain_id="minimal-test", redaction_enabled=False)
         traced = TracedAgent(mock_agent, session=session)
 
-        result = await traced.run("test input")
+        await traced.run("test input")
 
-        step_end = [e for e in traced.tracer.session.chain.events if e.type == EventType.STEP_END][
-            0
-        ]
+        step_end = next(
+            e for e in traced.tracer.session.chain.events if e.type == EventType.STEP_END
+        )
         assert step_end.data["outcome"] == "success"
         assert step_end.data["tokens"]["input"] == 0
         assert step_end.data["tokens"]["output"] == 0
@@ -493,7 +493,7 @@ class TestTracedAgent:
 
         traced = TracedAgent(mock_agent, chain_id="kwargs-test")
 
-        result = await traced.run(user_prompt="kwarg input")
+        await traced.run(user_prompt="kwarg input")
 
         step_start = traced.tracer.session.chain.events[0]
         assert "kwarg input" in step_start.data["input_summary"]
@@ -517,7 +517,7 @@ class TestTracedAgent:
         assert error_events[0].data["type"] == "RuntimeError"
         assert error_events[0].data["message"] == "Agent failed"
 
-        step_end = [e for e in events if e.type == EventType.STEP_END][0]
+        step_end = next(e for e in events if e.type == EventType.STEP_END)
         assert step_end.data["outcome"] == "error"
 
     @pytest.mark.asyncio
@@ -623,7 +623,7 @@ class TestTracedStreamedRunResult:
 
         traced = TracedAgent(mock_agent, chain_id="early-exit-test")
 
-        async with traced.run_stream("test prompt") as result:
+        async with traced.run_stream("test prompt"):
             # Don't iterate - exit early
             pass
 
@@ -646,7 +646,7 @@ class TestTracedStreamedRunResult:
         traced = TracedAgent(mock_agent, chain_id="stream-error-test")
 
         with pytest.raises(ValueError, match="Stream error"):
-            async with traced.run_stream("test prompt") as result:
+            async with traced.run_stream("test prompt"):
                 pass
 
         events = traced.tracer.session.chain.events
@@ -703,7 +703,7 @@ class TestTracedStreamedRunResult:
 
         # Should not raise, tokens should be 0
         events = traced.tracer.session.chain.events
-        step_end = [e for e in events if e.type == EventType.STEP_END][0]
+        step_end = next(e for e in events if e.type == EventType.STEP_END)
         assert step_end.data["tokens"]["input"] == 0
         assert step_end.data["tokens"]["output"] == 0
 
@@ -792,7 +792,7 @@ class TestConcurrentAgents:
         results = await asyncio.gather(*[run_agent(agents[i], f"prompt_{i}") for i in range(3)])
 
         assert len(results) == 3
-        for i, agent in enumerate(agents):
+        for agent in agents:
             events = agent.tracer.session.chain.events
             assert len([e for e in events if e.type == EventType.STEP_START]) == 1
             assert len([e for e in events if e.type == EventType.STEP_END]) == 1
@@ -829,9 +829,9 @@ class TestEdgeCases:
         traced = TracedAgent(mock_agent, chain_id="long-output-test")
         await traced.run("test")
 
-        step_end = [e for e in traced.tracer.session.chain.events if e.type == EventType.STEP_END][
-            0
-        ]
+        step_end = next(
+            e for e in traced.tracer.session.chain.events if e.type == EventType.STEP_END
+        )
         # Output should be the full string since we capture it fully, truncation happens at tool level
         assert "x" in step_end.data["output_summary"]
 
@@ -856,7 +856,7 @@ class TestEdgeCases:
         mock_toolset.tools = {"schema_tool": tool}
         agent._function_toolset = mock_toolset
 
-        traced = TracedAgent(agent, chain_id="schema-test")
+        TracedAgent(agent, chain_id="schema-test")
 
         # Both should be updated
         assert tool.function._lctl_instrumented is True

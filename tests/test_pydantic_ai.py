@@ -6,7 +6,7 @@ from lctl.integrations.pydantic_ai import trace_agent
 
 # Mock PydanticAI classes if not available
 try:
-    from pydantic_ai import Agent, RunContext
+    from pydantic_ai import Agent, RunContext  # noqa: F401  # availability probe
     from pydantic_ai.run import AgentRunResult
     from pydantic_ai.usage import RunUsage as Usage
 except ImportError:
@@ -72,7 +72,7 @@ async def test_trace_agent_run_error(mock_agent):
     traced.tracer.session.step_end = MagicMock()
     traced.tracer.session.error = MagicMock()
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Test error"):
         await traced.run("test input")
 
     traced.tracer.session.step_start.assert_called_once()

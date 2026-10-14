@@ -300,7 +300,7 @@ class TestEventEmitter:
         """Test event history."""
         emitter = EventEmitter(max_history=3)
 
-        for i in range(5):
+        for _i in range(5):
             emitter.emit(StreamingEvent.heartbeat())
 
         history = emitter.history

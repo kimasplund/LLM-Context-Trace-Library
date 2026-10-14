@@ -133,7 +133,7 @@ def example_with_tools():
     @tool
     def calculate(expression: str) -> str:
         """Calculate a math expression."""
-        return str(eval(expression))
+        return str(eval(expression))  # noqa: S307  # demo calculator; see spec follow-up
 
     llm = ChatOpenAI(model="gpt-3.5-turbo").bind_tools([get_weather, calculate])
 

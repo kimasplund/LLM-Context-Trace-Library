@@ -130,10 +130,10 @@ def test_on_llm_error(callback_handler):
     events = callback_handler.session.chain.events
     # step_start, step_end (error), error_event
 
-    step_end = [e for e in events if e.type == EventType.STEP_END][0]
+    step_end = next(e for e in events if e.type == EventType.STEP_END)
     assert step_end.data["outcome"] == "error"
 
-    error_event = [e for e in events if e.type == EventType.ERROR][0]
+    error_event = next(e for e in events if e.type == EventType.ERROR)
     assert error_event.data["message"] == "Model failure"
 
 

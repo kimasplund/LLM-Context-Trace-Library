@@ -35,7 +35,7 @@ class TestLCTLSessionBasics:
         """Test that context manager records exceptions as errors."""
         session = LCTLSession(chain_id="error-test")
 
-        with pytest.raises(ValueError), session:
+        with pytest.raises(ValueError, match="Test error"), session:
             raise ValueError("Test error")
 
         error_events = [e for e in session.chain.events if e.type == EventType.ERROR]
@@ -330,7 +330,7 @@ class TestLCTLSessionCheckpoint:
         """Test checkpoint with custom facts snapshot."""
         session = LCTLSession()
         custom_snapshot = {"F_CUSTOM": {"text": "custom", "confidence": 1.0}}
-        seq = session.checkpoint(facts_snapshot=custom_snapshot)
+        session.checkpoint(facts_snapshot=custom_snapshot)
 
         event = session.chain.events[0]
         assert event.data["facts_snapshot"] == custom_snapshot
@@ -458,9 +458,11 @@ class TestTracedStep:
         """Test traced_step re-raises exceptions."""
         session = LCTLSession()
 
-        with pytest.raises(ValueError, match="test error"):
-            with traced_step(session, "agent", "action"):
-                raise ValueError("test error")
+        with (
+            pytest.raises(ValueError, match="test error"),
+            traced_step(session, "agent", "action"),
+        ):
+            raise ValueError("test error")
 
 
 class TestLCTLSessionIntegration:

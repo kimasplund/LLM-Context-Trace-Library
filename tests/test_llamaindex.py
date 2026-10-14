@@ -163,7 +163,7 @@ sys.modules["llama_index.core.callbacks.schema"] = mock_llama_index_core_callbac
 if "lctl.integrations.llamaindex" in sys.modules:
     del sys.modules["lctl.integrations.llamaindex"]
 
-import lctl.integrations.llamaindex as llamaindex_module
+import lctl.integrations.llamaindex as llamaindex_module  # noqa: E402  # must follow the importorskip/sys.modules setup above
 
 importlib.reload(llamaindex_module)
 

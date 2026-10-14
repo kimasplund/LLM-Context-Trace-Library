@@ -199,7 +199,7 @@ def print_results(report: dict[str, Any]) -> None:
     print(f"Platform: {report['system']['platform']}")
     print("=" * 70)
 
-    for suite_name, suite_data in report["suites"].items():
+    for _suite_name, suite_data in report["suites"].items():
         print(f"\n{suite_data['title']}")
         print("-" * 50)
 
@@ -273,7 +273,7 @@ Examples:
 
     parser.add_argument(
         "--suite",
-        choices=list(BENCHMARK_SUITES.keys()) + ["all"],
+        choices=[*list(BENCHMARK_SUITES.keys()), "all"],
         default="all",
         help="Benchmark suite to run (default: all)",
     )

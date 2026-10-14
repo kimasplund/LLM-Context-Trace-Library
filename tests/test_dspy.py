@@ -684,9 +684,11 @@ class TestDSPyModuleContext:
 
             callback = LCTLDSPyCallback()
 
-            with pytest.raises(ValueError):
-                with DSPyModuleContext(callback, "FailingModule"):
-                    raise ValueError("Test error")
+            with (
+                pytest.raises(ValueError, match="Test error"),
+                DSPyModuleContext(callback, "FailingModule"),
+            ):
+                raise ValueError("Test error")
 
             step_ends = [e for e in callback.chain.events if e.type == EventType.STEP_END]
             error_ends = [e for e in step_ends if e.data.get("outcome") == "error"]
@@ -866,7 +868,7 @@ class TestIntegration:
             failing = FailingModule()
             traced = TracedDSPyModule(failing, callback)
 
-            with pytest.raises(ValueError):
+            with pytest.raises(ValueError, match="First call fails"):
                 traced(question="test")
 
             result = traced(question="retry")

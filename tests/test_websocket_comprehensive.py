@@ -15,6 +15,7 @@ Covers:
 """
 
 import asyncio
+import contextlib
 import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -29,7 +30,6 @@ from lctl.streaming.websocket import (
     create_sse_response,
     start_websocket_server,
 )
-import contextlib
 
 # =============================================================================
 # Fixtures
@@ -228,7 +228,7 @@ class TestWebSocketServerMaxClients:
         server = WebSocketServer(emitter, max_clients=2)
 
         client1 = await server.register_client()
-        client2 = await server.register_client()
+        await server.register_client()
 
         # Should fail
         with pytest.raises(ConnectionError):
@@ -500,7 +500,7 @@ class TestWebSocketServerClientMessageHandling:
         client = await server.register_client()
 
         # Drain any connected events
-        initial_events = drain_queue(client.send_queue)
+        drain_queue(client.send_queue)
         assert client.send_queue.qsize() == 0
 
         message = {"type": "ping"}
@@ -666,10 +666,9 @@ class TestWebSocketServerConnectionHandling:
         drain_queue(client.send_queue)
 
         # Don't queue any events - should trigger heartbeat
-        try:
+        # Expected to exit via exception
+        with contextlib.suppress(Exception):
             await asyncio.wait_for(server._send_loop(mock_ws, client), timeout=0.2)
-        except Exception:
-            pass  # Expected to exit via exception
 
         # Should have sent at least one heartbeat
         assert len(sent_messages) >= 1
@@ -795,19 +794,21 @@ class TestWebSocketServerStartStop:
     @pytest.mark.asyncio
     async def test_start_requires_websockets_package(self, server: WebSocketServer):
         """Test start() raises ImportError if websockets not installed."""
-        with patch.dict("sys.modules", {"websockets": None}):
-            # Force re-import check
-            with patch("lctl.streaming.websocket.WebSocketServer.start") as mock_start:
-                # Create a new server to test the import check
-                async def raise_import():
-                    try:
-                        import websockets  # noqa
-                    except ImportError:
-                        raise ImportError("websockets package required for standalone mode")
+        # Force re-import check
+        with (
+            patch.dict("sys.modules", {"websockets": None}),
+            patch("lctl.streaming.websocket.WebSocketServer.start") as mock_start,
+        ):
+            # Create a new server to test the import check
+            async def raise_import():
+                try:
+                    import websockets  # noqa
+                except ImportError as err:
+                    raise ImportError("websockets package required for standalone mode") from err
 
-                mock_start.side_effect = raise_import
-                with pytest.raises(ImportError, match="websockets"):
-                    await mock_start()
+            mock_start.side_effect = raise_import
+            with pytest.raises(ImportError, match="websockets"):
+                await mock_start()
 
 
 # =============================================================================

@@ -89,7 +89,7 @@ class TestLCTLSemanticKernelTracer:
         assert EventType.ERROR in types
         assert EventType.STEP_END in types
 
-        error_event = [e for e in events if e.type == EventType.ERROR][0]
+        error_event = next(e for e in events if e.type == EventType.ERROR)
         # The tracer sees the original ValueError before SK wraps it
         assert error_event.data["type"] == "ValueError"
         assert "Boom!" in error_event.data["message"]

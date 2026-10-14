@@ -569,7 +569,7 @@ class TestGenerateHooks:
         assert "Stop" in hooks
 
         # Check files exist and are executable
-        for name, path in hooks.items():
+        for _name, path in hooks.items():
             hook_path = Path(path)
             assert hook_path.exists()
             assert hook_path.stat().st_mode & 0o755

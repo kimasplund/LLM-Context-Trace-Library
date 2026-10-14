@@ -18,7 +18,7 @@ try:
     AUTOGEN_INSTALLED = True
 except ImportError:
     try:
-        from ag2 import ConversableAgent, GroupChat, GroupChatManager
+        from ag2 import ConversableAgent, GroupChat, GroupChatManager  # noqa: F401  # availability probe
 
         AUTOGEN_INSTALLED = True
     except ImportError:

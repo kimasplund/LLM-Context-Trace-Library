@@ -270,6 +270,7 @@ All of these are verified with command output before the work is called done:
 7. Integration-test failures found by the all-extras run, if any (§4.3).
 8. Anything the `S` rules or the leaky-test diagnosis surface as a real library defect (§4.2, §4.3).
 9. **`lctl/streaming/subscriber.py` polls with `asyncio.sleep` in a `while` loop** (ASYNC110). An `asyncio.Event`-based wait would cut latency and wakeups. This is a behavior change.
+10. **Examples' calculator tools `eval()` model output** (`examples/langchain_example.py`, `examples/openai_agents_example.py`). Users copy examples, so replace this with a safe arithmetic evaluator.
 
 ## 7. Risks
 

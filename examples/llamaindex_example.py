@@ -18,7 +18,7 @@ try:
 except ImportError:
     try:
         from llama_index import Document, VectorStoreIndex
-        from llama_index.callbacks import CallbackManager
+        from llama_index.callbacks import CallbackManager  # noqa: F401  # availability probe
 
         LLAMAINDEX_INSTALLED = True
     except ImportError:

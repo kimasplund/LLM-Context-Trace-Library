@@ -12,7 +12,7 @@ Usage:
 
 # Check if CrewAI is available
 try:
-    from crewai import Task
+    from crewai import Task  # noqa: F401  # availability probe
 
     CREWAI_INSTALLED = True
 except ImportError:

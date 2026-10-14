@@ -11,6 +11,7 @@ Tests cover:
 Uses mocks to test without requiring semantic-kernel installation.
 """
 
+import contextlib
 import threading
 import time
 from typing import Any
@@ -20,7 +21,6 @@ import pytest
 
 from lctl.core.events import EventType
 from lctl.core.session import LCTLSession
-import contextlib
 
 
 # Mock classes to simulate Semantic Kernel types
@@ -36,7 +36,7 @@ class MockFunctionInvocationContext:
     """Mock for semantic_kernel.filters.FunctionInvocationContext"""
 
     def __init__(
-        self, function: MockKernelFunction = None, arguments: dict = None, result: Any = None
+        self, function: MockKernelFunction = None, arguments: dict | None = None, result: Any = None
     ):
         self.function = function or MockKernelFunction()
         self.arguments = arguments or {"arg1": "value1"}
@@ -46,7 +46,7 @@ class MockFunctionInvocationContext:
 class MockPromptRenderContext:
     """Mock for semantic_kernel.filters.PromptRenderContext"""
 
-    def __init__(self, function: MockKernelFunction = None, rendered_prompt: str = None):
+    def __init__(self, function: MockKernelFunction = None, rendered_prompt: str | None = None):
         self.function = function or MockKernelFunction()
         self.rendered_prompt = rendered_prompt
 
@@ -54,7 +54,7 @@ class MockPromptRenderContext:
 class MockFunctionResult:
     """Mock for function result with optional metadata"""
 
-    def __init__(self, value: Any = "test_result", metadata: dict = None):
+    def __init__(self, value: Any = "test_result", metadata: dict | None = None):
         self.value = value
         self.metadata = metadata
 
@@ -96,7 +96,7 @@ class MockedLCTLSemanticKernelTracer:
 
     def __init__(
         self,
-        chain_id: str = None,
+        chain_id: str | None = None,
         session: LCTLSession = None,
         verbose: bool = False,
     ):
@@ -244,7 +244,7 @@ class MockedLCTLSemanticKernelTracer:
                                     tokens_in=tokens_in,
                                     tokens_out=tokens_out,
                                 )
-                            except Exception:
+                            except Exception:  # noqa: S110  # mirrors the library's swallow-on-error tracing
                                 pass
 
                 result.value = stream_wrapper()
@@ -334,7 +334,7 @@ class TestIsAvailable:
         """Test is_available returns False when SK is not installed"""
         from lctl.integrations.semantic_kernel import is_available
 
-        assert is_available() == False
+        assert is_available() is False
 
 
 # ============================================================================
@@ -406,10 +406,10 @@ class TestMockedTracerInit:
     def test_init_verbose_flag(self):
         """Test verbose flag is stored"""
         tracer = MockedLCTLSemanticKernelTracer(verbose=True)
-        assert tracer._verbose == True
+        assert tracer._verbose is True
 
         tracer2 = MockedLCTLSemanticKernelTracer(verbose=False)
-        assert tracer2._verbose == False
+        assert tracer2._verbose is False
 
     def test_init_creates_lock(self):
         """Test initialization creates thread lock"""
@@ -575,7 +575,7 @@ class TestFunctionInvocationFilter:
         context = MockFunctionInvocationContext()
         next_func = AsyncMock(side_effect=ValueError("Test error"))
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Test error"):
             await tracer._function_invocation_filter(context, next_func)
 
         events = tracer.chain.events
@@ -608,7 +608,7 @@ class TestFunctionInvocationFilter:
         await tracer._function_invocation_filter(context, next_func)
 
         events = tracer.chain.events
-        start_event = [e for e in events if e.type == EventType.STEP_START][0]
+        start_event = next(e for e in events if e.type == EventType.STEP_START)
         # Default truncation is 200 chars
         assert len(start_event.data["input_summary"]) <= 203  # 200 + "..."
 
@@ -622,7 +622,7 @@ class TestFunctionInvocationFilter:
         await tracer._function_invocation_filter(context, next_func)
 
         events = tracer.chain.events
-        start_event = [e for e in events if e.type == EventType.STEP_START][0]
+        start_event = next(e for e in events if e.type == EventType.STEP_START)
         assert start_event.agent == "Global.global_func"
 
     @pytest.mark.asyncio
@@ -637,7 +637,7 @@ class TestFunctionInvocationFilter:
         await tracer._function_invocation_filter(context, next_func)
 
         events = tracer.chain.events
-        end_event = [e for e in events if e.type == EventType.STEP_END][0]
+        end_event = next(e for e in events if e.type == EventType.STEP_END)
         assert end_event.data["tokens"]["input"] == 100
         assert end_event.data["tokens"]["output"] == 50
 
@@ -653,7 +653,7 @@ class TestFunctionInvocationFilter:
         await tracer._function_invocation_filter(context, next_func)
 
         events = tracer.chain.events
-        end_event = [e for e in events if e.type == EventType.STEP_END][0]
+        end_event = next(e for e in events if e.type == EventType.STEP_END)
         assert end_event.data["tokens"]["input"] == 75
         assert end_event.data["tokens"]["output"] == 25
 
@@ -669,7 +669,7 @@ class TestFunctionInvocationFilter:
         await tracer._function_invocation_filter(context, next_func)
 
         events = tracer.chain.events
-        end_event = [e for e in events if e.type == EventType.STEP_END][0]
+        end_event = next(e for e in events if e.type == EventType.STEP_END)
         assert end_event.data["tokens"]["input"] == 80
         assert end_event.data["tokens"]["output"] == 40
 
@@ -683,7 +683,7 @@ class TestFunctionInvocationFilter:
         await tracer._function_invocation_filter(context, next_func)
 
         events = tracer.chain.events
-        end_event = [e for e in events if e.type == EventType.STEP_END][0]
+        end_event = next(e for e in events if e.type == EventType.STEP_END)
         assert end_event.data["output_summary"] == ""
 
     @pytest.mark.asyncio
@@ -1116,7 +1116,7 @@ class TestEdgeCases:
 
         # Should complete without error
         events = tracer.chain.events
-        end_event = [e for e in events if e.type == EventType.STEP_END][0]
+        end_event = next(e for e in events if e.type == EventType.STEP_END)
         assert end_event.data["tokens"]["input"] == 0
         assert end_event.data["tokens"]["output"] == 0
 
@@ -1132,7 +1132,7 @@ class TestEdgeCases:
 
         # Should complete without error
         events = tracer.chain.events
-        end_event = [e for e in events if e.type == EventType.STEP_END][0]
+        end_event = next(e for e in events if e.type == EventType.STEP_END)
         assert end_event.data["tokens"]["input"] == 0
         assert end_event.data["tokens"]["output"] == 0
 
@@ -1148,7 +1148,7 @@ class TestEdgeCases:
         await tracer._function_invocation_filter(context, next_func)
 
         events = tracer.chain.events
-        end_event = [e for e in events if e.type == EventType.STEP_END][0]
+        end_event = next(e for e in events if e.type == EventType.STEP_END)
         # Should be truncated
         assert len(end_event.data["output_summary"]) <= 203
 

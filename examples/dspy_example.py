@@ -12,8 +12,8 @@ Usage:
 """
 
 try:
-    import dspy
-    from dspy import ChainOfThought, Module, Predict, Signature
+    import dspy  # noqa: F401  # availability probe
+    from dspy import ChainOfThought, Module, Predict, Signature  # noqa: F401  # availability probe
     from dspy.teleprompt import BootstrapFewShot
 
     DSPY_INSTALLED = True

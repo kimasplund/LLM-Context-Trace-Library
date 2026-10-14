@@ -11,7 +11,7 @@ Usage:
 """
 
 try:
-    from agents import Agent, Runner, Tool, function_tool
+    from agents import Agent, Runner, Tool, function_tool  # noqa: F401  # availability probe
 
     OPENAI_AGENTS_INSTALLED = True
 except ImportError:
@@ -38,7 +38,7 @@ def example_basic_tracer():
 
     tracer = LCTLOpenAIAgentTracer(chain_id="basic-example")
 
-    agent = Agent(
+    Agent(
         name="assistant",
         instructions="You are a helpful assistant that provides concise answers.",
     )
@@ -139,7 +139,7 @@ def example_with_tools():
     def calculate(expression: str) -> str:
         """Calculate a mathematical expression."""
         try:
-            result = eval(expression)
+            result = eval(expression)  # noqa: S307  # demo calculator; see spec follow-up
             return str(result)
         except Exception as e:
             return f"Error: {e}"
@@ -171,17 +171,17 @@ def example_multi_agent_handoffs():
 
     tracer = LCTLOpenAIAgentTracer(chain_id="handoffs-example")
 
-    triage_agent = Agent(
+    Agent(
         name="triage",
         instructions="You route requests to the appropriate specialist.",
     )
 
-    sales_agent = Agent(
+    Agent(
         name="sales",
         instructions="You handle sales inquiries.",
     )
 
-    support_agent = Agent(
+    Agent(
         name="support",
         instructions="You handle technical support questions.",
     )

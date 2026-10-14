@@ -123,7 +123,7 @@ def test_lctl_crew_kickoff(mock_crewai_available):
     assert kickoff.data["intent"] == "kickoff"
 
     # Verify completion
-    completion = events[-1]
+    events[-1]
     # The last event might be fact added. Just check successful completion steps.
     step_ends = [e for e in events if e.type == EventType.STEP_END]
     assert any(e.agent == "crew-manager" and e.data["outcome"] == "success" for e in step_ends)
@@ -190,9 +190,11 @@ def test_lctl_crew_error_handling(mock_crewai_available):
     crew = LCTLCrew(agents=[agent], tasks=[task])
 
     # Mock kickoff to raise exception
-    with patch.object(crew._crew, "kickoff", side_effect=ValueError("Test Error")):
-        with pytest.raises(ValueError):
-            crew.kickoff()
+    with (
+        patch.object(crew._crew, "kickoff", side_effect=ValueError("Test Error")),
+        pytest.raises(ValueError, match="Test Error"),
+    ):
+        crew.kickoff()
 
     events = crew.session.chain.events
     errors = [e for e in events if e.type == EventType.ERROR]

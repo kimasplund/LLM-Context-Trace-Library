@@ -6,9 +6,9 @@ import pytest
 pydantic_ai = pytest.importorskip("pydantic_ai")
 Agent = pydantic_ai.Agent
 RunContext = pydantic_ai.RunContext
-from pydantic_ai.models.test import TestModel
+from pydantic_ai.models.test import TestModel  # noqa: E402  # must follow the importorskip/sys.modules setup above
 
-from lctl.integrations.pydantic_ai import trace_agent
+from lctl.integrations.pydantic_ai import trace_agent  # noqa: E402  # must follow the importorskip/sys.modules setup above
 
 
 @pytest.fixture
@@ -55,7 +55,7 @@ async def test_pydantic_ai_stream_llm_trace(mock_session):
     traced_agent = trace_agent(agent, session=mock_session)
 
     async with traced_agent.run_stream("Hello Stream") as result:
-        async for chunk in result.stream_text():
+        async for _chunk in result.stream_text():
             pass
 
     # Verify llm_trace was called

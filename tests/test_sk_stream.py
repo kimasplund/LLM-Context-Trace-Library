@@ -5,10 +5,10 @@ import pytest
 # Skip entire module if semantic_kernel not installed
 semantic_kernel = pytest.importorskip("semantic_kernel")
 Kernel = semantic_kernel.Kernel
-from semantic_kernel.functions import kernel_function
+from semantic_kernel.functions import kernel_function  # noqa: E402  # must follow the importorskip/sys.modules setup above
 
-from lctl.core.session import LCTLSession
-from lctl.integrations.semantic_kernel import trace_kernel
+from lctl.core.session import LCTLSession  # noqa: E402  # must follow the importorskip/sys.modules setup above
+from lctl.integrations.semantic_kernel import trace_kernel  # noqa: E402  # must follow the importorskip/sys.modules setup above
 
 
 # Mock Plugin
@@ -32,7 +32,7 @@ async def test_sk_streaming_trace():
     session.step_start = MagicMock()
     session.step_end = MagicMock()
 
-    tracer = trace_kernel(kernel, session=session)
+    trace_kernel(kernel, session=session)
 
     # Execute stream
     result_stream = kernel.invoke_stream(function_name="stream_data", plugin_name="TestPlugin")
