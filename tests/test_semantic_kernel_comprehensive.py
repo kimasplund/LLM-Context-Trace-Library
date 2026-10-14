@@ -20,6 +20,7 @@ import pytest
 
 from lctl.core.events import EventType
 from lctl.core.session import LCTLSession
+import contextlib
 
 
 # Mock classes to simulate Semantic Kernel types
@@ -139,15 +140,13 @@ class MockedLCTLSemanticKernelTracer:
             plugin_name = context.function.plugin_name or "Global"
             full_name = f"{plugin_name}.{function_name}"
 
-            try:
+            with contextlib.suppress(Exception):
                 self.session.add_fact(
                     fact_id=f"prompt-{full_name}-{hash(context.rendered_prompt)}",
                     text=f"Rendered Prompt for {full_name}: {context.rendered_prompt}",
                     confidence=1.0,
                     source="sk-prompt-filter",
                 )
-            except Exception:
-                pass
 
     async def _function_invocation_filter(self, context, next_func):
         """Filter for function invocations."""
@@ -157,12 +156,10 @@ class MockedLCTLSemanticKernelTracer:
 
         input_summary = self._truncate(str(context.arguments))
 
-        try:
+        with contextlib.suppress(Exception):
             self.session.step_start(
                 agent=full_name, intent="execute_function", input_summary=input_summary
             )
-        except Exception:
-            pass
 
         start_time = time.time()
 
@@ -209,7 +206,7 @@ class MockedLCTLSemanticKernelTracer:
 
                         stream_completed = True
                         duration_ms = int((time.time() - stream_start_time) * 1000)
-                        try:
+                        with contextlib.suppress(Exception):
                             self.session.step_end(
                                 agent=full_name,
                                 outcome="success",
@@ -218,27 +215,21 @@ class MockedLCTLSemanticKernelTracer:
                                 tokens_in=tokens_in,
                                 tokens_out=tokens_out,
                             )
-                        except Exception:
-                            pass
 
                     except Exception as e:
                         error_handled = True
-                        try:
+                        with contextlib.suppress(Exception):
                             self.session.error(
                                 category="execution_error",
                                 error_type=type(e).__name__,
                                 message=str(e),
                                 recoverable=False,
                             )
-                        except Exception:
-                            pass
                         duration_ms = int((time.time() - stream_start_time) * 1000)
-                        try:
+                        with contextlib.suppress(Exception):
                             self.session.step_end(
                                 agent=full_name, outcome="error", duration_ms=duration_ms
                             )
-                        except Exception:
-                            pass
                         raise
                     finally:
                         # Only call abandoned step_end if stream wasn't completed AND no error was handled
@@ -280,7 +271,7 @@ class MockedLCTLSemanticKernelTracer:
                             "output_tokens", 0
                         )
 
-            try:
+            with contextlib.suppress(Exception):
                 self.session.step_end(
                     agent=full_name,
                     outcome="success",
@@ -289,24 +280,18 @@ class MockedLCTLSemanticKernelTracer:
                     tokens_in=tokens_in,
                     tokens_out=tokens_out,
                 )
-            except Exception:
-                pass
 
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
-            try:
+            with contextlib.suppress(Exception):
                 self.session.error(
                     category="execution_error",
                     error_type=type(e).__name__,
                     message=str(e),
                     recoverable=False,
                 )
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 self.session.step_end(agent=full_name, outcome="error", duration_ms=duration_ms)
-            except Exception:
-                pass
             raise
 
 

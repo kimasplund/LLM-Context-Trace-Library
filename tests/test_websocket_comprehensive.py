@@ -29,6 +29,7 @@ from lctl.streaming.websocket import (
     create_sse_response,
     start_websocket_server,
 )
+import contextlib
 
 # =============================================================================
 # Fixtures
@@ -699,10 +700,8 @@ class TestWebSocketServerHeartbeatLoop:
 
         # Run heartbeat loop briefly
         async def run_heartbeat():
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(server._heartbeat_loop(), timeout=0.15)
-            except TimeoutError:
-                pass
 
         await run_heartbeat()
 
@@ -729,10 +728,8 @@ class TestWebSocketServerHeartbeatLoop:
 
         # Run heartbeat loop briefly - should not raise
         async def run_heartbeat():
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(server._heartbeat_loop(), timeout=0.15)
-            except TimeoutError:
-                pass
 
         await run_heartbeat()
 

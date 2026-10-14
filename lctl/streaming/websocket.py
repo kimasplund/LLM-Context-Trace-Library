@@ -10,6 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 from .emitter import EventEmitter, StreamingEvent, StreamingEventType
+import contextlib
 
 
 @dataclass
@@ -72,10 +73,8 @@ class WebSocketServer:
         """Handle incoming events from the emitter."""
         for client in list(self._clients.values()):
             if self._should_send_to_client(event, client):
-                try:
+                with contextlib.suppress(asyncio.QueueFull):
                     client.send_queue.put_nowait(event)
-                except asyncio.QueueFull:
-                    pass
 
     def _should_send_to_client(self, event: StreamingEvent, client: WebSocketClient) -> bool:
         """Check if an event should be sent to a specific client."""
@@ -185,10 +184,8 @@ class WebSocketServer:
 
             for task in pending:
                 task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await task
-                except asyncio.CancelledError:
-                    pass
 
         finally:
             await self.unregister_client(client_id)
@@ -242,10 +239,8 @@ class WebSocketServer:
                 chain_id=None,
                 payload={"pong": True},
             )
-            try:
+            with contextlib.suppress(asyncio.QueueFull):
                 client.send_queue.put_nowait(pong_event)
-            except asyncio.QueueFull:
-                pass
 
     async def _heartbeat_loop(self) -> None:
         """Send periodic heartbeat to all clients."""
@@ -253,10 +248,8 @@ class WebSocketServer:
             await asyncio.sleep(self._heartbeat_interval)
             heartbeat = StreamingEvent.heartbeat()
             for client in list(self._clients.values()):
-                try:
+                with contextlib.suppress(asyncio.QueueFull):
                     client.send_queue.put_nowait(heartbeat)
-                except asyncio.QueueFull:
-                    pass
 
     async def start(self, host: str = "0.0.0.0", port: int = 8081) -> None:
         """Start the WebSocket server (standalone mode).
@@ -292,10 +285,8 @@ class WebSocketServer:
         self._running = False
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._heartbeat_task
-            except asyncio.CancelledError:
-                pass
 
         async with self._lock:
             self._clients.clear()
@@ -343,10 +334,8 @@ class SSEHandler:
 
         def handler(event: StreamingEvent) -> None:
             if self._should_send(event, filters):
-                try:
+                with contextlib.suppress(asyncio.QueueFull):
                     queue.put_nowait(event)
-                except asyncio.QueueFull:
-                    pass
 
         self._emitter.on("all", handler)
 

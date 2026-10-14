@@ -20,6 +20,7 @@ from uuid import UUID
 
 from ..core.session import LCTLSession
 from .base import TracerDelegate, truncate
+import contextlib
 
 try:
     from langchain_core.agents import AgentAction, AgentFinish
@@ -215,14 +216,12 @@ class LCTLCallbackHandler(BaseCallbackHandler):
                 "prompt_summary": prompt_summary,
             }
 
-        try:
+        with contextlib.suppress(Exception):
             self.session.step_start(
                 agent=agent_name,
                 intent="llm_call",
                 input_summary=prompt_summary,
             )
-        except Exception:
-            pass
 
     def on_llm_end(
         self,
@@ -249,7 +248,7 @@ class LCTLCallbackHandler(BaseCallbackHandler):
             elif hasattr(first_gen, "message") and hasattr(first_gen.message, "content"):
                 output_text = first_gen.message.content
 
-        try:
+        with contextlib.suppress(Exception):
             self.session.step_end(
                 agent=agent_name,
                 outcome="success",
@@ -258,8 +257,6 @@ class LCTLCallbackHandler(BaseCallbackHandler):
                 tokens_in=tokens["input"],
                 tokens_out=tokens["output"],
             )
-        except Exception:
-            pass
 
     def on_llm_error(
         self,
@@ -327,14 +324,12 @@ class LCTLCallbackHandler(BaseCallbackHandler):
                 "message_summary": message_summary,
             }
 
-        try:
+        with contextlib.suppress(Exception):
             self.session.step_start(
                 agent=agent_name,
                 intent="chat_model_call",
                 input_summary=message_summary,
             )
-        except Exception:
-            pass
 
     def on_chain_start(
         self,
@@ -370,14 +365,12 @@ class LCTLCallbackHandler(BaseCallbackHandler):
                 "input_summary": input_summary,
             }
 
-        try:
+        with contextlib.suppress(Exception):
             self.session.step_start(
                 agent=agent_name,
                 intent="chain_execution",
                 input_summary=input_summary,
             )
-        except Exception:
-            pass
 
     def on_chain_end(
         self,
@@ -402,15 +395,13 @@ class LCTLCallbackHandler(BaseCallbackHandler):
             else:
                 output_summary = truncate(str(outputs))
 
-        try:
+        with contextlib.suppress(Exception):
             self.session.step_end(
                 agent=agent_name,
                 outcome="success",
                 output_summary=output_summary,
                 duration_ms=duration_ms,
             )
-        except Exception:
-            pass
 
         with self._lock:
             if self._chain_depth > 0:
@@ -488,15 +479,13 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         duration_ms = int((time.monotonic() - start_time) * 1000)
         input_data = run_info.get("input", "")
 
-        try:
+        with contextlib.suppress(Exception):
             self.session.tool_call(
                 tool=tool_name,
                 input_data=truncate(input_data),
                 output_data=truncate(output) if isinstance(output, str) else truncate(str(output)),
                 duration_ms=duration_ms,
             )
-        except Exception:
-            pass
 
     def on_tool_error(
         self,
@@ -539,15 +528,13 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Called when agent takes an action."""
-        try:
+        with contextlib.suppress(Exception):
             self.session.add_fact(
                 fact_id=f"action_{run_id.hex[:8]}",
                 text=f"Agent action: {action.tool} with input: {truncate(str(action.tool_input))}",
                 confidence=1.0,
                 source="agent",
             )
-        except Exception:
-            pass
 
     def on_agent_finish(
         self,
@@ -607,15 +594,13 @@ class LCTLCallbackHandler(BaseCallbackHandler):
         duration_ms = int((time.monotonic() - start_time) * 1000)
         query = run_info.get("query", "")
 
-        try:
+        with contextlib.suppress(Exception):
             self.session.tool_call(
                 tool=retriever_name,
                 input_data=truncate(query),
                 output_data=f"Retrieved {len(documents)} documents",
                 duration_ms=duration_ms,
             )
-        except Exception:
-            pass
 
     def on_retriever_error(
         self,

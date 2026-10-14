@@ -1,7 +1,7 @@
 """LCTL Session - Context manager for manual instrumentation."""
 
 from collections.abc import Callable
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
@@ -65,15 +65,13 @@ class LCTLSession:
 
     def __exit__(self, exc_type, exc_val, _exc_tb):
         if exc_type is not None:
-            try:
+            with suppress(Exception):
                 self.error(
                     category="execution_error",
                     error_type=exc_type.__name__,
                     message=str(exc_val),
                     recoverable=False,
                 )
-            except Exception:
-                pass
         if self._emitter is not None:
             self._emitter.end_chain()
         return False
@@ -99,10 +97,8 @@ class LCTLSession:
             self._emitter.emit_lctl_event(event)
 
         for listener in self._event_listeners:
-            try:
+            with suppress(Exception):
                 listener(event)
-            except Exception:
-                pass
 
         return event
 

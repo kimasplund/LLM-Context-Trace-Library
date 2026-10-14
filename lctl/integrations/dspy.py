@@ -32,6 +32,7 @@ from uuid import uuid4
 
 from ..core.session import LCTLSession
 from .base import BaseTracer, truncate
+import contextlib
 
 try:
     import dspy
@@ -253,27 +254,23 @@ class LCTLDSPyCallback(BaseTracer):
                 "inputs": inputs,
             }
 
-        try:
+        with contextlib.suppress(Exception):
             self.session.step_start(
                 agent=module_name,
                 intent="module_forward",
                 input_summary=truncate(input_summary, 200),
             )
-        except Exception:
-            pass
 
         sig_info = _extract_signature_info(getattr(module, "signature", None))
         if sig_info["input_fields"] or sig_info["output_fields"]:
             fact_id = f"signature_{module_name}_{uuid4().hex[:8]}"
-            try:
+            with contextlib.suppress(Exception):
                 self.session.add_fact(
                     fact_id=fact_id,
                     text=f"Signature: {sig_info['input_fields']} -> {sig_info['output_fields']}",
                     confidence=1.0,
                     source=module_name,
                 )
-            except Exception:
-                pass
 
         if self._verbose:
             print(f"[LCTL] Module started: {module_name}")
@@ -301,16 +298,14 @@ class LCTLDSPyCallback(BaseTracer):
         duration_ms = int((time.time() - start_time) * 1000)
 
         if error is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self.session.step_end(
                     agent=module_name,
                     outcome="error",
                     output_summary=f"Error: {type(error).__name__}: {str(error)[:100]}",
                     duration_ms=duration_ms,
                 )
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 self.session.error(
                     category="module_error",
                     error_type=type(error).__name__,
@@ -318,30 +313,24 @@ class LCTLDSPyCallback(BaseTracer):
                     recoverable=False,
                     suggested_action="Check module configuration and inputs",
                 )
-            except Exception:
-                pass
         else:
             prediction_text = _extract_prediction_text(prediction)
-            try:
+            with contextlib.suppress(Exception):
                 self.session.step_end(
                     agent=module_name,
                     outcome="success",
                     output_summary=truncate(prediction_text, 200),
                     duration_ms=duration_ms,
                 )
-            except Exception:
-                pass
 
             fact_id = f"prediction_{module_name}_{uuid4().hex[:8]}"
-            try:
+            with contextlib.suppress(Exception):
                 self.session.add_fact(
                     fact_id=fact_id,
                     text=f"Prediction: {truncate(prediction_text, 300)}",
                     confidence=1.0,
                     source=module_name,
                 )
-            except Exception:
-                pass
 
         with self._lock:
             self._current_module = None
@@ -374,7 +363,7 @@ class LCTLDSPyCallback(BaseTracer):
             llm_call_num = self._llm_call_count
             agent = self._current_module or "llm"
 
-        try:
+        with contextlib.suppress(Exception):
             self.session.llm_trace(
                 messages=[{"role": "user", "content": truncate(prompt, 300)}],
                 response=truncate(response, 300),
@@ -382,20 +371,16 @@ class LCTLDSPyCallback(BaseTracer):
                 usage={"input": tokens_in, "output": tokens_out},
                 duration_ms=duration_ms,
             )
-        except Exception:
-            pass
 
         if tokens_in > 0 or tokens_out > 0:
             fact_id = f"llm_usage_{uuid4().hex[:8]}"
-            try:
+            with contextlib.suppress(Exception):
                 self.session.add_fact(
                     fact_id=fact_id,
                     text=f"LLM call #{llm_call_num}: {tokens_in} tokens in, {tokens_out} tokens out",
                     confidence=1.0,
                     source=agent,
                 )
-            except Exception:
-                pass
 
         if self._verbose:
             print(f"[LCTL] LLM call #{llm_call_num}: {model} ({tokens_in}+{tokens_out} tokens)")
@@ -416,15 +401,13 @@ class LCTLDSPyCallback(BaseTracer):
         prediction_text = _extract_prediction_text(prediction)
 
         fact_id = f"prediction_{source}_{uuid4().hex[:8]}"
-        try:
+        with contextlib.suppress(Exception):
             self.session.add_fact(
                 fact_id=fact_id,
                 text=prediction_text,
                 confidence=confidence,
                 source=source,
             )
-        except Exception:
-            pass
 
     def on_optimization_start(
         self,
@@ -445,25 +428,21 @@ class LCTLDSPyCallback(BaseTracer):
             config_items = [f"{k}={v}" for k, v in list(config.items())[:5]]
             config_summary = ", ".join(config_items)
 
-        try:
+        with contextlib.suppress(Exception):
             self.session.step_start(
                 agent=teleprompter_name,
                 intent="optimization",
                 input_summary=truncate(config_summary, 200),
             )
-        except Exception:
-            pass
 
         fact_id = f"optimization_config_{teleprompter_name}_{uuid4().hex[:8]}"
-        try:
+        with contextlib.suppress(Exception):
             self.session.add_fact(
                 fact_id=fact_id,
                 text=f"Optimization started: {teleprompter_name} with config: {config_summary}",
                 confidence=1.0,
                 source=teleprompter_name,
             )
-        except Exception:
-            pass
 
         if self._verbose:
             print(f"[LCTL] Optimization started: {teleprompter_name}")
@@ -496,21 +475,17 @@ class LCTLDSPyCallback(BaseTracer):
             for k, v in list(metrics.items())[:3]:
                 metrics_summary += f", {k}={v}"
 
-        try:
+        with contextlib.suppress(Exception):
             self.session.checkpoint()
-        except Exception:
-            pass
 
         fact_id = f"optimization_iteration_{iteration}_{uuid4().hex[:8]}"
-        try:
+        with contextlib.suppress(Exception):
             self.session.add_fact(
                 fact_id=fact_id,
                 text=f"Optimization iteration {iteration}: {metrics_summary}",
                 confidence=1.0,
                 source="teleprompter",
             )
-        except Exception:
-            pass
 
         if self._verbose:
             print(f"[LCTL] Optimization iteration {iteration}: score={score}")
@@ -532,19 +507,15 @@ class LCTLDSPyCallback(BaseTracer):
         if best_score is not None:
             output_summary += f", best_score={best_score:.4f}"
 
-        try:
+        with contextlib.suppress(Exception):
             self.session.step_end(
                 agent=teleprompter_name,
                 outcome="success",
                 output_summary=output_summary,
             )
-        except Exception:
-            pass
 
-        try:
+        with contextlib.suppress(Exception):
             self.session.checkpoint()
-        except Exception:
-            pass
 
         if self._verbose:
             print(f"[LCTL] Optimization ended: {teleprompter_name} ({total_iterations} iterations)")
@@ -562,7 +533,7 @@ class LCTLDSPyCallback(BaseTracer):
             module_name: Optional module name where error occurred.
             recoverable: Whether the error is recoverable.
         """
-        try:
+        with contextlib.suppress(Exception):
             self.session.error(
                 category="dspy_error",
                 error_type=type(error).__name__,
@@ -570,8 +541,6 @@ class LCTLDSPyCallback(BaseTracer):
                 recoverable=recoverable,
                 suggested_action="Check module configuration and LLM settings",
             )
-        except Exception:
-            pass
 
     def export(self, path: str) -> None:
         """Export the LCTL chain to a file.
@@ -729,15 +698,13 @@ class TracedDSPyModule:
 
         module_name = _get_module_name(module)
         fact_id = f"module_wrapped_{module_name}_{uuid4().hex[:8]}"
-        try:
+        with contextlib.suppress(Exception):
             callback.session.add_fact(
                 fact_id=fact_id,
                 text=f"Module '{module_name}' wrapped for tracing",
                 confidence=1.0,
                 source="lctl-dspy",
             )
-        except Exception:
-            pass
 
     @property
     def module(self) -> Any:
@@ -834,15 +801,13 @@ class LCTLDSPyTeleprompter:
         self._teleprompter_name = type(teleprompter).__name__
 
         fact_id = f"teleprompter_{self._teleprompter_name}_{uuid4().hex[:8]}"
-        try:
+        with contextlib.suppress(Exception):
             callback.session.add_fact(
                 fact_id=fact_id,
                 text=f"Teleprompter '{self._teleprompter_name}' configured for tracing",
                 confidence=1.0,
                 source="lctl-dspy",
             )
-        except Exception:
-            pass
 
     @property
     def teleprompter(self) -> Any:
@@ -895,27 +860,23 @@ class LCTLDSPyTeleprompter:
             )
 
             fact_id = f"optimization_complete_{self._teleprompter_name}_{uuid4().hex[:8]}"
-            try:
+            with contextlib.suppress(Exception):
                 self._callback.session.add_fact(
                     fact_id=fact_id,
                     text=f"Optimization completed in {total_time_ms}ms",
                     confidence=1.0,
                     source=self._teleprompter_name,
                 )
-            except Exception:
-                pass
 
             return result
 
         except Exception as e:
-            try:
+            with contextlib.suppress(Exception):
                 self._callback.session.step_end(
                     agent=self._teleprompter_name,
                     outcome="error",
                     output_summary=f"Optimization failed: {type(e).__name__}: {str(e)[:100]}",
                 )
-            except Exception:
-                pass
             self._callback.record_error(e, self._teleprompter_name, recoverable=False)
             raise
 

@@ -11,6 +11,7 @@ from typing import Any
 from uuid import uuid4
 
 from ..core.events import Event
+import contextlib
 
 
 class StreamingEventType(str, Enum):
@@ -404,10 +405,8 @@ class EventEmitter:
             error_handlers.extend(self._handlers.get(StreamingEventType.ERROR.value, []))
 
         for handler in error_handlers:
-            try:
+            with contextlib.suppress(Exception):
                 handler(error_event)
-            except Exception:
-                pass
 
     def handler_count(self, event_type: str | StreamingEventType | None = None) -> int:
         """Get the number of registered handlers.

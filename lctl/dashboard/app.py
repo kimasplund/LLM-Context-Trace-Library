@@ -33,6 +33,7 @@ from .. import __version__
 from ..core.events import Chain, ReplayEngine
 from ..evaluation.metrics import ChainMetrics
 from ..streaming.emitter import EventEmitter, StreamingEvent, StreamingEventType
+import contextlib
 
 # =============================================================================
 # Request/Response Models
@@ -682,10 +683,8 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
 
         def on_event(event: StreamingEvent) -> None:
             if _should_send_to_client(event, filters):
-                try:
+                with contextlib.suppress(asyncio.QueueFull):
                     queue.put_nowait(event)
-                except asyncio.QueueFull:
-                    pass
 
         emitter.on("all", on_event)
 
@@ -738,10 +737,8 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
 
             for task in pending:
                 task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await task
-                except asyncio.CancelledError:
-                    pass
         finally:
             emitter.off("all", on_event)
 
@@ -769,10 +766,8 @@ def _register_streaming_endpoints(app: FastAPI) -> None:
 
             def on_event(event: StreamingEvent) -> None:
                 if _should_send_to_client(event, filters):
-                    try:
+                    with contextlib.suppress(asyncio.QueueFull):
                         queue.put_nowait(event)
-                    except asyncio.QueueFull:
-                        pass
 
             emitter.on("all", on_event)
 

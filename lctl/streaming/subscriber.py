@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any
 
 from .emitter import EventEmitter, StreamingEvent, StreamingEventType
+import contextlib
 
 
 class EventSubscriber(ABC):
@@ -294,10 +295,8 @@ class BufferedSubscriber(EventSubscriber):
         self._last_flush = time.time()
 
         if events:
-            try:
+            with contextlib.suppress(Exception):
                 self._handler(events)
-            except Exception:
-                pass
 
         return events
 
@@ -361,10 +360,8 @@ class AsyncSubscriber(EventSubscriber):
             return
 
         if self._queue is not None:
-            try:
+            with contextlib.suppress(asyncio.QueueFull):
                 self._queue.put_nowait(event)
-            except asyncio.QueueFull:
-                pass
 
     async def start(self) -> None:
         """Start the async subscriber."""
@@ -383,10 +380,8 @@ class AsyncSubscriber(EventSubscriber):
 
         if self._task:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
             self._task = None
 
         self._queue = None
