@@ -1,16 +1,20 @@
 """Live LlamaIndex smoke tests with MockLLM/MockEmbedding (no API keys)."""
 
+import logging
+
 import pytest
 
 pytest.importorskip("llama_index.core")
 
 from llama_index.core import Document, Settings, VectorStoreIndex
+from llama_index.core.callbacks import CBEventType, EventPayload
 from llama_index.core.embeddings import MockEmbedding
 from llama_index.core.llms import MockLLM
 
 from lctl.core.events import EventType
 from lctl.integrations.llamaindex import (
     LCTLLlamaIndexCallback,
+    _attach_handler,
     trace_chat_engine,
     trace_query_engine,
 )
@@ -81,3 +85,46 @@ def test_trace_chat_engine_wraps_and_records(build_index):
 
     assert str(response)
     assert len(traced.session.chain.events) > 0
+
+
+def test_llm_trace_has_llm_agent_and_start_payload_model(build_index):
+    captured = {}
+
+    class Spy(LCTLLlamaIndexCallback):
+        def on_event_start(self, event_type, payload=None, event_id="", parent_id="", **kw):
+            if event_type == CBEventType.LLM and payload:
+                captured["serialized"] = payload.get(EventPayload.SERIALIZED)
+            return super().on_event_start(event_type, payload, event_id, parent_id, **kw)
+
+    cb = Spy(chain_id="li-model")
+    Settings.callback_manager = cb.get_callback_manager()
+    build_index().as_query_engine().query("q")
+
+    traces = [e for e in cb.session.chain.events if e.type == EventType.LLM_TRACE]
+    assert traces
+    # llm_trace is emitted inside the LLM step, not after it closes.
+    assert all(t.agent == "llm" for t in traces)
+    # MockLLM names no model (0.12: no key, 0.14: model_name == "unknown"), so the
+    # recorded model must fall back to the class name from the start payload.
+    assert (captured["serialized"] or {})["class_name"] == "MockLLM"
+    assert traces[0].data["model"] == "MockLLM"
+
+
+def test_shared_manager_warns_about_second_tracer(build_index, caplog):
+    index = build_index()
+    engine_a = index.as_query_engine()
+    engine_b = index.as_query_engine()
+    assert engine_a.callback_manager is engine_b.callback_manager
+
+    first = LCTLLlamaIndexCallback(chain_id="a")
+    second = LCTLLlamaIndexCallback(chain_id="b")
+    with caplog.at_level(logging.WARNING, logger="lctl.integrations.llamaindex"):
+        _attach_handler(engine_a, first)
+        assert not caplog.records
+        _attach_handler(engine_b, second)
+
+    warnings_ = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings_) == 1
+    assert "shared" in warnings_[0].getMessage()
+    assert "twice" in warnings_[0].getMessage()
+    assert second in engine_b.callback_manager.handlers  # still attached

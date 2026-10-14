@@ -22,6 +22,7 @@ Usage:
 from __future__ import annotations
 
 import contextlib
+import logging
 import threading
 import time
 from typing import Any
@@ -29,6 +30,8 @@ from uuid import uuid4
 
 from ..core.session import LCTLSession
 from .base import TracerDelegate, truncate
+
+logger = logging.getLogger(__name__)
 
 try:
     from llama_index.core.callbacks import CallbackManager
@@ -384,9 +387,22 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
         elif prompt:
             input_summary = truncate(str(prompt))
 
+        # The model name only appears in the start payload (SERIALIZED).
+        serialized = payload.get(EventPayload.SERIALIZED) if EventPayload else None
+        model = ""
+        if isinstance(serialized, dict):
+            # Some LLMs (e.g. MockLLM on 0.14) report the literal "unknown" as model_name;
+            # skip it and fall back to the class name.
+            for key in ("model", "model_name", "class_name"):
+                value = str(serialized.get(key) or "")
+                if value and value != "unknown":
+                    model = value
+                    break
+
         with self._lock:
             if event_id in self._event_stack:
                 self._event_stack[event_id]["input_summary"] = input_summary
+                self._event_stack[event_id]["model"] = model
 
         self._safe_session_call(
             "step_start",
@@ -420,6 +436,16 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             if completion and not response_text:
                 response_text = str(completion)
 
+        # Emit the llm_trace before step_end so it attaches to the LLM step's span.
+        self._safe_session_call(
+            "llm_trace",
+            messages=[{"role": "user", "content": event_info.get("input_summary", "")}],
+            response=truncate(response_text, 2000),
+            model=str(event_info.get("model") or "unknown"),
+            usage={"input": tokens["input"], "output": tokens["output"]},
+            duration_ms=duration_ms,
+        )
+
         self._safe_session_call(
             "step_end",
             agent="llm",
@@ -428,19 +454,6 @@ class LCTLLlamaIndexCallback(BaseCallbackHandler):
             duration_ms=duration_ms,
             tokens_in=tokens["input"],
             tokens_out=tokens["output"],
-        )
-
-        serialized = payload.get(EventPayload.SERIALIZED) if EventPayload else None
-        model = "unknown"
-        if isinstance(serialized, dict):
-            model = str(serialized.get("model") or serialized.get("model_name") or "unknown")
-        self._safe_session_call(
-            "llm_trace",
-            messages=[{"role": "user", "content": event_info.get("input_summary", "")}],
-            response=truncate(response_text, 2000),
-            model=model,
-            usage={"input": tokens["input"], "output": tokens["output"]},
-            duration_ms=duration_ms,
         )
 
     def _on_query_start(self, event_id: str, payload: dict[str, Any]) -> None:
@@ -777,10 +790,23 @@ def _attach_handler(engine: Any, handler: LCTLLlamaIndexCallback) -> None:
 
     Adds to the manager in place when it has ``add_handler`` so its trace state
     and ignore lists are kept; otherwise swaps in a merged manager.
+
+    Engines built from the same ``Settings`` share one callback manager, so every
+    engine on it is traced by the handler, and a second LCTL handler on the same
+    manager records each event twice. A warning is logged in that case.
     """
     if not hasattr(engine, "callback_manager"):
         return
     manager = engine.callback_manager
+    if manager is not None and any(
+        isinstance(h, LCTLLlamaIndexCallback) and h is not handler
+        for h in (getattr(manager, "handlers", None) or [])
+    ):
+        logger.warning(
+            "This callback manager is shared and already has an LCTL handler: every "
+            "engine on it is traced by both handlers, so events are recorded twice. "
+            "For whole-app tracing set Settings.callback_manager once instead."
+        )
     if manager is not None and hasattr(manager, "add_handler"):
         manager.add_handler(handler)
     else:
@@ -1028,6 +1054,13 @@ def trace_query_engine(
     Returns:
         An LCTLQueryEngine wrapper with tracing enabled.
 
+    Note:
+        The handler is attached to the engine's callback manager (and its
+        retriever's). Engines built from the same ``Settings`` share that manager,
+        so every engine on it is traced, not only this one. For whole-app tracing
+        prefer ``Settings.callback_manager = callback.get_callback_manager()``
+        before building indexes.
+
     Raises:
         ValueError: If the query engine is already being traced by LCTL.
 
@@ -1059,6 +1092,13 @@ def trace_chat_engine(
 
     Returns:
         An LCTLChatEngine wrapper with tracing enabled.
+
+    Note:
+        The handler is attached to the engine's callback manager (and its
+        retriever's). Engines built from the same ``Settings`` share that manager,
+        so every engine on it is traced, not only this one. For whole-app tracing
+        prefer ``Settings.callback_manager = callback.get_callback_manager()``
+        before building indexes.
 
     Raises:
         ValueError: If the chat engine is already being traced by LCTL.

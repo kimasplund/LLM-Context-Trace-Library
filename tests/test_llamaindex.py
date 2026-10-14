@@ -57,6 +57,7 @@ class MockEventPayload:
     NODES = "nodes"
     CHUNKS = "chunks"
     TEMPLATE = "template"
+    SERIALIZED = "serialized"
 
 
 class MockCallbackManager:
