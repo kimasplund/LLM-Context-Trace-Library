@@ -48,6 +48,19 @@ def check_availability(module_name: str, import_check: Callable[[], object]) -> 
         return False
 
 
+REPO_URL = "git+https://github.com/kimasplund/LLM-Context-Trace-Library"
+
+
+def install_command(extra: str | None = None) -> str:
+    """The pip command that installs LCTL (optionally with an extra) from the repository.
+
+    ``lctl`` is not published on PyPI, so a plain pip install by name would fetch
+    whatever package anyone registers under that name.
+    """
+    spec = f"lctl[{extra}]" if extra else "lctl"
+    return f'pip install "{spec} @ {REPO_URL}"'
+
+
 class IntegrationNotAvailableError(ImportError):
     """Raised when an integration's framework is not installed."""
 

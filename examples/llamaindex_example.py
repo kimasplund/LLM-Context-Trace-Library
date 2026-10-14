@@ -27,7 +27,9 @@ from lctl.integrations.llamaindex import LCTLLlamaIndexCallback, is_available
 
 def main() -> None:
     if not is_available():
-        print('LCTL LlamaIndex integration unavailable: pip install "lctl[llamaindex]"')
+        print(
+            'LCTL LlamaIndex integration unavailable: pip install "lctl[llamaindex] @ git+https://github.com/kimasplund/LLM-Context-Trace-Library"'
+        )
         sys.exit(0)
 
     Settings.llm = MockLLM()

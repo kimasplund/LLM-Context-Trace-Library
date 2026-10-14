@@ -11,6 +11,7 @@ import click
 from .. import __version__
 from ..core.events import Chain, Event, ReplayEngine
 from ..evaluation import ChainMetrics, compute_all_metrics
+from ..integrations.base import install_command
 
 
 def _load_chain_safely(chain_file: str) -> Chain | None:
@@ -382,7 +383,7 @@ def debug(chain_file: str, port: int):
         run_dashboard(port=port, working_dir=Path(chain_file).parent.absolute())
     except ImportError as e:
         click.echo(click.style(f"Error: Dashboard dependencies not installed: {e}", fg="red"))
-        click.echo("Install with: pip install 'lctl[dashboard]'")
+        click.echo(f"Install with: {install_command('dashboard')}")
         sys.exit(1)
 
 
@@ -833,7 +834,7 @@ def dashboard(port: int, host: str, working_dir: str | None):
         click.echo(click.style(f"Error: Dashboard dependencies not installed: {e}", fg="red"))
         click.echo()
         click.echo("Install dashboard dependencies with:")
-        click.echo("  pip install 'lctl[dashboard]'")
+        click.echo(f"  {install_command('dashboard')}")
         click.echo()
         click.echo("Or install manually:")
         click.echo("  pip install fastapi uvicorn")

@@ -58,7 +58,9 @@ def search_database(query: str) -> str:
 
 def main() -> None:
     if not is_available():
-        print('LCTL CrewAI integration unavailable: pip install "lctl[crewai]"')
+        print(
+            'LCTL CrewAI integration unavailable: pip install "lctl[crewai] @ git+https://github.com/kimasplund/LLM-Context-Trace-Library"'
+        )
         sys.exit(0)
 
     researcher = LCTLAgent(

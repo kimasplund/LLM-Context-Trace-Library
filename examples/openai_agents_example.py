@@ -88,7 +88,9 @@ async def run() -> LCTLOpenAIAgentTracer:
 
 def main() -> None:
     if not is_available():
-        print('LCTL OpenAI Agents integration unavailable: pip install "lctl[openai-agents]"')
+        print(
+            'LCTL OpenAI Agents integration unavailable: pip install "lctl[openai-agents] @ git+https://github.com/kimasplund/LLM-Context-Trace-Library"'
+        )
         sys.exit(0)
 
     tracer = asyncio.run(run())

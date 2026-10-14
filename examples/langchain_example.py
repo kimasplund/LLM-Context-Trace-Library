@@ -26,7 +26,9 @@ from lctl.integrations.langchain import LCTLCallbackHandler, is_available
 
 def main() -> None:
     if not is_available():
-        print('LCTL LangChain integration unavailable: pip install "lctl[langchain]"')
+        print(
+            'LCTL LangChain integration unavailable: pip install "lctl[langchain] @ git+https://github.com/kimasplund/LLM-Context-Trace-Library"'
+        )
         sys.exit(0)
 
     handler = LCTLCallbackHandler(chain_id="langchain-example")

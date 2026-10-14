@@ -6,7 +6,7 @@ the install command and exits 0. Run them from a scratch directory.
 
 | Example | Extra | Install | Run | Look at |
 |---------|-------|---------|-----|---------|
-| `spans_demo.py` | (core) | `pip install lctl` | `python examples/spans_demo.py` | `lctl trace --tree spans_demo.lctl.json`: nested planner spans, two parallel workers, a caught error |
+| `spans_demo.py` | (core) | `pip install "lctl @ git+https://github.com/kimasplund/LLM-Context-Trace-Library"` | `python examples/spans_demo.py` | `lctl trace --tree spans_demo.lctl.json`: nested planner spans, two parallel workers, a caught error |
 | `langchain_example.py` | `langchain` | `pip install "lctl[langchain] @ git+https://github.com/kimasplund/LLM-Context-Trace-Library"` | `python examples/langchain_example.py` | `lctl trace --tree langchain_trace.lctl.json`: chain steps under a callback handler |
 | `crewai_example.py` | `crewai` | `pip install "lctl[crewai] @ git+https://github.com/kimasplund/LLM-Context-Trace-Library"` | `python examples/crewai_example.py` | `lctl trace --tree crewai_trace.lctl.json`: per-agent steps and the tool call |
 | `openai_agents_example.py` | `openai-agents` | `pip install "lctl[openai-agents] @ git+https://github.com/kimasplund/LLM-Context-Trace-Library"` | `python examples/openai_agents_example.py` | `lctl trace --tree openai_agents_trace.lctl.json`: agent run with a tool call |

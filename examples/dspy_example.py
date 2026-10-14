@@ -26,7 +26,9 @@ from lctl.integrations.dspy import LCTLDSPyCallback, is_available, trace_module
 
 def main() -> None:
     if not is_available():
-        print('LCTL DSPy integration unavailable: pip install "lctl[dspy]"')
+        print(
+            'LCTL DSPy integration unavailable: pip install "lctl[dspy] @ git+https://github.com/kimasplund/LLM-Context-Trace-Library"'
+        )
         sys.exit(0)
 
     callback = LCTLDSPyCallback(chain_id="dspy-example")

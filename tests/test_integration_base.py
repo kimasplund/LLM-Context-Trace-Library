@@ -691,3 +691,36 @@ class TestBaseTracerIntegration:
 
         result = tracer1.to_dict()
         assert len(result["events"]) == 4  # 2 initial + 2 facts
+
+
+class TestInstallHints:
+    """`lctl` is not on PyPI: install advice must never be a bare `pip install lctl`."""
+
+    def test_install_command_uses_the_git_url(self):
+        from lctl.integrations.base import install_command
+
+        assert "git+https://" in install_command()
+        assert "lctl[dspy] @ git+https://" in install_command("dspy")
+
+    def test_not_available_error_message_has_git_url(self):
+        from lctl.integrations.base import IntegrationNotAvailableError, install_command
+
+        err = IntegrationNotAvailableError("X", install_command("x"))
+        assert "git+https://" in str(err)
+
+    def test_no_bare_lctl_install_hints_in_package_or_examples(self):
+        import re
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parent.parent
+        bare = re.compile(r"pip install ['\"]?lctl(\[[^\]]*\])?['\"]?(?!\s*@)(?=[\s'\"`]|$)")
+        offenders = []
+        for base in ("lctl", "examples"):
+            for path in (root / base).rglob("*"):
+                if path.suffix not in {".py", ".md"}:
+                    continue
+                for n, line in enumerate(path.read_text().splitlines(), 1):
+                    for m in bare.finditer(line):
+                        if " @ git+" not in line[m.start() :]:
+                            offenders.append(f"{path.relative_to(root)}:{n}")
+        assert not offenders

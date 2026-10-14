@@ -35,7 +35,9 @@ async def run():
 
 def main() -> None:
     if not is_available():
-        print('LCTL PydanticAI integration unavailable: pip install "lctl[pydantic-ai]"')
+        print(
+            'LCTL PydanticAI integration unavailable: pip install "lctl[pydantic-ai] @ git+https://github.com/kimasplund/LLM-Context-Trace-Library"'
+        )
         sys.exit(0)
 
     traced = asyncio.run(run())

@@ -49,7 +49,9 @@ async def run() -> LCTLSemanticKernelTracer:
 
 def main() -> None:
     if not is_available():
-        print('LCTL Semantic Kernel integration unavailable: pip install "lctl[semantic-kernel]"')
+        print(
+            'LCTL Semantic Kernel integration unavailable: pip install "lctl[semantic-kernel] @ git+https://github.com/kimasplund/LLM-Context-Trace-Library"'
+        )
         sys.exit(0)
 
     tracer = asyncio.run(run())

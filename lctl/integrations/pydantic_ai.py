@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 from ..core.session import LCTLSession
-from .base import BaseTracer, truncate
+from .base import BaseTracer, install_command, truncate
 
 try:
     from pydantic_ai import Agent
@@ -75,7 +75,7 @@ class LCTLPydanticAITracer(BaseTracer):
         """
         if not PYDANTIC_AI_AVAILABLE:
             raise ImportError(
-                "PydanticAI is not installed. Install with: pip install lctl[pydantic-ai]"
+                f"PydanticAI is not installed. Install with: {install_command('pydantic-ai')}"
             )
         super().__init__(
             chain_id=chain_id,
