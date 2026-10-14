@@ -1,8 +1,13 @@
 """Comprehensive test suite for Claude Code integration."""
 
+import json
+import subprocess
+import sys
 from pathlib import Path
 
-from lctl.core.events import Chain, EventType
+import pytest
+
+from lctl.core.events import Chain, EventType, ReplayEngine
 from lctl.integrations.claude_code import (
     MODEL_PRICING,
     LCTLClaudeCodeTracer,
@@ -900,3 +905,155 @@ class TestIntegration:
         summary = tracer.get_summary()
         assert summary["error_count"] >= 1
         assert summary["user_interactions"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# Generated hook scripts, run as real separate processes
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def hook_project(tmp_path: Path) -> Path:
+    """A project dir with hook scripts and the repo venv symlinked as ``.venv``."""
+    (tmp_path / ".venv").symlink_to(sys.prefix)
+    generate_hooks(str(tmp_path / ".claude" / "hooks"))
+    return tmp_path
+
+
+def run_hook(project: Path, event: str, payload: dict) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603  # fixed bash + generated script path
+        ["bash", str(project / ".claude" / "hooks" / f"{event}.sh")],  # noqa: S607
+        input=json.dumps(payload),
+        cwd=project,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+def trace_files(project: Path) -> list[Path]:
+    return sorted((project / ".claude" / "traces").glob("*.lctl.json"))
+
+
+class TestHookScripts:
+    """The generated scripts, executed the way Claude Code executes them."""
+
+    @pytest.mark.parametrize("tool", ["Agent", "Task"])
+    def test_agent_tool_spawn_recorded_across_processes(self, hook_project: Path, tool: str):
+        tool_input = {
+            "subagent_type": "Explore",
+            "description": "find x",
+            "prompt": "look for x",
+        }
+        pre = run_hook(
+            hook_project,
+            "PreToolUse",
+            {
+                "session_id": "s1",
+                "tool_name": tool,
+                "tool_use_id": "t1",
+                "tool_input": tool_input,
+            },
+        )
+        assert pre.returncode == 0, pre.stderr
+        post = run_hook(
+            hook_project,
+            "PostToolUse",
+            {
+                "session_id": "s1",
+                "tool_name": tool,
+                "tool_use_id": "t1",
+                "tool_input": tool_input,
+                "tool_response": {
+                    "status": "completed",
+                    "content": [{"type": "text", "text": "found x"}],
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                },
+            },
+        )
+        assert post.returncode == 0, post.stderr
+
+        (trace,) = trace_files(hook_project)
+        nodes = ReplayEngine(Chain.load(trace)).get_span_tree()
+        flat = []
+
+        def walk(items):
+            for n in items:
+                flat.append(n)
+                walk(n["children"])
+
+        walk(nodes)
+        explore = [n for n in flat if n["agent"] == "Explore"]
+        assert len(explore) == 1
+        assert explore[0]["end_seq"] is not None
+        assert not [n for n in flat if str(n["span_id"]).startswith("orphan-")]
+
+    def test_stop_hook_runs_and_keeps_state(self, hook_project: Path):
+        run_hook(
+            hook_project,
+            "PreToolUse",
+            {"tool_name": "Agent", "tool_input": {"subagent_type": "Explore", "description": "d"}},
+        )
+        state = hook_project / ".claude" / "traces" / ".lctl-state.json"
+        assert state.exists()
+        stop = run_hook(hook_project, "Stop", {"session_id": "s1"})
+        assert stop.returncode == 0, stop.stderr
+        assert "Events:" in stop.stdout
+        assert state.exists()
+
+    def test_session_end_finalizes_and_session_start_isolates(self, hook_project: Path):
+        tool_input = {"subagent_type": "Explore", "description": "d"}
+        run_hook(
+            hook_project,
+            "PreToolUse",
+            {"session_id": "s1", "tool_name": "Agent", "tool_input": tool_input},
+        )
+        state = hook_project / ".claude" / "traces" / ".lctl-state.json"
+        end = run_hook(hook_project, "SessionEnd", {"session_id": "s1"})
+        assert end.returncode == 0, end.stderr
+        assert not state.exists()
+        (first,) = trace_files(hook_project)
+        first_ids = {e.id for e in Chain.load(first).events}
+
+        assert run_hook(hook_project, "SessionStart", {"session_id": "s2"}).returncode == 0
+        run_hook(
+            hook_project,
+            "PreToolUse",
+            {"session_id": "s2", "tool_name": "Agent", "tool_input": tool_input},
+        )
+        run_hook(
+            hook_project,
+            "PostToolUse",
+            {
+                "session_id": "s2",
+                "tool_name": "Agent",
+                "tool_input": tool_input,
+                "tool_response": {"status": "completed"},
+            },
+        )
+        files = trace_files(hook_project)
+        assert len(files) == 2
+        (second,) = [f for f in files if f != first]
+        second_chain = Chain.load(second)
+        assert second_chain.events
+        assert not first_ids & {e.id for e in second_chain.events}
+        assert len(Chain.load(first).events) == len(first_ids)
+
+    def test_session_start_archives_leftover_state(self, hook_project: Path):
+        run_hook(
+            hook_project,
+            "PreToolUse",
+            {"tool_name": "Agent", "tool_input": {"subagent_type": "Explore"}},
+        )
+        traces = hook_project / ".claude" / "traces"
+        assert (traces / ".lctl-state.json").exists()
+        start = run_hook(hook_project, "SessionStart", {"session_id": "s2"})
+        assert start.returncode == 0, start.stderr
+        assert not (traces / ".lctl-state.json").exists() or (
+            json.loads((traces / ".lctl-state.json").read_text())["agent_stack"] == []
+        )
+        assert list(traces.glob(".lctl-state*archived*"))
+
+    def test_generate_hooks_returns_session_hooks(self, tmp_path: Path):
+        hooks = generate_hooks(str(tmp_path / "h"))
+        assert set(hooks) == {"PreToolUse", "PostToolUse", "Stop", "SessionStart", "SessionEnd"}

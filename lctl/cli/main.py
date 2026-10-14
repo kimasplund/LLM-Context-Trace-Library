@@ -900,95 +900,50 @@ def claude():
 
 @claude.command("init")
 @click.option("--hooks-dir", "-d", default=".claude/hooks", help="Hooks directory")
-@click.option("--force", "-f", is_flag=True, help="Overwrite existing hooks")
+@click.option("--force", "-f", is_flag=True, help="Overwrite existing hook scripts")
 @click.option("--chain-id", "-c", default=None, help="Chain ID for tracing session")
 def claude_init(hooks_dir: str, force: bool, chain_id: str):
     """Initialize LCTL tracing for Claude Code.
 
-    Generates hook scripts that automatically trace Task tool usage,
-    enabling time-travel debugging of multi-agent workflows.
+    Generates hook scripts that automatically trace subagent (Agent/Task tool)
+    usage, enabling time-travel debugging of multi-agent workflows. Existing
+    settings and non-LCTL hooks are preserved (settings.json.bak is written
+    first); --force only regenerates the hook scripts.
 
     Example:
         lctl claude init
         lctl claude init --chain-id my-project
         lctl claude init --hooks-dir /path/to/hooks
     """
-    from ..integrations.claude_code import generate_hooks
+    import shutil
 
-    hooks_path = Path(hooks_dir)
-
-    # Check for existing hooks
-    if hooks_path.exists() and not force:
-        existing = list(hooks_path.glob("*.sh"))
-        if existing:
-            click.echo(
-                click.style(
-                    f"Hooks directory already contains {len(existing)} scripts.", fg="yellow"
-                )
-            )
-            click.echo("Use --force to overwrite.")
-            sys.exit(1)
+    from ..integrations.claude_code import generate_hooks, merge_hook_settings
 
     try:
-        hooks = generate_hooks(hooks_dir, chain_id=chain_id)
-
-        # Generate settings.json with hook configuration
-        # Use absolute path via $PWD to ensure hooks work from any subdirectory
+        existing_scripts = sorted(Path(hooks_dir).glob("*.sh")) if Path(hooks_dir).exists() else []
+        # Merge LCTL entries into settings.json; everything else is preserved.
+        # Use an absolute project root so hooks work from any subdirectory.
         settings_path = Path(".claude/settings.json")
-        project_root = Path.cwd().resolve()
-        settings = {
-            "hooks": {
-                "PreToolUse": [
-                    {
-                        "matcher": "Task",
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": f"cd {project_root} && bash {hooks_dir}/PreToolUse.sh",
-                            }
-                        ],
-                    }
-                ],
-                "PostToolUse": [
-                    {
-                        "matcher": "*",
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": f"cd {project_root} && bash {hooks_dir}/PostToolUse.sh",
-                            }
-                        ],
-                    }
-                ],
-                "Stop": [
-                    {
-                        "matcher": "",
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": f"cd {project_root} && bash {hooks_dir}/Stop.sh",
-                            }
-                        ],
-                    }
-                ],
-            }
-        }
+        existing: dict = {}
+        if settings_path.exists():
+            existing = json.loads(settings_path.read_text())
+            if not isinstance(existing, dict):
+                raise ValueError(f"{settings_path} must contain a JSON object")
+            shutil.copy2(settings_path, settings_path.with_name(settings_path.name + ".bak"))
 
-        # Merge with existing settings if present
-        if settings_path.exists() and not force:
-            import json
-
-            with open(settings_path) as f:
-                existing = json.load(f)
-            existing["hooks"] = settings["hooks"]
-            settings = existing
-
+        hooks = generate_hooks(hooks_dir, chain_id=chain_id, overwrite=force)
+        settings = merge_hook_settings(existing, Path.cwd().resolve(), hooks_dir)
         settings_path.parent.mkdir(parents=True, exist_ok=True)
-        import json
+        settings_path.write_text(json.dumps(settings, indent=2))
 
-        with open(settings_path, "w") as f:
-            json.dump(settings, f, indent=2)
-
+        if existing_scripts and not force:
+            click.echo(
+                click.style(
+                    f"Kept {len(existing_scripts)} existing hook scripts; "
+                    "use --force to regenerate them.",
+                    fg="yellow",
+                )
+            )
         click.echo(click.style("LCTL Claude Code tracing initialized!", fg="green"))
         click.echo()
         click.echo("Generated hooks:")
@@ -1001,10 +956,10 @@ def claude_init(hooks_dir: str, force: bool, chain_id: str):
             click.echo(f"Tracing session: {chain_id}")
             click.echo()
         click.echo("Tracing will automatically capture:")
-        click.echo("  - Task tool invocations (agent spawning)")
+        click.echo("  - Agent/Task tool invocations (subagent spawning)")
         click.echo("  - Agent completions with results")
         click.echo("  - Tool calls within agents")
-        click.echo("  - Session export on exit")
+        click.echo("  - A separate trace per session (SessionStart/SessionEnd)")
         click.echo()
         click.echo("Traces will be saved to: .claude/traces/")
         click.echo()
@@ -1055,6 +1010,16 @@ def claude_validate(hooks_dir: str):
         click.echo("Warnings:")
         for warning in validation["warnings"]:
             click.echo(f"  - {warning}")
+
+    if validation["outdated"]:
+        click.echo()
+        click.echo(click.style("Outdated installation:", fg="red"))
+        for reason in validation["reasons"]:
+            click.echo(f"  - {reason}")
+        click.echo("Run 'lctl claude init' (add --force to regenerate the scripts).")
+
+    if not validation["valid"] or validation["outdated"]:
+        sys.exit(1)
 
 
 @claude.command("status")
