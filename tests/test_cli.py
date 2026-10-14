@@ -1234,6 +1234,51 @@ class TestClaudeCommands:
         assert [g["matcher"] for g in groups].count("Bash") == 1
         assert [g["matcher"] for g in groups].count("Task|Agent") == 1
 
+    @pytest.mark.parametrize(
+        "form",
+        [
+            '"$CLAUDE_PROJECT_DIR"/.claude/hooks/PreToolUse.sh',
+            "bash {root}/.claude/hooks/PreToolUse.sh",
+            'cd {root} && bash ".claude/hooks/PreToolUse.sh"',
+        ],
+    )
+    def test_init_force_redirects_user_entries_in_any_path_form(
+        self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, form: str
+    ):
+        import os
+        import shlex
+        import subprocess
+
+        root = tmp_path.resolve()
+        monkeypatch.chdir(root)
+        script, settings, _original = self._foreign_hook_setup(root)
+        script.write_text("#!/bin/bash\n# my own rm guard\nexit 2\n")
+        script.chmod(0o755)  # the "$CLAUDE_PROJECT_DIR"/... form executes it directly
+        user_command = form.format(root=shlex.quote(str(root)))
+        data = json.loads(settings.read_text())
+        data["hooks"]["PreToolUse"][0]["hooks"][0]["command"] = user_command
+        settings.write_text(json.dumps(data))
+
+        result = runner.invoke(cli, ["claude", "init", "--force"])
+        assert result.exit_code == 0, result.output
+        assert "PreToolUse.sh.bak" in result.output
+        groups = json.loads(settings.read_text())["hooks"]["PreToolUse"]
+        assert [g["matcher"] for g in groups].count("Task|Agent") == 1
+        (bash_group,) = [g for g in groups if g["matcher"] == "Bash"]
+        command = bash_group["hooks"][0]["command"]
+        assert ".bak" in command
+        if form.startswith("cd "):
+            assert command.startswith("cd ")
+        proc = subprocess.run(  # noqa: S603
+            ["bash", "-c", command],  # noqa: S607
+            capture_output=True,
+            text=True,
+            cwd=root,
+            env={**os.environ, "CLAUDE_PROJECT_DIR": str(root)},
+            timeout=30,
+        )
+        assert proc.returncode == 2, (command, proc.stderr)
+
     def test_hook_commands_survive_awkward_project_paths(
         self, runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):

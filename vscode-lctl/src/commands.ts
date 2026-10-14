@@ -40,7 +40,7 @@ function runLctlCommand(command: string, args: string[]): void {
     proc.on('error', (err: Error) => {
         channel.appendLine(`\nError: ${err.message}`);
         if (err.message.includes('ENOENT')) {
-            channel.appendLine('Make sure lctl is installed: pip install lctl');
+            channel.appendLine('Make sure lctl is installed: pip install "lctl @ git+https://github.com/kimasplund/LLM-Context-Trace-Library"');
         }
     });
 

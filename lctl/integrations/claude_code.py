@@ -1539,11 +1539,17 @@ def _normalize_hooks_dir(hooks_dir: str) -> str:
     return hooks_dir.replace("\\", "/").rstrip("/")
 
 
-def is_lctl_hook_command(command: Any, event: str, hooks_dir: str = ".claude/hooks") -> bool:
+def is_lctl_hook_command(
+    command: Any,
+    event: str,
+    hooks_dir: str = ".claude/hooks",
+    project_root: Path | None = None,
+) -> bool:
     """True if ``command`` runs ``<hooks_dir>/<event>.sh`` (an LCTL-installed hook).
 
     The command is parsed shell-style, so entries written before the project root
-    was quoted and current quoted ones are both recognised.
+    was quoted and current quoted ones are both recognised. With ``project_root``,
+    absolute and ``$CLAUDE_PROJECT_DIR``-relative paths to the same script also match.
     """
     if not isinstance(command, str):
         return False
@@ -1551,7 +1557,19 @@ def is_lctl_hook_command(command: Any, event: str, hooks_dir: str = ".claude/hoo
         tokens = shlex.split(command)
     except ValueError:
         return False
-    return bool(tokens) and tokens[-1] == f"{_normalize_hooks_dir(hooks_dir)}/{event}.sh"
+    if not tokens:
+        return False
+    relative = f"{_normalize_hooks_dir(hooks_dir)}/{event}.sh"
+    if tokens[-1] == relative:
+        return True
+    if project_root is None:
+        return False
+    root = str(project_root)
+    script = tokens[-1].replace("${CLAUDE_PROJECT_DIR}", root).replace("$CLAUDE_PROJECT_DIR", root)
+    try:
+        return (project_root / script).resolve() == (project_root / relative).resolve()
+    except OSError:
+        return False
 
 
 def build_hook_settings(project_root: Path, hooks_dir: str = ".claude/hooks") -> dict[str, Any]:
@@ -1575,12 +1593,21 @@ def build_hook_settings(project_root: Path, hooks_dir: str = ".claude/hooks") ->
 
 
 def _redirect_to_backup(command: str, event: str, hooks_dir: str) -> str:
-    """Rewrite a command running ``<hooks_dir>/<event>.sh`` to run ``....sh.bak`` instead."""
+    """Rewrite a command running ``<hooks_dir>/<event>.sh`` to run ``....sh.bak`` instead.
+
+    ``.bak`` is inserted right after the script name in the original text, so the
+    rest of the command (a leading ``cd``, quoting, ``$CLAUDE_PROJECT_DIR``) is kept.
+    """
+    name = f"{event}.sh"
+    at = command.rfind(name)
+    if at != -1:
+        rewritten = command[: at + len(name)] + ".bak" + command[at + len(name) :]
+        try:
+            if shlex.split(rewritten)[-1] == shlex.split(command)[-1] + ".bak":
+                return rewritten
+        except (ValueError, IndexError):
+            pass
     script = f"{_normalize_hooks_dir(hooks_dir)}/{event}.sh"
-    for text in (shlex.quote(script), script):
-        if command.rstrip().endswith(text):
-            stripped = command.rstrip()
-            return stripped[: -len(text)] + shlex.quote(script + ".bak")
     return f"bash {shlex.quote(script + '.bak')}"
 
 
@@ -1624,7 +1651,9 @@ def merge_hook_settings(
                 continue
             remaining = []
             for h in entries:
-                if isinstance(h, dict) and is_lctl_hook_command(h.get("command"), event, hooks_dir):
+                if isinstance(h, dict) and is_lctl_hook_command(
+                    h.get("command"), event, hooks_dir, project_root
+                ):
                     if event not in backed_up:
                         continue
                     h = {**h, "command": _redirect_to_backup(h["command"], event, hooks_dir)}

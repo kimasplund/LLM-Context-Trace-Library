@@ -4,6 +4,7 @@ import bisect
 import copy
 import json
 import os
+import shutil
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -264,7 +265,8 @@ class Chain:
 
     def save(self, path: str | os.PathLike[str]) -> None:
         """Save chain to file. Assigns a trace_id first if the chain has none (pre-4.2 files)."""
-        path = Path(path)
+        # Write to the real file behind a symlink, and keep its permissions.
+        path = Path(path).resolve()
         if self.trace_id is None:
             self.trace_id = new_id()
         data = self.to_dict()
@@ -276,6 +278,8 @@ class Chain:
         tmp = path.with_name(f".{path.name}.{os.getpid()}.{new_id()}.tmp")
         try:
             tmp.write_text(content)
+            if path.exists():
+                shutil.copymode(path, tmp)
             os.replace(tmp, path)
         except BaseException:
             tmp.unlink(missing_ok=True)

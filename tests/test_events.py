@@ -807,6 +807,22 @@ class TestStrPathsAndVolatileDiff:
         assert loaded.id == sample_chain.id
         assert len(loaded.events) == len(sample_chain.events)
 
+    def test_save_keeps_file_mode(self, sample_chain: Chain, tmp_path: Path):
+        path = tmp_path / "c.lctl.json"
+        sample_chain.save(path)
+        path.chmod(0o600)
+        sample_chain.save(path)
+        assert path.stat().st_mode & 0o777 == 0o600
+
+    def test_save_through_symlink_updates_target(self, sample_chain: Chain, tmp_path: Path):
+        target = tmp_path / "real.lctl.json"
+        target.write_text("{}")
+        link = tmp_path / "link.lctl.json"
+        link.symlink_to(target)
+        sample_chain.save(link)
+        assert link.is_symlink()
+        assert Chain.load(target).id == sample_chain.id
+
     def test_diff_ignores_volatile_fields_by_default(self, record_run):
         first = ReplayEngine(record_run(100))
         second = ReplayEngine(record_run(250))

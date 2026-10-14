@@ -715,9 +715,9 @@ class TestInstallHints:
         root = Path(__file__).resolve().parent.parent
         bare = re.compile(r"pip install ['\"]?lctl(\[[^\]]*\])?['\"]?(?!\s*@)(?=[\s'\"`]|$)")
         offenders = []
-        for base in ("lctl", "examples"):
+        for base in ("lctl", "examples", "vscode-lctl/src"):
             for path in (root / base).rglob("*"):
-                if path.suffix not in {".py", ".md"}:
+                if path.suffix not in {".py", ".md", ".ts"}:
                     continue
                 for n, line in enumerate(path.read_text().splitlines(), 1):
                     for m in bare.finditer(line):
