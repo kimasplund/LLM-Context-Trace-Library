@@ -25,6 +25,7 @@ Usage:
 """
 
 import contextlib
+import functools
 import threading
 import time
 from typing import Any, Union
@@ -357,52 +358,75 @@ class LCTLCrew:
         # Store original callbacks if any
         self._original_step_callback = getattr(self._crew, "step_callback", None)
         self._original_task_callback = getattr(self._crew, "task_callback", None)
+        self._last_step_at: dict[str, float] = {}
+        self._pending_tool_result: dict[str, str] = {}
+        self._clock_start = time.monotonic()
 
         # Install LCTL callbacks
         self._crew.step_callback = self._on_step
         self._crew.task_callback = self._on_task_complete
 
+        # CrewAI step outputs carry no agent. Each agent gets its own callback that
+        # knows who it belongs to (CrewAI only fills agent.step_callback when unset).
+        for agent in getattr(self._crew, "agents", None) or []:
+            with contextlib.suppress(Exception):
+                agent.step_callback = functools.partial(self._on_agent_step, agent)
+
     def _get_agent_name(self, agent: Any) -> str:
         """Get a readable name for an agent."""
         if hasattr(agent, "role"):
-            return str(agent.role).replace(" ", "-").lower()[:30]
+            return self._role_name(agent.role)
         return "unknown-agent"
 
-    def _on_step(self, step_output: Any) -> None:
+    @staticmethod
+    def _role_name(role: Any) -> str:
+        return str(role).replace(" ", "-").lower()[:30]
+
+    def _on_agent_step(self, agent: Any, step_output: Any) -> None:
+        """Step callback bound to one agent, so steps are attributed to its role."""
+        self._on_step(step_output, agent=agent)
+
+    def _on_step(self, step_output: Any, agent: Any = None) -> None:
         """Callback for each agent step.
 
-        Note: This callback is invoked after the step completes, so we estimate
-        duration based on step timestamps if available, otherwise use 0.
+        CrewAI calls this after the step happened, so the duration is the time
+        since the same agent's previous step (or since kickoff for its first).
+        A ``ToolResult`` is not a step: it is held and attached to the tool call
+        of the step that follows it.
         """
         try:
-            agent_name = "unknown"
+            now = time.monotonic()
+            if agent is None and hasattr(step_output, "agent"):
+                agent = step_output.agent
+            agent_name = self._get_agent_name(agent) if agent is not None else "unknown"
+
+            if type(step_output).__name__ == "ToolResult":
+                self._pending_tool_result[agent_name] = str(getattr(step_output, "result", ""))
+                return
+
             thought = ""
             tool_name = None
             tool_input = None
             tool_output = None
 
-            # Extract step information based on CrewAI output format
-            if hasattr(step_output, "agent"):
-                agent_name = self._get_agent_name(step_output.agent)
-
             if hasattr(step_output, "thought"):
                 thought = truncate(str(step_output.thought), 500)
 
             if hasattr(step_output, "tool"):
-                tool_name = str(step_output.tool)
+                tool_name = str(step_output.tool) if step_output.tool else None
 
             if hasattr(step_output, "tool_input"):
                 tool_input = step_output.tool_input
 
             if hasattr(step_output, "result"):
                 tool_output = truncate(str(step_output.result), 500) if step_output.result else None
+            pending = self._pending_tool_result.pop(agent_name, None)
+            if tool_output is None and pending:
+                tool_output = truncate(pending, 500)
 
-            # Extract duration from step output if available
-            duration_ms = 0
-            if hasattr(step_output, "duration_ms"):
-                duration_ms = int(step_output.duration_ms)
-            elif hasattr(step_output, "execution_time"):
-                duration_ms = int(step_output.execution_time * 1000)
+            previous = self._last_step_at.get(agent_name, self._clock_start)
+            duration_ms = int((now - previous) * 1000)
+            self._last_step_at[agent_name] = now
 
             # Record step start
             self._session.step_start(
@@ -454,6 +478,28 @@ class LCTLCrew:
                 task_output_text = truncate(str(task_output.raw), 500)
             elif hasattr(task_output, "output"):
                 task_output_text = truncate(str(task_output.output), 500)
+
+            # CrewAI sends no step callback for an agent's final answer, so an agent
+            # that answers without using a tool would otherwise leave no step at all.
+            agent_role = getattr(task_output, "agent", None)
+            if isinstance(agent_role, str) and agent_role:
+                agent_name = self._role_name(agent_role)
+                now = time.monotonic()
+                duration_ms = int(
+                    (now - self._last_step_at.get(agent_name, self._clock_start)) * 1000
+                )
+                self._last_step_at[agent_name] = now
+                self._session.step_start(
+                    agent=agent_name,
+                    intent="final_answer",
+                    input_summary=task_description[:100] or "Task",
+                )
+                self._session.step_end(
+                    agent=agent_name,
+                    outcome="success",
+                    output_summary=truncate(task_output_text, 100) or "Task completed",
+                    duration_ms=duration_ms,
+                )
 
             # Add fact about task completion
             fact_id = f"task-{len(self._session.chain.events)}"

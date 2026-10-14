@@ -200,3 +200,43 @@ def test_lctl_crew_error_handling(mock_crewai_available):
     errors = [e for e in events if e.type == EventType.ERROR]
     assert len(errors) == 1
     assert errors[0].data["message"] == "Test Error"
+
+
+def test_tool_result_is_not_a_step_and_agent_is_bound(mock_crewai_available):
+    """A ToolResult is held for the next step; the bound agent supplies the role."""
+    agent = LCTLAgent(role="Senior Researcher", goal="Work", backstory="Working")
+    task = LCTLTask(description="Do work", expected_output="Done", agent=agent)
+    crew = LCTLCrew(agents=[agent], tasks=[task])
+
+    class ToolResult:
+        result = "found it"
+
+    class AgentAction:
+        thought = "use the tool"
+        tool = "search"
+        tool_input = "q"
+        result = ""
+
+    crew._on_step(ToolResult(), agent=agent.agent)
+    assert crew.session.chain.events == []
+
+    crew._on_step(AgentAction(), agent=agent.agent)
+    events = crew.session.chain.events
+    assert {e.agent for e in events} == {"senior-researcher"}
+    call = next(e for e in events if e.type == EventType.TOOL_CALL)
+    assert call.data["output"] == "found it"
+
+
+def test_task_complete_records_final_answer_step(mock_crewai_available):
+    agent = LCTLAgent(role="Writer", goal="Work", backstory="Working")
+    task = LCTLTask(description="Do work", expected_output="Done", agent=agent)
+    crew = LCTLCrew(agents=[agent], tasks=[task])
+
+    output = MagicMock()
+    output.description = "Write it"
+    output.raw = "the report"
+    output.agent = "Writer"
+    crew._on_task_complete(output)
+
+    ends = [e for e in crew.session.chain.events if e.type == EventType.STEP_END]
+    assert [e.agent for e in ends] == ["writer"]
