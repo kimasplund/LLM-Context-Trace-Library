@@ -1049,3 +1049,57 @@ class TestAsyncContextHandling:
 
         assert results[0] == "abc"
         assert results[1] == "xyz"
+
+
+class TestResultShapes:
+    """Result/usage shapes across pydantic-ai versions (unit coverage of existing code paths)."""
+
+    @staticmethod
+    async def _run(mock_agent, result):
+        from lctl.integrations.pydantic_ai import TracedAgent
+
+        mock_agent.run = AsyncMock(return_value=result)
+        session = LCTLSession(chain_id="shapes", redaction_enabled=False)
+        traced = TracedAgent(mock_agent, session=session)
+        await traced.run("q")
+        return next(e for e in session.chain.events if e.type == EventType.STEP_END)
+
+    @pytest.mark.asyncio
+    async def test_data_fallback_when_no_output(self, mock_agent):
+        result = MagicMock()
+        del result.output
+        result.data = "legacy data"
+        del result.usage
+        del result.all_messages
+
+        step_end = await self._run(mock_agent, result)
+
+        assert step_end.data["output_summary"] == "legacy data"
+
+    @pytest.mark.asyncio
+    async def test_usage_property_with_request_response_names(self, mock_agent):
+        result = MagicMock()
+        result.output = "out"
+        result.usage = MagicMock(spec=["request_tokens", "response_tokens"])
+        result.usage.request_tokens = 7
+        result.usage.response_tokens = 3
+        del result.all_messages
+
+        step_end = await self._run(mock_agent, result)
+
+        assert step_end.data["tokens"] == {"input": 7, "output": 3}
+
+    @pytest.mark.asyncio
+    async def test_callable_usage_method_old_style(self, mock_agent):
+        class Usage:
+            request_tokens = 11
+            response_tokens = 5
+
+        result = MagicMock()
+        result.output = "out"
+        result.usage = lambda: Usage()  # plain function: no token attrs, must be called
+        del result.all_messages
+
+        step_end = await self._run(mock_agent, result)
+
+        assert step_end.data["tokens"] == {"input": 11, "output": 5}
