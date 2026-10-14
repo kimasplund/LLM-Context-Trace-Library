@@ -1,17 +1,5 @@
 """LCTL Integrations - Framework integrations for automatic tracing."""
 
-from .autogen import (
-    LCTLAutogenCallback,
-    LCTLConversableAgent,
-    LCTLGroupChatManager,
-    trace_group_chat,
-)
-from .autogen import (
-    is_available as autogen_available,
-)
-from .autogen import (
-    trace_agent as trace_autogen_agent,
-)
 from .base import (
     BaseTracer,
     IntegrationNotAvailableError,
@@ -116,13 +104,6 @@ __all__ = [  # noqa: RUF022  # grouped by topic; ruff's sort ignores group comme
     "TracedAgent",
     "trace_agent",
     "openai_agents_available",
-    # AutoGen/AG2 integration
-    "LCTLAutogenCallback",
-    "LCTLConversableAgent",
-    "LCTLGroupChatManager",
-    "trace_autogen_agent",
-    "trace_group_chat",
-    "autogen_available",
     # CrewAI integration
     "LCTLAgent",
     "LCTLTask",

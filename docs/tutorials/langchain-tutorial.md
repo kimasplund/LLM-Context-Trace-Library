@@ -737,5 +737,4 @@ When using retrievers, LCTL captures:
 
 - Learn about [LCTL CLI commands](../cli/README.md)
 - Explore [CrewAI integration](./crewai-tutorial.md)
-- Check out [AutoGen integration](./autogen-tutorial.md)
 - See [OpenAI Agents integration](./openai-agents-tutorial.md)

@@ -53,9 +53,6 @@ langchain = [
 crewai = [
     "crewai>=1.8.0",
 ]
-autogen = [
-    "pyautogen>=0.7.0",
-]
 openai-agents = [
     "openai-agents>=0.1.0",
 ]
@@ -72,7 +69,7 @@ llamaindex = [
     "llama-index>=0.10.0",
 ]
 all = [
-    "lctl[dashboard,langchain,crewai,autogen,openai-agents,pydantic-ai,semantic-kernel,dspy,llamaindex]",
+    "lctl[dashboard,langchain,crewai,openai-agents,pydantic-ai,semantic-kernel,dspy,llamaindex]",
 ]
 
 [project.scripts]
@@ -132,7 +129,7 @@ warn_unused_configs = true
 
 [[tool.mypy.overrides]]
 module = [
-    "langchain.*", "langchain_core.*", "crewai.*", "autogen.*", "autogen_core.*", "ag2.*",
+    "langchain.*", "langchain_core.*", "crewai.*",
     "agents.*", "pydantic_ai.*", "semantic_kernel.*", "dspy.*", "llama_index.*",
     "slowapi.*", "uvicorn.*", "websockets.*",
 ]

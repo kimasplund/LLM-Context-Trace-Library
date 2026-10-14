@@ -778,4 +778,3 @@ Here's what a typical OpenAI Agents trace looks like:
 - Learn about [LCTL CLI commands](../cli/README.md)
 - Explore [LangChain integration](./langchain-tutorial.md)
 - Check out [CrewAI integration](./crewai-tutorial.md)
-- See [AutoGen integration](./autogen-tutorial.md)

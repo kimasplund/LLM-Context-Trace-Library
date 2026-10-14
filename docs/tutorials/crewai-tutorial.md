@@ -647,5 +647,4 @@ Here's what a typical crew trace looks like:
 
 - Learn about [LCTL CLI commands](../cli/README.md)
 - Explore [LangChain integration](./langchain-tutorial.md)
-- Check out [AutoGen integration](./autogen-tutorial.md)
 - See [OpenAI Agents integration](./openai-agents-tutorial.md)

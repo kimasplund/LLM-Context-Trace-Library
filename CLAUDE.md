@@ -53,7 +53,6 @@ lctl/
     ├── claude_code.py   # LCTLClaudeCodeTracer, generate_hooks (SELF-TRACING!)
     ├── langchain.py     # LCTLCallbackHandler (TracerDelegate), LCTLChain, trace_chain
     ├── crewai.py        # LCTLCrew, LCTLAgent, LCTLTask, trace_crew
-    ├── autogen.py       # LCTLAutogenCallback (BaseTracer), trace_agent, trace_group_chat
     ├── openai_agents.py # LCTLOpenAIAgentTracer (BaseTracer), LCTLRunHooks, TracedAgent
     ├── pydantic_ai.py   # LCTLPydanticAITracer (BaseTracer), TracedAgent, trace_agent
     ├── semantic_kernel.py # LCTLSemanticKernelTracer (BaseTracer), trace_kernel
@@ -230,7 +229,6 @@ tree = ReplayEngine(session.chain).get_span_tree()
 │   ├── sample-chain.lctl.json  # Example chain file
 │   ├── langchain_example.py    # LangChain integration demo
 │   ├── crewai_example.py       # CrewAI integration demo
-│   └── autogen_example.py      # AutoGen integration demo
 ├── scripts/check_wheel.py      # Wheel content/metadata check (CI package job)
 ├── vscode-lctl/                # VS Code extension (TypeScript + React webview)
 ├── .github/                    # CI workflow, Dependabot
@@ -306,7 +304,7 @@ event = Event(seq=1, type=EventType.STEP_START, ...)
 All integrations use `BaseTracer` (inheritance) or `TracerDelegate` (composition) from `lctl.integrations.base`; see [Integration Guide](#integration-guide) for both templates.
 
 **Current integration patterns:**
-- BaseTracer: pydantic_ai, semantic_kernel, dspy, openai_agents, autogen
+- BaseTracer: pydantic_ai, semantic_kernel, dspy, openai_agents
 - TracerDelegate: langchain, llamaindex (must extend framework callbacks)
 - Wrapper: crewai (wraps framework classes)
 
