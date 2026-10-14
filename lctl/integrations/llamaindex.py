@@ -22,7 +22,6 @@ Usage:
 from __future__ import annotations
 
 import contextlib
-import logging
 import threading
 import time
 from typing import Any
@@ -30,8 +29,6 @@ from uuid import uuid4
 
 from ..core.session import LCTLSession
 from .base import TracerDelegate, truncate
-
-logger = logging.getLogger(__name__)
 
 try:
     from llama_index.core.callbacks import CallbackManager
@@ -792,21 +789,12 @@ def _attach_handler(engine: Any, handler: LCTLLlamaIndexCallback) -> None:
     and ignore lists are kept; otherwise swaps in a merged manager.
 
     Engines built from the same ``Settings`` share one callback manager, so every
-    engine on it is traced by the handler, and a second LCTL handler on the same
-    manager records each event twice. A warning is logged in that case.
+    engine on it is traced by the handler. The public wrappers refuse to attach a
+    second LCTL handler to such a manager (see ``_is_already_traced``).
     """
     if not hasattr(engine, "callback_manager"):
         return
     manager = engine.callback_manager
-    if manager is not None and any(
-        isinstance(h, LCTLLlamaIndexCallback) and h is not handler
-        for h in (getattr(manager, "handlers", None) or [])
-    ):
-        logger.warning(
-            "This callback manager is shared and already has an LCTL handler: every "
-            "engine on it is traced by both handlers, so events are recorded twice. "
-            "For whole-app tracing set Settings.callback_manager once instead."
-        )
     if manager is not None and hasattr(manager, "add_handler"):
         manager.add_handler(handler)
     else:
@@ -853,8 +841,11 @@ class LCTLQueryEngine:
 
         if _is_already_traced(query_engine):
             raise ValueError(
-                "Query engine is already being traced by LCTL. "
-                "Use the existing tracer or remove it first."
+                "This query engine's callback manager already has an LCTL handler, so its "
+                "events already go to that tracer's session. This usually means engines "
+                "built from the same Settings share one callback manager, or "
+                "Settings.callback_manager was set to an LCTL manager. Reuse that tracer, "
+                "or build the engine with its own CallbackManager."
             )
 
         self._query_engine = query_engine
@@ -946,8 +937,11 @@ class LCTLChatEngine:
 
         if _is_already_traced(chat_engine):
             raise ValueError(
-                "Chat engine is already being traced by LCTL. "
-                "Use the existing tracer or remove it first."
+                "This chat engine's callback manager already has an LCTL handler, so its "
+                "events already go to that tracer's session. This usually means engines "
+                "built from the same Settings share one callback manager, or "
+                "Settings.callback_manager was set to an LCTL manager. Reuse that tracer, "
+                "or build the engine with its own CallbackManager."
             )
 
         self._chat_engine = chat_engine

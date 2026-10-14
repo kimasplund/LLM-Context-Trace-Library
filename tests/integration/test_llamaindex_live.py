@@ -1,7 +1,5 @@
 """Live LlamaIndex smoke tests with MockLLM/MockEmbedding (no API keys)."""
 
-import logging
-
 import pytest
 
 pytest.importorskip("llama_index.core")
@@ -14,7 +12,6 @@ from llama_index.core.llms import MockLLM
 from lctl.core.events import EventType
 from lctl.integrations.llamaindex import (
     LCTLLlamaIndexCallback,
-    _attach_handler,
     trace_chat_engine,
     trace_query_engine,
 )
@@ -110,21 +107,14 @@ def test_llm_trace_has_llm_agent_and_start_payload_model(build_index):
     assert traces[0].data["model"] == "MockLLM"
 
 
-def test_shared_manager_warns_about_second_tracer(build_index, caplog):
+def test_second_wrap_on_shared_manager_raises_explanatory_error(build_index):
     index = build_index()
     engine_a = index.as_query_engine()
     engine_b = index.as_query_engine()
     assert engine_a.callback_manager is engine_b.callback_manager
 
-    first = LCTLLlamaIndexCallback(chain_id="a")
-    second = LCTLLlamaIndexCallback(chain_id="b")
-    with caplog.at_level(logging.WARNING, logger="lctl.integrations.llamaindex"):
-        _attach_handler(engine_a, first)
-        assert not caplog.records
-        _attach_handler(engine_b, second)
-
-    warnings_ = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(warnings_) == 1
-    assert "shared" in warnings_[0].getMessage()
-    assert "twice" in warnings_[0].getMessage()
-    assert second in engine_b.callback_manager.handlers  # still attached
+    trace_query_engine(engine_a, chain_id="a")
+    with pytest.raises(ValueError, match="share one callback manager") as excinfo:
+        trace_query_engine(engine_b, chain_id="b")
+    assert "callback manager" in str(excinfo.value)
+    assert "remove it first" not in str(excinfo.value)
