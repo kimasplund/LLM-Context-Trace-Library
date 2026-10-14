@@ -20,13 +20,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Concurrent agents in one session (e.g. under `asyncio.gather`) no longer overwrite each other's agent attribution.
 - `ReplayEngine.diff()` ignores per-run identity fields.
 - A failing `EventEmitter` attached to an `LCTLSession` no longer raises out of the recording call; like event listeners, its errors are dropped so tracing never breaks the host application.
-
 - Web dashboard: the Metrics and Evaluation tabs and the Compare button never responded (their handlers were attached by an `init` reassignment that ran after the page-load listener had captured the original function)
 - Web dashboard: event details open in a drawer over the current view instead of rendering ~17,000px down the page; panels scroll internally so the page stays about two screens tall; `Esc` closes the drawer
 - Web dashboard: the "Duration" stat showed 0ms while scrubbing; it is now **Elapsed** (wall-clock time to the replay position) and long spans format as hours/days
 - Web dashboard: static asset URLs carry a content hash, so browsers no longer run stale JavaScript/CSS after an upgrade
 - Standalone WebSocket server (`WebSocketServer.start` / `start_websocket_server`) now works with the `websockets` library: connections previously failed immediately (close code 1011), and `stop()` now closes the listener. Events emitted from a thread other than the server's (e.g. with `run_in_thread=True`) are delivered promptly instead of waiting until something else woke the server loop (observed ~20s); `stop()` can be awaited from another thread or event loop and then waits for the server to shut down; a `stop()` awaited right after `asyncio.create_task(server.start(...))` (before the listener is bound) now shuts it down instead of leaving it serving; a second concurrent `start()` raises `RuntimeError` instead of orphaning the running server
 - WebSocket send loop no longer recurses on every heartbeat, which silently stopped event delivery after ~1000 idle heartbeats and, on Python 3.11, kept disconnected clients' loops running
+- `Chain.load`/`Chain.save` accept `str` paths; `SchemaVersionError` is a `ValueError`; the `auto_instrument` docstring matches its behaviour
+- Claude Code tracing: the `Agent` tool is recorded like `Task` (subagents were missed); `Stop.sh` no longer crashes with a `NameError`; each session gets its own chain via new `SessionStart`/`SessionEnd` hooks, and compaction no longer starts a new chain
+- `lctl claude init` merges into an existing `settings.json` (writing `settings.json.bak` first) instead of replacing it, and validates all inputs before writing anything
+- Claude Code hook commands shell-quote the project root, so paths with spaces no longer break (and block) the hooks
+- `lctl claude validate` flags unregistered, outdated or stale installs instead of printing "valid"
+- Web dashboard: `run_dashboard(reload=True)` works (import-string app factory)
+- Web dashboard: non-ASCII API keys are rejected with 403 instead of a 500
+- RPA webhooks are now actually delivered; previously they were registered but never sent
+- LlamaIndex: the callback handler is initialised correctly and wired through the callback manager; `llm_trace` carries the model and LLM agent; a warning is logged when a shared callback manager already holds another LCTL handler, and the "already being traced" error explains the shared-manager cause
+- PydanticAI: results and usage from 1.x and 2.x are read correctly, `run_sync` is traced, attributes are proxied through the traced agent, and stream deltas are recorded
+- OpenAI Agents: `LCTLRunHooks.on_tool_start`/`on_tool_end` match the SDK signatures (the old ones crashed) and take tool input from `context.tool_arguments`
+- CrewAI: steps are attributed to agent roles (and the manager), durations are real and clamped to non-negative, no spurious `ToolResult` steps, `kickoff_for_each` is traced, and user step callbacks are chained and always restored; installing the tracer twice is a no-op
+- VS Code extension: token and cost come from library traces (`data.tokens`, legacy `tokens_in`/`tokens_out` as fallback); the `lctl.autoRefresh`, `lctl.maxEventsInTree` and `lctl.defaultPricing` settings are honoured; palette commands offer a file picker when run without a selection; `npm test` runs `node:test` and CI runs it
+- Examples: every example runs without an API key; duplicates merged; added `spans_demo` and `examples/README.md`
 
 ### Changed
 
@@ -37,6 +50,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions CI (Python 3.11-3.14 full suite, 3.15 core suite, wheel check, VS Code extension build) and Dependabot
 - pre-commit hooks mirroring CI's lint job
 - License metadata follows PEP 639 (`AGPL-3.0-only`, no conflicting classifier)
+- `lctl dashboard`, `WebSocketServer.start()` and `start_websocket_server()` bind to `127.0.0.1` by default; pass a host explicitly to expose them
+- Dashboard API keys are enforced on every route except `/` (and `/static`), including `/ws` (checked before accept, close code 1008) and the SSE stream; `?api_key=` is accepted for `/ws` and SSE. Set `LCTL_LOCALHOST_BYPASS=false` to enforce keys for local clients too
+- `ReplayEngine.diff()` and `lctl diff` compare content only, ignoring ids, timestamps and `duration_ms`; pass `ignore_volatile=False` / `--strict` to compare every field
+- `LCTLOpenAIAgentTracer.run_config` is deprecated and emits a `DeprecationWarning`; use `hooks=tracer.create_hooks()`
+- RPA webhooks are HMAC-signed, retried on failure and recorded in a delivery log (new delivery-log route); `WebhookDispatcher.register` now takes `(webhook_id, registration)`
+- `lctl claude init --chain-id` is now the chain-id prefix used by `SessionStart` (`<prefix>-<timestamp>-<session>`); passing it regenerates `SessionStart.sh` without `--force`
+- Minimum supported PydanticAI is `pydantic-ai>=1.0`
+- CI gains an `integrations` job running live smoke tests for each extra (new `integration` pytest marker)
+
+### Removed
+
+- The AutoGen integration (`lctl.integrations.autogen`) and the `autogen` extra. AutoGen is in maintenance mode and the integration was broken with its own extra. A Microsoft Agent Framework integration is planned as its successor.
+
+### Breaking
+
+- The dashboard, `WebSocketServer.start()` and `start_websocket_server()` bind to `127.0.0.1` by default; deployments that relied on `0.0.0.0` must pass the host explicitly.
+- With API keys configured, the whole API, `/ws` and SSE require a key from remote clients. This includes `/api/health` and `/api/rpa/auth/status`, which were previously open.
+- The FastAPI auto-docs (`/docs`, `/redoc`, `/openapi.json`) are disabled because they exposed the route schema to unauthenticated clients.
+- The AutoGen integration and the `autogen` extra are removed.
+- `ReplayEngine.diff()` ignores volatile fields by default; use `ignore_volatile=False` (`lctl diff --strict`) for the old behaviour.
+- `LCTLRunHooks.on_tool_start`/`on_tool_end` signatures changed to the SDK's, and `tracer.run_config` is deprecated.
+- `lctl claude init` refuses to overwrite a same-named script that LCTL did not generate (exit 1, nothing written); `--force` backs it up to `<script>.bak` and replaces it. `--force` only regenerates hook scripts and never replaces `settings.json`.
+- `lctl claude init --chain-id` now sets a chain-id prefix rather than a fixed chain id, because each session gets its own chain.
+- `lctl claude validate` exits non-zero for invalid or outdated installs and advises `lctl claude init --force` for stale scripts.
+- `WebhookDispatcher` delivers only on the dashboard app's lifespan event loop, and `WebhookDispatcher.register` takes `(webhook_id, registration)`.
 
 ## [4.1.0] - 2026-01-19
 
