@@ -266,19 +266,57 @@ def diff_chains(chain1: str, chain2: str):
         click.echo()
 
 
+def _print_span_tree(chain_id: str, roots: list[dict]) -> None:
+    """Print span nodes depth-first, two spaces per level."""
+    if not roots:
+        click.echo("No step events found.")
+        return
+
+    click.echo(f"Span tree for {chain_id}:")
+    click.echo()
+
+    def show(node: dict, depth: int) -> None:
+        indent = "  " * depth
+        if node["start_seq"] is None:
+            click.echo(f"{indent}{node['agent']}  (orphan end)")
+        elif node["end_seq"] is None:
+            click.echo(f"{indent}{node['agent']}: {node['intent']}  (open)")
+        else:
+            outcome = node["outcome"] or "?"
+            if outcome == "success":
+                outcome = click.style(outcome, fg="green")
+            elif outcome == "error":
+                outcome = click.style(outcome, fg="red")
+            seconds = (node["duration_ms"] or 0) / 1000
+            click.echo(f"{indent}{node['agent']}: {node['intent']}  [{seconds:.1f}s] {outcome}")
+        for child in node["children"]:
+            show(child, depth + 1)
+
+    for root in roots:
+        show(root, 0)
+
+
 @cli.command()
 @click.argument("chain_file", type=click.Path())
-def trace(chain_file: str):
+@click.option(
+    "--tree", is_flag=True, help="Show the span tree (call hierarchy) instead of the step list."
+)
+def trace(chain_file: str, tree: bool):
     """Show step-level execution trace.
 
     Examples:
         lctl trace chain.lctl.json
+        lctl trace --tree chain.lctl.json
     """
     chain = _load_chain_safely(chain_file)
     if chain is None:
         sys.exit(1)
 
     engine = ReplayEngine(chain)
+
+    if tree:
+        _print_span_tree(chain.id, engine.get_span_tree())
+        return
 
     trace_data = engine.get_trace()
 

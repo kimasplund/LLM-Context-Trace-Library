@@ -1130,3 +1130,39 @@ class TestClaudeCommands:
         assert result.exit_code == 0
         # File should still exist
         assert (traces_dir / "old-trace.lctl.json").exists()
+
+
+class TestTraceTree:
+    """lctl trace --tree renders the span call tree (format 4.2)."""
+
+    FIXTURE = Path(__file__).parent / "fixtures" / "spans_v41_orphans.lctl.json"
+    SAMPLE = Path(__file__).parent.parent / "examples" / "sample-chain.lctl.json"
+
+    def test_trace_tree_renders_fixture(self, runner: CliRunner):
+        result = runner.invoke(cli, ["trace", "--tree", str(self.FIXTURE)])
+
+        assert result.exit_code == 0, result.output
+        lines = [line.rstrip() for line in result.output.splitlines() if line.strip()]
+        expected = [
+            "planner: plan the work  [6.0s] success",
+            "  coder: write code  [2.0s] success",
+            "  tester: run tests  (open)",
+            "reviewer  (orphan end)",
+        ]
+        tree_lines = [line for line in lines if not line.startswith("Span tree")]
+        assert tree_lines == expected
+
+    def test_trace_without_tree_unchanged(self, runner: CliRunner):
+        result = runner.invoke(cli, ["trace", str(self.SAMPLE)])
+
+        assert result.exit_code == 0
+        assert result.output == (
+            "Execution trace for security-review-demo:\n"
+            "\n"
+            "┌─ [1] code-analyzer: analyze\n"
+            "└─ [5] success (30.0s)\n"
+            "┌─ [7] security-reviewer: assess\n"
+            "└─ [10] success (28.0s)\n"
+            "┌─ [11] fix-implementer: fix\n"
+            "└─ [14] success (18.0s)\n"
+        )
