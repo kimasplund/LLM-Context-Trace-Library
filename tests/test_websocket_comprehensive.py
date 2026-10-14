@@ -19,6 +19,7 @@ import contextlib
 import json
 import socket
 import sys
+import threading
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -851,6 +852,19 @@ async def _recv_until(ws, predicate) -> dict:
                 return message
 
 
+def _is_welcome(message: dict) -> bool:
+    """The server's own welcome frame (the CONNECTED broadcast also carries a payload)."""
+    return message["type"] == "connected" and "payload" not in message
+
+
+async def _cancel(task: asyncio.Task) -> None:
+    """Make sure a serve task does not outlive its test, even when the test failed."""
+    if not task.done():
+        task.cancel()
+    with contextlib.suppress(asyncio.CancelledError, Exception):
+        await task
+
+
 class TestWebSocketServerSendLoop:
     """Tests for the per-client send loop."""
 
@@ -917,6 +931,91 @@ class TestWebSocketServerStandalone:
         assert not server.is_running
         with pytest.raises(ConnectionRefusedError):
             await websockets.connect(f"ws://127.0.0.1:{port}")
+
+    @pytest.mark.asyncio
+    async def test_event_emitted_from_another_thread_arrives_promptly(self, emitter: EventEmitter):
+        """An emit on a thread other than the server's must wake the server loop."""
+        websockets = pytest.importorskip("websockets", minversion="14")
+        port = _free_port()
+        real_thread = threading.Thread
+        threads: list[threading.Thread] = []
+
+        def capture_thread(*args, **kwargs) -> threading.Thread:
+            threads.append(real_thread(*args, **kwargs))
+            return threads[-1]
+
+        with patch("threading.Thread", side_effect=capture_thread):
+            server = start_websocket_server(
+                emitter, host="127.0.0.1", port=port, run_in_thread=True
+            )
+        assert server is not None
+        (server_thread,) = threads
+
+        async with await _connect(websockets, port) as ws:
+            await _recv_until(ws, _is_welcome)
+            assert server_thread.ident != threading.get_ident()
+
+            emitter.emit(StreamingEvent.chain_started("chain-x"))
+            # Default heartbeat is 30s: without a cross-thread wakeup this sits in the queue.
+            async with asyncio.timeout(1.0):
+                event = await _recv_until(
+                    ws, lambda m: m["type"] == StreamingEventType.CHAIN_START.value
+                )
+            assert event["chain_id"] == "chain-x"
+
+        await server.stop()
+        server_thread.join(timeout=2)
+
+        assert not server_thread.is_alive()
+        assert not server.is_running
+        assert server.client_count == 0
+        with pytest.raises(ConnectionRefusedError):
+            await websockets.connect(f"ws://127.0.0.1:{port}")
+
+    @pytest.mark.asyncio
+    async def test_stop_before_listener_is_bound_shuts_down(self, emitter: EventEmitter):
+        websockets = pytest.importorskip("websockets", minversion="14")
+        server = WebSocketServer(emitter)
+        port = _free_port()
+        serve_task = asyncio.create_task(server.start("127.0.0.1", port))
+        try:
+            await server.stop()
+            await asyncio.wait_for(serve_task, timeout=2)
+
+            assert not server.is_running
+            with pytest.raises(ConnectionRefusedError):
+                await websockets.connect(f"ws://127.0.0.1:{port}")
+        finally:
+            await _cancel(serve_task)
+
+    @pytest.mark.asyncio
+    async def test_second_start_is_rejected(self, emitter: EventEmitter):
+        websockets = pytest.importorskip("websockets", minversion="14")
+        server = WebSocketServer(emitter)
+        port = _free_port()
+        serve_task = asyncio.create_task(server.start("127.0.0.1", port))
+        try:
+            async with await _connect(websockets, port) as ws:
+                await _recv_until(ws, _is_welcome)
+
+                with pytest.raises(RuntimeError, match="already running"):
+                    await server.start("127.0.0.1", port)
+
+                # The first server is undisturbed: still running, serving, and broadcasting.
+                assert server.is_running
+                async with await _connect(websockets, port) as ws2:
+                    await _recv_until(ws2, _is_welcome)
+                emitter.emit(StreamingEvent.chain_started("chain-2"))
+                await _recv_until(ws, lambda m: m["type"] == StreamingEventType.CHAIN_START.value)
+
+            await server.stop()
+            await asyncio.wait_for(serve_task, timeout=2)
+
+            assert not server.is_running
+            with pytest.raises(ConnectionRefusedError):
+                await websockets.connect(f"ws://127.0.0.1:{port}")
+        finally:
+            await _cancel(serve_task)
 
 
 # =============================================================================

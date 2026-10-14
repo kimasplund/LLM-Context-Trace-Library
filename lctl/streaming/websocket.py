@@ -1,6 +1,7 @@
 """WebSocket and SSE server for real-time event streaming."""
 
 import asyncio
+import concurrent.futures
 import contextlib
 import json
 import threading
@@ -21,6 +22,17 @@ class WebSocketClient:
     connected_at: datetime
     filters: dict[str, Any] = field(default_factory=dict)
     send_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
+
+
+@dataclass
+class _StandaloneRun:
+    """State of one active start() call, read by other threads as a single snapshot."""
+
+    loop: asyncio.AbstractEventLoop
+    thread_id: int
+    stop_event: asyncio.Event
+    # Completed when start() has finished; awaitable from any thread or event loop.
+    done: concurrent.futures.Future[None] = field(default_factory=concurrent.futures.Future)
 
 
 class _WebsocketsConnection:
@@ -74,7 +86,8 @@ class WebSocketServer:
         self._lock = asyncio.Lock()
         self._running = False
         self._heartbeat_task: asyncio.Task | None = None
-        self._standalone_server: Any = None
+        self._standalone: _StandaloneRun | None = None
+        self._standalone_claim = threading.Lock()
 
         self._emitter.on("all", self._on_event)
 
@@ -89,7 +102,18 @@ class WebSocketServer:
         return self._running
 
     def _on_event(self, event: StreamingEvent) -> None:
-        """Handle incoming events from the emitter."""
+        """Handle incoming events from the emitter (called on whichever thread emits)."""
+        run = self._standalone
+        if run is not None and threading.get_ident() != run.thread_id:
+            # asyncio.Queue is not thread-safe and a plain put would not wake the
+            # standalone server's loop, so hand the enqueue to that loop.
+            with contextlib.suppress(RuntimeError):  # loop already closed: server is gone
+                run.loop.call_soon_threadsafe(self._enqueue_event, event)
+            return
+        self._enqueue_event(event)
+
+    def _enqueue_event(self, event: StreamingEvent) -> None:
+        """Queue an event for every client whose filters match."""
         for client in list(self._clients.values()):
             if self._should_send_to_client(event, client):
                 with contextlib.suppress(asyncio.QueueFull):
@@ -272,9 +296,14 @@ class WebSocketServer:
     async def start(self, host: str = "0.0.0.0", port: int = 8081) -> None:  # noqa: S104  # bind address is user-configurable; default tracked as spec follow-up
         """Start the WebSocket server (standalone mode).
 
+        Serves until stop() is called, from this or any other thread/event loop.
+
         Args:
             host: Host to bind to.
             port: Port to bind to.
+
+        Raises:
+            RuntimeError: If start() is already running on this server.
         """
         try:
             import websockets
@@ -284,28 +313,67 @@ class WebSocketServer:
                 "Install with: pip install websockets"
             ) from err
 
+        # Claim the server before the first await, so a stop() issued right after
+        # create_task(start()) is seen once the listener is bound.
+        with self._standalone_claim:
+            if self._standalone is not None:
+                raise RuntimeError("WebSocketServer.start() is already running")
+            run = _StandaloneRun(
+                loop=asyncio.get_running_loop(),
+                thread_id=threading.get_ident(),
+                stop_event=asyncio.Event(),
+            )
+            self._standalone = run
+
         self._running = True
-        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        self._heartbeat_task = heartbeat_task
 
         # websockets>=14 calls handler(connection); older releases also pass the request path.
         async def handler(connection: Any, path: str | None = None) -> None:
             await self.handle_connection(_WebsocketsConnection(connection))
 
         try:
-            async with websockets.serve(handler, host, port) as server:
-                self._standalone_server = server
-                await server.wait_closed()
+            # Leaving the block closes the listener and every client connection.
+            async with websockets.serve(handler, host, port):
+                await run.stop_event.wait()
         finally:
-            self._standalone_server = None
+            heartbeat_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await heartbeat_task
+            if self._heartbeat_task is heartbeat_task:
+                self._heartbeat_task = None
             self._running = False
-            if self._heartbeat_task:
-                self._heartbeat_task.cancel()
+            self._standalone = None
+            run.done.set_result(None)
+
+    def _request_stop(self, run: _StandaloneRun | None) -> None:
+        """Make the given start() run leave its serve block. Runs on that run's loop."""
+        if run is None or run is self._standalone:
+            self._running = False
+        if run is not None:
+            run.stop_event.set()
 
     async def stop(self) -> None:
-        """Stop the WebSocket server."""
-        self._running = False
-        if self._standalone_server is not None:
-            self._standalone_server.close()
+        """Stop the WebSocket server.
+
+        From another thread or event loop than a standalone start(), this waits
+        until that server has shut down.
+        """
+        run = self._standalone
+        if run is None:
+            # Let a start() task created just before this call claim the server.
+            await asyncio.sleep(0)
+            run = self._standalone
+
+        if run is not None and run.loop is not asyncio.get_running_loop():
+            with contextlib.suppress(RuntimeError):  # loop already closed: start() is done
+                run.loop.call_soon_threadsafe(self._request_stop, run)
+            # shield: cancelling this stop() must not cancel the shared done future
+            await asyncio.shield(asyncio.wrap_future(run.done))
+            return
+
+        self._request_stop(run)
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Standalone WebSocket server (`WebSocketServer.start` / `start_websocket_server`) now works with the `websockets` library: connections previously failed immediately (close code 1011), and `stop()` now closes the listener
+- Standalone WebSocket server (`WebSocketServer.start` / `start_websocket_server`) now works with the `websockets` library: connections previously failed immediately (close code 1011), and `stop()` now closes the listener. Events emitted from a thread other than the server's (e.g. with `run_in_thread=True`) are delivered promptly instead of waiting until something else woke the server loop (observed ~20s); `stop()` can be awaited from another thread or event loop and then waits for the server to shut down; a `stop()` awaited right after `asyncio.create_task(server.start(...))` (before the listener is bound) now shuts it down instead of leaving it serving; a second concurrent `start()` raises `RuntimeError` instead of orphaning the running server
 - WebSocket send loop no longer recurses on every heartbeat, which silently stopped event delivery after ~1000 idle heartbeats and, on Python 3.11, kept disconnected clients' loops running
 
 ### Changed
